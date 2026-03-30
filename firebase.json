@@ -4,12 +4,17 @@
     "ignore": [
       "firebase.json",
       ".firebaserc",
-      "fetch_mlb_stats.py",
+      "**/*.py",
+      "**/*.bat",
       "requirements.txt",
       "SETUP_FIREBASE.md",
       "SETUP_GITHUB.md",
       "fg_cookie.txt",
-      ".github/**"
+      ".github/**",
+      "__pycache__/**",
+      "*.md",
+      ".gitignore",
+      ".git/**"
     ],
     "headers": [
       {
