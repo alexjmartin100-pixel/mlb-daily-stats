@@ -1950,4 +1950,45 @@ def main():
     all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
     n_games = df["game_pk"].nunique()
-    html    = render_html(date_display, ts, 
+    html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
+                          ta_hitters, ta_starters, ta_relievers)
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
+
+    print(f"\n✅  Dashboard saved → {out_path}")
+    starters = [p for p in all_pitchers if p.get("ip_float", 0) >= 3]
+    relievers = [p for p in all_pitchers if p.get("ip_float", 0) < 3]
+    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(starters)} starters · {len(relievers)} relievers\n")
+
+    _close_pw()   # shut down Chromium
+
+    # ── Firebase deploy (runs automatically if Firebase CLI is installed) ──
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    firebase_rc = os.path.join(script_dir, ".firebaserc")
+    if os.path.exists(firebase_rc):
+        print("[ Firebase ] Deploying to Firebase Hosting…")
+        try:
+            result = subprocess.run(
+                ["firebase", "deploy", "--only", "hosting", "--non-interactive"],
+                cwd=script_dir, capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                # Extract hosting URL from output
+                for line in result.stdout.splitlines():
+                    if "web.app" in line or "firebaseapp.com" in line:
+                        print(f"  ✅ Live at: {line.strip()}")
+                        break
+                else:
+                    print("  ✅ Firebase deploy successful")
+            else:
+                print(f"  ⚠️  Firebase deploy failed: {result.stderr[:300]}")
+        except FileNotFoundError:
+            print("  Firebase CLI not found — skipping deploy")
+            print("  (Run 'npm install -g firebase-tools' to enable auto-deploy)")
+        except Exception as e:
+            print(f"  Firebase deploy error: {e}")
+
+
+if __name__ == "__main__":
+    main()
