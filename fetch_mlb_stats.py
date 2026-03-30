@@ -1391,22 +1391,23 @@ const D  = ()=>'<span class="c-dim">—</span>';
 const tm = t=>`<span class="tm">${t}</span>`;
 
 // Counting stats: show 0 when absent; rate/measurement stats: keep dash
-const fHR  = v=>v>=2?`<span class="c-barrel">${v}</span>`:v===1?`<span class="c-great">${v}</span>`:'0';
-const fK_h = v=>v>=3?`<span class="c-neg">${v}</span>`:v>0?`${v}`:'0';
-const fBB_h= v=>v>=3?`<span class="c-great">${v}</span>`:v>0?`${v}`:'0';
-const fSB  = v=>v>0?`<span class="c-great">${v}</span>`:'0';
-const fHrd = v=>v>=3?`<span class="c-great">${v}</span>`:v>0?`<span class="c-warn">${v}</span>`:'0';
+const fHR  = v=>v>0?`${v}`:'0';
+const fK_h = v=>v>0?`${v}`:'0';
+const fBB_h= v=>v>0?`${v}`:'0';
+const fSB  = v=>v>0?`${v}`:'0';
+const fHrd = v=>v>0?`${v}`:'0';
 const fBar = v=>v>0?`${v}`:'0';
-const fEV  = (v,b)=>v==null||b===0?D():v>=107?`<span class="c-great">${v}</span>`:v>=103?`<span class="c-good">${v}</span>`:`${v}`;
-const fIP  = (v,s)=>v>=6?`<span class="c-great">${s}</span>`:v<1?`<span class="c-neg">${s}</span>`:s;
-const fH_p = v=>v>=8?`<span class="c-neg">${v}</span>`:v>=5?`<span class="c-warn">${v}</span>`:v>0?`${v}`:'0';
-const fR   = v=>v>=5?`<span class="c-neg">${v}</span>`:v>=3?`<span class="c-warn">${v}</span>`:v>0?`${v}`:'0';
-const fBB_p= v=>v>=4?`<span class="c-neg">${v}</span>`:v>0?`${v}`:'0';
-const fK_p = v=>v>=9?`<span class="c-great">${v}</span>`:v>=6?`<span class="c-good">${v}</span>`:v>0?`${v}`:'0';
-const fWh  = v=>v>=12?`<span class="c-great">${v}</span>`:v>=7?`<span class="c-good">${v}</span>`:v>0?`${v}`:'0';
-const fKBB = v=>v>=20?`<span class="c-great">${v}%</span>`:v>=12?`<span class="c-good">${v}%</span>`:v<0?`<span class="c-neg">${v}%</span>`:`${v}%`;
-const fSP  = v=>v==null?D():v>=115?`<span class="c-great">${v}</span>`:v>=105?`<span class="c-good">${v}</span>`:v<90?`<span class="c-neg">${v}</span>`:`<span class="c-blue">${v}</span>`;
-const fLP  = v=>v==null?D():`<span class="c-blue">${v}</span>`;
+const fEV  = (v,b)=>v==null||b===0?D():`${v}`;
+const fIP  = (v,s)=>s;
+const fH_p = v=>v>0?`${v}`:'0';
+const fR   = v=>v>0?`${v}`:'0';
+const fBB_p= v=>v>0?`${v}`:'0';
+const fK_p = v=>v>0?`${v}`:'0';
+const fWh  = v=>v>0?`${v}`:'0';
+const fKBB = v=>`${v}%`;
+const fSP  = v=>v==null?D():`${v}`;
+const fLP  = v=>v==null?D():`${v}`;
+const glIP = (v,s,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${s}</span>`:null;
 
 function pitchArsenal(types){
   if(!types||!types.length) return D();
@@ -1460,7 +1461,7 @@ function renderSP(){
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,spL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
     <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
     <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
     <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
@@ -1486,7 +1487,7 @@ function renderRP(){
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,rpL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
     <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
     <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
     <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
@@ -1577,7 +1578,7 @@ function renderTASP(){
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,spL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
     <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
     <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
     <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
@@ -1604,7 +1605,7 @@ function renderTARP(){
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,rpL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
     <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
     <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
     <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
@@ -1949,45 +1950,4 @@ def main():
     all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
     n_games = df["game_pk"].nunique()
-    html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                          ta_hitters, ta_starters, ta_relievers)
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-
-    print(f"\n✅  Dashboard saved → {out_path}")
-    starters = [p for p in all_pitchers if p.get("ip_float", 0) >= 3]
-    relievers = [p for p in all_pitchers if p.get("ip_float", 0) < 3]
-    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(starters)} starters · {len(relievers)} relievers\n")
-
-    _close_pw()   # shut down Chromium
-
-    # ── Firebase deploy (runs automatically if Firebase CLI is installed) ──
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    firebase_rc = os.path.join(script_dir, ".firebaserc")
-    if os.path.exists(firebase_rc):
-        print("[ Firebase ] Deploying to Firebase Hosting…")
-        try:
-            result = subprocess.run(
-                ["firebase", "deploy", "--only", "hosting", "--non-interactive"],
-                cwd=script_dir, capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode == 0:
-                # Extract hosting URL from output
-                for line in result.stdout.splitlines():
-                    if "web.app" in line or "firebaseapp.com" in line:
-                        print(f"  ✅ Live at: {line.strip()}")
-                        break
-                else:
-                    print("  ✅ Firebase deploy successful")
-            else:
-                print(f"  ⚠️  Firebase deploy failed: {result.stderr[:300]}")
-        except FileNotFoundError:
-            print("  Firebase CLI not found — skipping deploy")
-            print("  (Run 'npm install -g firebase-tools' to enable auto-deploy)")
-        except Exception as e:
-            print(f"  Firebase deploy error: {e}")
-
-
-if __name__ == "__main__":
-    main()
+    html    = render_html(date_display, ts, 
