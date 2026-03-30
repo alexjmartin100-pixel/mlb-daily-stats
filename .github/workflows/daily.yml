@@ -6,6 +6,11 @@ on:
     # Runs Mon–Sun every day during MLB season
     - cron: '15 14 * * *'
   workflow_dispatch:   # lets you trigger a manual run from GitHub UI
+  push:
+    branches:
+      - main
+    paths:
+      - 'fetch_mlb_stats.py'   # only re-run when the script itself changes
 
 permissions:
   contents: write
@@ -51,5 +56,4 @@ jobs:
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: mlb-stats-ae429
-          channelId: live
+          
