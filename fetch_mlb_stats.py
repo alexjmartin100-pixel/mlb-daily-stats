@@ -724,6 +724,45 @@ def identify_starters(df: pd.DataFrame) -> set:
                 starters.add(int(sdf.iloc[0]["pitcher"]))
     return starters
 
+def fetch_pitcher_box_data(date_str: str) -> dict:
+    """Returns {(mlbam_id, game_pk): {w, sv, hld, bs}} from official MLB box scores."""
+    try:
+        print(f"  Fetching pitcher box score data via MLB Stats API for {date_str}…")
+        games = statsapi.schedule(date=date_str)
+        box_map: dict = {}
+        for g in games:
+            gpk = g.get("game_id")
+            if not gpk:
+                continue
+            status = g.get("status", "")
+            if "Final" not in status and "Completed" not in status:
+                continue
+            try:
+                bs = statsapi.boxscore_data(int(gpk))
+            except Exception:
+                continue
+            for side in ("home", "away"):
+                for pk, pd_ in bs.get(side, {}).get("players", {}).items():
+                    if not pk.startswith("ID"):
+                        continue
+                    try:
+                        mid = int(pd_["person"]["id"])
+                    except Exception:
+                        continue
+                    pit = pd_.get("stats", {}).get("pitching", {})
+                    w = int(pit.get("wins", 0))
+                    sv = int(pit.get("saves", 0))
+                    hld = int(pit.get("holds", 0))
+                    bs_val = int(pit.get("blownSaves", 0))
+                    if w or sv or hld or bs_val:
+                        box_map[(mid, int(gpk))] = {"w": w, "sv": sv, "hld": hld, "bs": bs_val}
+        total = sum(1 for v in box_map.values() if v["w"] or v["sv"] or v["hld"] or v["bs"])
+        print(f"    Pitcher box data: {total} pitcher(s) with W/SV/HLD/BS")
+        return box_map
+    except Exception as e:
+        print(f"  MLB Stats API pitcher box warning: {e}")
+        return {}
+
 def get_player_info(ids: list) -> dict:
     if not ids:
         return {}
@@ -786,7 +825,7 @@ def build_hitter_stats(df: pd.DataFrame, sb_map: dict) -> list:
         })
     return rows
 
-def build_pitcher_stats(df: pd.DataFrame, starters: set) -> list:
+def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) -> list:
     rows = []
     sp_df = df[df["pitcher"].isin(starters)]
     for (pid, gpk), gdf in sp_df.groupby(["pitcher", "game_pk"]):
@@ -799,6 +838,16 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set) -> list:
         bf = gdf["at_bat_number"].nunique()
         k  = int((evts == "strikeout").sum())
         bb = int(evts.isin(["walk", "intent_walk"]).sum())
+
+        # Get W, SV, HLD, BS from box score data
+        w, sv, hld, bs = 0, 0, 0, 0
+        if box_data:
+            box_key = (int(pid), int(gpk))
+            if box_key in box_data:
+                w = box_data[box_key].get("w", 0)
+                sv = box_data[box_key].get("sv", 0)
+                hld = box_data[box_key].get("hld", 0)
+                bs = box_data[box_key].get("bs", 0)
 
         total_p = len(gdf)
         ptypes  = []
@@ -857,6 +906,10 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set) -> list:
             "hard_hits":     int((bev["launch_speed"] >= 95).sum()) if len(bev) else 0,
             "barrels":       safe_barrels(batted),
             "k_bb_pct":      round((k - bb) / bf * 100, 1) if bf else 0.0,
+            "w":             w,
+            "sv":            sv,
+            "hld":           hld,
+            "bs":            bs,
             "pitch_types":   ptypes,
             "total_pitches": total_p,
             "stuff_plus":    sc_stuff,
@@ -1079,8 +1132,11 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn active" onclick="showTab('hitters',this)">
     🏏 Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
-  <button class="tab-btn" onclick="showTab('pitchers',this)">
-    ⚾ Starters <span class="tab-count" id="p-tc">—</span>
+  <button class="tab-btn" onclick="showTab('starters',this)">
+    ⚾ Starting Pitchers <span class="tab-count" id="sp-tc">—</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('relievers',this)">
+    🔥 Relief Pitchers <span class="tab-count" id="rp-tc">—</span>
   </button>
   <button class="tab-btn ta-btn" onclick="showTab('teamalex',this)">
     👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
@@ -1122,8 +1178,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 </div>
 
-<!-- ══ PITCHERS ══ -->
-<div id="pitchers-panel" class="tab-panel">
+<!-- ══ STARTING PITCHERS ══ -->
+<div id="starters-panel" class="tab-panel">
   <div class="note">
     ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are season averages from Baseball Savant (game-level unavailable — FanGraphs is Cloudflare-blocked).
     Arsenal: <em>game&thinsp;/&thinsp;season</em> velocity —
@@ -1131,35 +1187,75 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <span class="gs">S+</span> = game Stuff+ for that pitch type.
   </div>
   <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span>Strong (≥6 IP, ≥8 K, K-BB%≥15)</div>
-    <div class="leg-item"><span class="leg-dot" style="background:var(--red)"></span>Rough (≥8 H, ≥5 R, ≥4 BB)</div>
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Barrel allowed</div>
+    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
   </div>
   <div class="controls">
-    <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
-    <span class="row-count" id="p-cnt"></span>
+    <input id="sp-search" type="text" placeholder="Search pitcher or team…" oninput="filterSP()">
+    <span class="row-count" id="sp-cnt"></span>
     <span class="sort-hint">Click headers to sort</span>
   </div>
   <div class="table-wrap">
-    <table id="p-tbl">
+    <table id="sp-tbl">
       <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtP(this,'team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtP(this,'hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtP(this,'r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtP(this,'bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtP(this,'k')">K</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtP(this,'barrels')">Barrels</th>
-        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtP(this,'k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtP(this,'stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtP(this,'location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
+        <th class="sortable"      data-k="team"          onclick="srtSP(this,'team')">Team</th>
+        <th class="sortable"      data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-k="hits"          onclick="srtSP(this,'hits')">H</th>
+        <th class="sortable r"    data-k="r"             onclick="srtSP(this,'r')">R</th>
+        <th class="sortable r"    data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
+        <th class="sortable r"    data-k="k"             onclick="srtSP(this,'k')">K</th>
+        <th class="sortable r"    data-k="w"             onclick="srtSP(this,'w')">W</th>
+        <th class="sortable r"    data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
+        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtSP(this,'k_bb_pct')">K-BB%</th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
         <th>Arsenal</th>
       </tr></thead>
-      <tbody id="p-body"></tbody>
+      <tbody id="sp-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ RELIEF PITCHERS ══ -->
+<div id="relievers-panel" class="tab-panel">
+  <div class="note">
+    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are season averages from Baseball Savant.
+    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
+  </div>
+  <div class="legend">
+    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+  </div>
+  <div class="controls">
+    <input id="rp-search" type="text" placeholder="Search pitcher or team…" oninput="filterRP()">
+    <span class="row-count" id="rp-cnt"></span>
+    <span class="sort-hint">Click headers to sort</span>
+  </div>
+  <div class="table-wrap">
+    <table id="rp-tbl">
+      <thead><tr>
+        <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
+        <th class="sortable"      data-k="team"          onclick="srtRP(this,'team')">Team</th>
+        <th class="sortable"      data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-k="hits"          onclick="srtRP(this,'hits')">H</th>
+        <th class="sortable r"    data-k="r"             onclick="srtRP(this,'r')">R</th>
+        <th class="sortable r"    data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
+        <th class="sortable r"    data-k="k"             onclick="srtRP(this,'k')">K</th>
+        <th class="sortable r"    data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
+        <th class="sortable r"    data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
+        <th class="sortable r"    data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
+        <th class="sortable r"    data-k="w"             onclick="srtRP(this,'w')">W</th>
+        <th class="sortable r"    data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th>Arsenal</th>
+      </tr></thead>
+      <tbody id="rp-body"></tbody>
     </table>
   </div>
 </div>
@@ -1194,31 +1290,59 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     </table>
   </div>
 
-  <div class="ta-section-hdr">⚾ Starting Pitchers <span class="tab-count" id="ta-p-tc">—</span></div>
-  <div class="table-wrap">
-    <table id="ta-p-tbl">
+  <div class="ta-section-hdr">⚾ Starting Pitchers <span class="tab-count" id="ta-sp-tc">—</span></div>
+  <div class="table-wrap" style="margin-bottom:24px">
+    <table id="ta-sp-tbl">
       <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtTA(this,'p','name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtTA(this,'p','team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtTA(this,'p','opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtTA(this,'p','ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtTA(this,'p','hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtTA(this,'p','r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtTA(this,'p','bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtTA(this,'p','k')">K</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'p','whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'p','hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'p','barrels')">Barrels</th>
-        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtTA(this,'p','k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'p','stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'p','location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable"      data-k="name"          onclick="srtTA(this,'sp','name')">Pitcher</th>
+        <th class="sortable"      data-k="team"          onclick="srtTA(this,'sp','team')">Team</th>
+        <th class="sortable"      data-k="opp"           onclick="srtTA(this,'sp','opp')">Opp</th>
+        <th class="sortable r"    data-k="ip_float"      onclick="srtTA(this,'sp','ip_float')">IP</th>
+        <th class="sortable r"    data-k="hits"          onclick="srtTA(this,'sp','hits')">H</th>
+        <th class="sortable r"    data-k="r"             onclick="srtTA(this,'sp','r')">R</th>
+        <th class="sortable r"    data-k="bb"            onclick="srtTA(this,'sp','bb')">BB</th>
+        <th class="sortable r"    data-k="k"             onclick="srtTA(this,'sp','k')">K</th>
+        <th class="sortable r"    data-k="w"             onclick="srtTA(this,'sp','w')">W</th>
+        <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'sp','whiffs')">Whiffs</th>
+        <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'sp','hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'sp','barrels')">Barrels</th>
+        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtTA(this,'sp','k_bb_pct')">K-BB%</th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
         <th>Arsenal</th>
       </tr></thead>
-      <tbody id="ta-p-body"></tbody>
+      <tbody id="ta-sp-body"></tbody>
+    </table>
+  </div>
+
+  <div class="ta-section-hdr">🔥 Relief Pitchers <span class="tab-count" id="ta-rp-tc">—</span></div>
+  <div class="table-wrap">
+    <table id="ta-rp-tbl">
+      <thead><tr>
+        <th class="sortable"      data-k="name"          onclick="srtTA(this,'rp','name')">Pitcher</th>
+        <th class="sortable"      data-k="team"          onclick="srtTA(this,'rp','team')">Team</th>
+        <th class="sortable"      data-k="opp"           onclick="srtTA(this,'rp','opp')">Opp</th>
+        <th class="sortable r"    data-k="ip_float"      onclick="srtTA(this,'rp','ip_float')">IP</th>
+        <th class="sortable r"    data-k="hits"          onclick="srtTA(this,'rp','hits')">H</th>
+        <th class="sortable r"    data-k="r"             onclick="srtTA(this,'rp','r')">R</th>
+        <th class="sortable r"    data-k="bb"            onclick="srtTA(this,'rp','bb')">BB</th>
+        <th class="sortable r"    data-k="k"             onclick="srtTA(this,'rp','k')">K</th>
+        <th class="sortable r"    data-k="sv"            onclick="srtTA(this,'rp','sv')">SV</th>
+        <th class="sortable r"    data-k="hld"           onclick="srtTA(this,'rp','hld')">HLD</th>
+        <th class="sortable r"    data-k="bs"            onclick="srtTA(this,'rp','bs')">BS</th>
+        <th class="sortable r"    data-k="w"             onclick="srtTA(this,'rp','w')">W</th>
+        <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
+        <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'rp','hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'rp','barrels')">Barrels</th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'rp','stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'rp','location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th>Arsenal</th>
+      </tr></thead>
+      <tbody id="ta-rp-body"></tbody>
     </table>
   </div>
   <div class="note" style="margin-top:14px">
-    Only roster members who played yesterday are shown. Relief appearances are not included for pitchers.
+    Only roster members who played yesterday are shown.
   </div>
 </div>
 
@@ -1231,25 +1355,30 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <script>
 const HITTERS    = __HITTERS_JSON__;
-const PITCHERS   = __PITCHERS_JSON__;
+const ALL_PITCHERS = __ALL_PITCHERS_JSON__;
+const STARTERS   = ALL_PITCHERS.filter(p=>p.ip_float>=3||p.is_starter);
+const RELIEVERS  = ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter);
 const TA_HITTERS = __TA_H_JSON__;
-const TA_PITCHERS= __TA_P_JSON__;
+const TA_STARTERS= __TA_SP_JSON__;
+const TA_RELIEVERS=__TA_RP_JSON__;
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['hr','bb','k','sb','sba','hard_hits','barrels','max_ev'];
-const P_LEAD_COLS=['ip_float','hits','r','bb','k','whiffs','hard_hits','barrels','k_bb_pct','stuff_plus','location_plus'];
+const SP_LEAD_COLS=['ip_float','hits','r','bb','k','w','whiffs','hard_hits','barrels','k_bb_pct','stuff_plus','location_plus'];
+const RP_LEAD_COLS=['ip_float','hits','r','bb','k','sv','hld','bs','w','whiffs','hard_hits','barrels','stuff_plus','location_plus'];
 function maxOf(arr,col){
   let m=-Infinity;
   arr.forEach(r=>{if(r[col]!=null&&!isNaN(r[col])&&r[col]>m)m=r[col];});
   return m>0?m:null;
 }
 const hL={};H_LEAD_COLS.forEach(c=>hL[c]=maxOf(HITTERS,c));
-const pL={};P_LEAD_COLS.forEach(c=>pL[c]=maxOf(PITCHERS,c));
+const spL={};SP_LEAD_COLS.forEach(c=>spL[c]=maxOf(STARTERS,c));
+const rpL={};RP_LEAD_COLS.forEach(c=>rpL[c]=maxOf(RELIEVERS,c));
 // Gold if value equals category leader (and leader > 0)
 const gl=(v,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${v}</span>`:null;
 
-let hD=[...HITTERS], pD=[...PITCHERS];
-let hSC='barrels', hSD=-1, pSC='ip_float', pSD=-1;
+let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
+let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
 
 function showTab(nm,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1321,27 +1450,56 @@ function renderH(){
   </tr>`).join('');
 }
 
-function renderP(){
-  const tb=document.getElementById('p-body');
-  const ct=document.getElementById('p-cnt');
-  document.getElementById('p-tc').textContent=pD.length;
-  if(!pD.length){tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
-  ct.textContent=`${pD.length} starter${pD.length===1?'':'s'}`;
-  tb.innerHTML=pD.map(p=>`<tr>
+function renderSP(){
+  const tb=document.getElementById('sp-body');
+  const ct=document.getElementById('sp-cnt');
+  document.getElementById('sp-tc').textContent=spD.length;
+  if(!spD.length){tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
+  ct.textContent=`${spD.length} starter${spD.length===1?'':'s'}`;
+  tb.innerHTML=spD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,pL.ip_float)||fIP(p.ip_float,p.ip)}</td>
-    <td class="r">${gl(p.hits,pL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,pL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,pL.bb)||fBB_p(p.bb)}</td>
-    <td class="r">${gl(p.k,pL.k)||fK_p(p.k)}</td>
-    <td class="r">${gl(p.whiffs,pL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,pL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,pL.barrels)||fBar(p.barrels)}</td>
-    <td class="r">${gl(p.k_bb_pct,pL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
-    <td class="r">${gl(p.stuff_plus,pL.stuff_plus)||fSP(p.stuff_plus)}</td>
-    <td class="r">${gl(p.location_plus,pL.location_plus)||fLP(p.location_plus)}</td>
+    <td class="r">${gl(p.ip_float,spL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
+    <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
+    <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
+    <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
+    <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
+    <td class="r">${gl(p.hard_hits,spL.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${gl(p.barrels,spL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
+    <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
+    <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
+    <td>${pitchArsenal(p.pitch_types)}</td>
+  </tr>`).join('');
+}
+
+function renderRP(){
+  const tb=document.getElementById('rp-body');
+  const ct=document.getElementById('rp-cnt');
+  document.getElementById('rp-tc').textContent=rpD.length;
+  if(!rpD.length){tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';ct.textContent='';return;}
+  ct.textContent=`${rpD.length} reliever${rpD.length===1?'':'s'}`;
+  tb.innerHTML=rpD.map(p=>`<tr>
+    <td class="nm">${p.name}</td>
+    <td>${tm(p.team)}</td>
+    <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
+    <td class="r">${gl(p.ip_float,rpL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
+    <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
+    <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
+    <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
+    <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
+    <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
+    <td class="r">${gl(p.w,rpL.w)||p.w>0?'${p.w}':'0'}</td>
+    <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
+    <td class="r">${gl(p.hard_hits,rpL.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${gl(p.barrels,rpL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${gl(p.stuff_plus,rpL.stuff_plus)||fSP(p.stuff_plus)}</td>
+    <td class="r">${gl(p.location_plus,rpL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
   </tr>`).join('');
 }
@@ -1353,30 +1511,38 @@ function cmp(a,b,col,dir){
 }
 function clrSort(id){document.querySelectorAll(`#${id} thead th`).forEach(t=>t.classList.remove('sort-asc','sort-desc'));}
 function srtH(th,col){if(hSC===col)hSD*=-1;else{hSC=col;hSD=-1;}clrSort('h-tbl');th.classList.add(hSD===1?'sort-asc':'sort-desc');hD.sort((a,b)=>cmp(a,b,col,hSD));renderH();}
-function srtP(th,col){if(pSC===col)pSD*=-1;else{pSC=col;pSD=-1;}clrSort('p-tbl');th.classList.add(pSD===1?'sort-asc':'sort-desc');pD.sort((a,b)=>cmp(a,b,col,pSD));renderP();}
+function srtSP(th,col){if(spSC===col)spSD*=-1;else{spSC=col;spSD=-1;}clrSort('sp-tbl');th.classList.add(spSD===1?'sort-asc':'sort-desc');spD.sort((a,b)=>cmp(a,b,col,spSD));renderSP();}
+function srtRP(th,col){if(rpSC===col)rpSD*=-1;else{rpSC=col;rpSD=-1;}clrSort('rp-tbl');th.classList.add(rpSD===1?'sort-asc':'sort-desc');rpD.sort((a,b)=>cmp(a,b,col,rpSD));renderRP();}
 
 function filterH(){
   const q=document.getElementById('h-search').value.toLowerCase().trim();
   hD=q?HITTERS.filter(h=>h.name.toLowerCase().includes(q)||h.team.toLowerCase().includes(q)||h.opp.toLowerCase().includes(q)):[...HITTERS];
   if(hSC)hD.sort((a,b)=>cmp(a,b,hSC,hSD));renderH();
 }
-function filterP(){
-  const q=document.getElementById('p-search').value.toLowerCase().trim();
-  pD=q?PITCHERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...PITCHERS];
-  if(pSC)pD.sort((a,b)=>cmp(a,b,pSC,pSD));renderP();
+function filterSP(){
+  const q=document.getElementById('sp-search').value.toLowerCase().trim();
+  spD=q?STARTERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...STARTERS];
+  if(spSC)spD.sort((a,b)=>cmp(a,b,spSC,spSD));renderSP();
+}
+function filterRP(){
+  const q=document.getElementById('rp-search').value.toLowerCase().trim();
+  rpD=q?RELIEVERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...RELIEVERS];
+  if(rpSC)rpD.sort((a,b)=>cmp(a,b,rpSC,rpSD));renderRP();
 }
 
 hD.sort((a,b)=>cmp(a,b,'barrels',-1));
-pD.sort((a,b)=>cmp(a,b,'ip_float',-1));
+spD.sort((a,b)=>cmp(a,b,'ip_float',-1));
+rpD.sort((a,b)=>cmp(a,b,'sv',-1));
 document.querySelector('#h-tbl th[data-k="barrels"]')?.classList.add('sort-desc');
-document.querySelector('#p-tbl th[data-k="ip_float"]')?.classList.add('sort-desc');
-renderH();renderP();
+document.querySelector('#sp-tbl th[data-k="ip_float"]')?.classList.add('sort-desc');
+document.querySelector('#rp-tbl th[data-k="sv"]')?.classList.add('sort-desc');
+renderH();renderSP();renderRP();
 
 // ── Team Alex ─────────────────────────────────────────────────────────────
-let taHD=[...TA_HITTERS], taPD=[...TA_PITCHERS];
-let taHSC='barrels', taHSD=-1, taPSC='ip_float', taPSD=-1;
+let taHD=[...TA_HITTERS], taSPD=[...TA_STARTERS], taRPD=[...TA_RELIEVERS];
+let taHSC='barrels', taHSD=-1, taSPSC='ip_float', taSPSD=-1, taRPSC='sv', taRPSD=-1;
 
-document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_PITCHERS.length;
+document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
 
 function renderTAH(){
   const tb=document.getElementById('ta-h-body');
@@ -1400,28 +1566,58 @@ function renderTAH(){
   </tr>`).join('');
 }
 
-function renderTAP(){
-  const tb=document.getElementById('ta-p-body');
-  document.getElementById('ta-p-tc').textContent=taPD.length;
-  if(!taPD.length){
-    tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No Team Alex starters pitched yesterday.</p></div></td></tr>';
+function renderTASP(){
+  const tb=document.getElementById('ta-sp-body');
+  document.getElementById('ta-sp-tc').textContent=taSPD.length;
+  if(!taSPD.length){
+    tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No Team Alex starters pitched yesterday.</p></div></td></tr>';
     return;
   }
-  tb.innerHTML=taPD.map(p=>`<tr>
+  tb.innerHTML=taSPD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
-    <td class="r">${gl(p.ip_float,pL.ip_float)||fIP(p.ip_float,p.ip)}</td>
-    <td class="r">${gl(p.hits,pL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,pL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,pL.bb)||fBB_p(p.bb)}</td>
-    <td class="r">${gl(p.k,pL.k)||fK_p(p.k)}</td>
-    <td class="r">${gl(p.whiffs,pL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,pL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,pL.barrels)||fBar(p.barrels)}</td>
-    <td class="r">${gl(p.k_bb_pct,pL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
-    <td class="r">${gl(p.stuff_plus,pL.stuff_plus)||fSP(p.stuff_plus)}</td>
-    <td class="r">${gl(p.location_plus,pL.location_plus)||fLP(p.location_plus)}</td>
+    <td class="r">${gl(p.ip_float,spL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
+    <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
+    <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
+    <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
+    <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
+    <td class="r">${gl(p.hard_hits,spL.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${gl(p.barrels,spL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
+    <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
+    <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
+    <td>${pitchArsenal(p.pitch_types)}</td>
+  </tr>`).join('');
+}
+
+function renderTARP(){
+  const tb=document.getElementById('ta-rp-body');
+  document.getElementById('ta-rp-tc').textContent=taRPD.length;
+  if(!taRPD.length){
+    tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No Team Alex relievers pitched yesterday.</p></div></td></tr>';
+    return;
+  }
+  tb.innerHTML=taRPD.map(p=>`<tr>
+    <td class="nm">${p.name}</td>
+    <td>${tm(p.team)}</td>
+    <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
+    <td class="r">${gl(p.ip_float,rpL.ip_float)||fIP(p.ip_float,p.ip)}</td>
+    <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
+    <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
+    <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
+    <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
+    <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
+    <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
+    <td class="r">${gl(p.w,rpL.w)||p.w>0?'${p.w}':'0'}</td>
+    <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
+    <td class="r">${gl(p.hard_hits,rpL.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${gl(p.barrels,rpL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${gl(p.stuff_plus,rpL.stuff_plus)||fSP(p.stuff_plus)}</td>
+    <td class="r">${gl(p.location_plus,rpL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
   </tr>`).join('');
 }
@@ -1431,31 +1627,48 @@ function srtTA(th,type,col){
     if(taHSC===col)taHSD*=-1;else{taHSC=col;taHSD=-1;}
     clrSort('ta-h-tbl');th.classList.add(taHSD===1?'sort-asc':'sort-desc');
     taHD.sort((a,b)=>cmp(a,b,col,taHSD));renderTAH();
+  } else if(type==='sp'){
+    if(taSPSC===col)taSPSD*=-1;else{taSPSC=col;taSPSD=-1;}
+    clrSort('ta-sp-tbl');th.classList.add(taSPSD===1?'sort-asc':'sort-desc');
+    taSPD.sort((a,b)=>cmp(a,b,col,taSPSD));renderTASP();
   } else {
-    if(taPSC===col)taPSD*=-1;else{taPSC=col;taPSD=-1;}
-    clrSort('ta-p-tbl');th.classList.add(taPSD===1?'sort-asc':'sort-desc');
-    taPD.sort((a,b)=>cmp(a,b,col,taPSD));renderTAP();
+    if(taRPSC===col)taRPSD*=-1;else{taRPSC=col;taRPSD=-1;}
+    clrSort('ta-rp-tbl');th.classList.add(taRPSD===1?'sort-asc':'sort-desc');
+    taRPD.sort((a,b)=>cmp(a,b,col,taRPSD));renderTARP();
   }
 }
 
 taHD.sort((a,b)=>cmp(a,b,'barrels',-1));
-taPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
-renderTAH();renderTAP();
+taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
+taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
+renderTAH();renderTASP();renderTARP();
 </script>
 </body>
 </html>
 """
 
-def render_html(date_display, ts, n_games, hitters, pitchers,
-                ta_hitters, ta_pitchers):
+def render_html(date_display, ts, n_games, hitters, all_pitchers,
+                ta_hitters, ta_starters, ta_relievers):
+    # Add is_starter flag to all pitchers for client-side filtering
+    starters = []
+    relievers = []
+    for p in all_pitchers:
+        p_copy = p.copy()
+        p_copy["is_starter"] = p_copy.get("ip_float", 0) >= 3
+        if p_copy["is_starter"]:
+            starters.append(p_copy)
+        else:
+            relievers.append(p_copy)
+
     return (HTML_TEMPLATE
         .replace("__DATE_DISPLAY__", date_display)
         .replace("__N_GAMES__", str(n_games))
         .replace("__TS__", ts)
-        .replace("__HITTERS_JSON__",  json.dumps(hitters,     default=str))
-        .replace("__PITCHERS_JSON__", json.dumps(pitchers,    default=str))
-        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,  default=str))
-        .replace("__TA_P_JSON__",     json.dumps(ta_pitchers, default=str))
+        .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
+        .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
+        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
+        .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
+        .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
     )
 
 # ── Baseball Savant: season Stuff+/Loc+ ───────────────────────────────────
@@ -1679,66 +1892,73 @@ def main():
     print("\n[ 2/6 ] Stolen Bases (MLB Stats API)")
     sb_map = fetch_mlb_sb(yesterday)
 
+    print("\n[ 2b/6 ] Pitcher box score data (W/SV/HLD/BS)")
+    box_data = fetch_pitcher_box_data(yesterday)
+
     print("\n[ 3/6 ] Aggregating stats")
     hitters  = build_hitter_stats(df, sb_map)
-    pitchers = build_pitcher_stats(df, starters)
-    print(f"  {len(hitters)} batter rows · {len(pitchers)} pitcher rows")
+    all_pitchers = build_pitcher_stats(df, set(df["pitcher"].unique()), box_data)
+    print(f"  {len(hitters)} batter rows · {len(all_pitchers)} pitcher rows")
 
     print("\n[ 4/6 ] Player lookup")
-    all_ids = [h["id"] for h in hitters] + [p["id"] for p in pitchers]
+    all_ids = [h["id"] for h in hitters] + [p["id"] for p in all_pitchers]
     p_info  = get_player_info(all_ids)
     for h in hitters:
         h["name"] = p_info.get(h["id"], {}).get("name", f"Player #{h['id']}")
-    for p in pitchers:
+    for p in all_pitchers:
         p["name"] = p_info.get(p["id"], {}).get("name", f"Player #{p['id']}")
 
     print("\n[ 5/6 ] Stuff+")
     # Source 0: stuff_plus_stuff_avg column from Statcast pitch-by-pitch (rarely populated)
-    attached_sc = sum(1 for p in pitchers if p["stuff_plus"] is not None)
-    print(f"  Stuff+ from Statcast pitch columns: {attached_sc}/{len(pitchers)} starter(s)")
+    attached_sc = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
+    print(f"  Stuff+ from Statcast pitch columns: {attached_sc}/{len(all_pitchers)} pitcher(s)")
 
     # Source 1: FanGraphs game-log API — uses fg_cookie.txt (cf_clearance) if present
     if _load_fg_cookie():
         print("  fg_cookie.txt found — trying FanGraphs per-game Stuff+/Loc+…")
-        game_stuff = fetch_fg_game_stuff(yesterday, year, pitchers, p_info, {})
-        attach_fg_data(pitchers, p_info, game_stuff, {})
-        attached_fg = sum(1 for p in pitchers if p["stuff_plus"] is not None)
-        print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(pitchers)} starter(s)")
+        game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, {})
+        attach_fg_data(all_pitchers, p_info, game_stuff, {})
+        attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
+        print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(all_pitchers)} pitcher(s)")
     else:
         print("  No fg_cookie.txt found — skipping FanGraphs (see instructions to add it)")
 
     # Source 2: Baseball Savant arsenal leaderboard (season avg, weighted across pitch types)
-    missing_ids = {p["id"] for p in pitchers if p["stuff_plus"] is None}
+    missing_ids = {p["id"] for p in all_pitchers if p["stuff_plus"] is None}
     if missing_ids:
-        savant_stuff = fetch_savant_arsenal_stuff(year, set(p["id"] for p in pitchers))
-        for p in pitchers:
+        savant_stuff = fetch_savant_arsenal_stuff(year, set(p["id"] for p in all_pitchers))
+        for p in all_pitchers:
             if p["id"] in savant_stuff:
                 if p["stuff_plus"] is None:
                     p["stuff_plus"]    = savant_stuff[p["id"]]["stuff_plus"]
                 if p["location_plus"] is None:
                     p["location_plus"] = savant_stuff[p["id"]]["location_plus"]
 
-    attached_total = sum(1 for p in pitchers if p["stuff_plus"] is not None)
-    print(f"  Stuff+ after all sources: {attached_total}/{len(pitchers)} starter(s)")
+    attached_total = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
+    print(f"  Stuff+ after all sources: {attached_total}/{len(all_pitchers)} pitcher(s)")
 
     print("\n[ 5b/6 ] Team Alex roster filter")
-    ta_hitters  = [h for h in hitters  if ta_norm(h["name"]) in TEAM_ALEX_NAMES]
-    ta_pitchers = [p for p in pitchers if ta_norm(p["name"]) in TEAM_ALEX_NAMES]
-    print(f"  Team Alex: {len(ta_hitters)} hitter(s), {len(ta_pitchers)} pitcher(s) played yesterday")
+    ta_hitters  = [h for h in hitters if ta_norm(h["name"]) in TEAM_ALEX_NAMES]
+    ta_all_pitchers = [p for p in all_pitchers if ta_norm(p["name"]) in TEAM_ALEX_NAMES]
+    ta_starters = [p for p in ta_all_pitchers if p.get("ip_float", 0) >= 3]
+    ta_relievers = [p for p in ta_all_pitchers if p.get("ip_float", 0) < 3]
+    print(f"  Team Alex: {len(ta_hitters)} hitter(s), {len(ta_starters)} starter(s), {len(ta_relievers)} reliever(s) played yesterday")
 
     print("\n[ 6/6 ] Rendering HTML")
     hitters.sort(key=lambda x: (x["barrels"], x["hard_hits"]), reverse=True)
-    pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
+    all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
     n_games = df["game_pk"].nunique()
-    html    = render_html(date_display, ts, n_games, hitters, pitchers,
-                          ta_hitters, ta_pitchers)
+    html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
+                          ta_hitters, ta_starters, ta_relievers)
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(html)
 
     print(f"\n✅  Dashboard saved → {out_path}")
-    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(pitchers)} starters\n")
+    starters = [p for p in all_pitchers if p.get("ip_float", 0) >= 3]
+    relievers = [p for p in all_pitchers if p.get("ip_float", 0) < 3]
+    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(starters)} starters · {len(relievers)} relievers\n")
 
     _close_pw()   # shut down Chromium
 
