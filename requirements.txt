@@ -1,0 +1,5 @@
+pybaseball>=2.2.0
+pandas
+numpy
+requests
+MLB-StatsAPI
