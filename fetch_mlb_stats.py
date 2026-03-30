@@ -1148,10 +1148,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ HITTERS ══ -->
 <div id="hitters-panel" class="tab-panel active">
   <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Barrel</div>
-    <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span>Notable (≥3 hard hits, ≥2 HR, Max EV ≥ 107)</div>
-    <div class="leg-item"><span class="leg-dot" style="background:var(--orange)"></span>Moderate</div>
-    <div class="leg-item"><span class="leg-dot" style="background:var(--red)"></span>High K</div>
+    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#e74c3c"></span>Max EV: high (red) → low (blue)</div>
   </div>
   <div class="controls">
     <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
@@ -1364,18 +1362,30 @@ const TA_RELIEVERS=__TA_RP_JSON__;
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['hr','bb','k','sb','sba','hard_hits','barrels','max_ev'];
-const SP_LEAD_COLS=['ip_float','hits','r','bb','k','w','whiffs','hard_hits','barrels','k_bb_pct','stuff_plus','location_plus'];
-const RP_LEAD_COLS=['ip_float','hits','r','bb','k','sv','hld','bs','w','whiffs','hard_hits','barrels','stuff_plus','location_plus'];
+const SP_LEAD_COLS=['ip_float','k','w','whiffs','hard_hits','barrels','k_bb_pct','stuff_plus','location_plus'];
+const RP_LEAD_COLS=['ip_float','k','sv','hld','bs','w','whiffs','hard_hits','barrels','stuff_plus','location_plus'];
 function maxOf(arr,col){
   let m=-Infinity;
   arr.forEach(r=>{if(r[col]!=null&&!isNaN(r[col])&&r[col]>m)m=r[col];});
   return m>0?m:null;
 }
+function minOf(arr,col){
+  let m=Infinity;
+  arr.forEach(r=>{if(r[col]!=null&&!isNaN(r[col])&&r[col]<m)m=r[col];});
+  return m<Infinity?m:null;
+}
 const hL={};H_LEAD_COLS.forEach(c=>hL[c]=maxOf(HITTERS,c));
 const spL={};SP_LEAD_COLS.forEach(c=>spL[c]=maxOf(STARTERS,c));
 const rpL={};RP_LEAD_COLS.forEach(c=>rpL[c]=maxOf(RELIEVERS,c));
-// Gold if value equals category leader (and leader > 0)
+// Pitcher H/R/BB: lower is better → gold goes to lowest
+const spMin={hits:minOf(STARTERS,'hits'),r:minOf(STARTERS,'r'),bb:minOf(STARTERS,'bb')};
+const rpMin={hits:minOf(RELIEVERS,'hits'),r:minOf(RELIEVERS,'r'),bb:minOf(RELIEVERS,'bb')};
+// Gold if value equals category leader
 const gl=(v,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${v}</span>`:null;
+const glMin=(v,min)=>(min!=null&&v!=null&&v===min)?`<span class="c-gold">${v}</span>`:null;
+// EV gradient: red (high) → blue (low)
+const _evVals=HITTERS.filter(h=>h.max_ev!=null&&h.bip>0).map(h=>h.max_ev);
+const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.max(..._evVals):115;
 
 let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
@@ -1397,7 +1407,7 @@ const fBB_h= v=>v>0?`${v}`:'0';
 const fSB  = v=>v>0?`${v}`:'0';
 const fHrd = v=>v>0?`${v}`:'0';
 const fBar = v=>v>0?`${v}`:'0';
-const fEV  = (v,b)=>v==null||b===0?D():`${v}`;
+const fEV  = (v,b)=>{if(v==null||b===0)return D();const t=Math.max(0,Math.min(1,(v-_evMin)/(_evMax-_evMin||1)));const r=Math.round(52+179*t),g=Math.round(152-76*t),bl=Math.round(219-159*t);return `<span style="color:rgb(${r},${g},${bl});font-weight:600">${v}</span>`;};
 const fIP  = (v,s)=>s;
 const fH_p = v=>v>0?`${v}`:'0';
 const fR   = v=>v>0?`${v}`:'0';
@@ -1462,9 +1472,9 @@ function renderSP(){
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
-    <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${glMin(p.hits,spMin.hits)||fH_p(p.hits)}</td>
+    <td class="r">${glMin(p.r,spMin.r)||fR(p.r)}</td>
+    <td class="r">${glMin(p.bb,spMin.bb)||fBB_p(p.bb)}</td>
     <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
@@ -1488,9 +1498,9 @@ function renderRP(){
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
-    <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${glMin(p.hits,rpMin.hits)||fH_p(p.hits)}</td>
+    <td class="r">${glMin(p.r,rpMin.r)||fR(p.r)}</td>
+    <td class="r">${glMin(p.bb,rpMin.bb)||fBB_p(p.bb)}</td>
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
@@ -1579,9 +1589,9 @@ function renderTASP(){
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
-    <td class="r">${gl(p.hits,spL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,spL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,spL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${glMin(p.hits,spMin.hits)||fH_p(p.hits)}</td>
+    <td class="r">${glMin(p.r,spMin.r)||fR(p.r)}</td>
+    <td class="r">${glMin(p.bb,spMin.bb)||fBB_p(p.bb)}</td>
     <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
@@ -1606,9 +1616,9 @@ function renderTARP(){
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
-    <td class="r">${gl(p.hits,rpL.hits)||fH_p(p.hits)}</td>
-    <td class="r">${gl(p.r,rpL.r)||fR(p.r)}</td>
-    <td class="r">${gl(p.bb,rpL.bb)||fBB_p(p.bb)}</td>
+    <td class="r">${glMin(p.hits,rpMin.hits)||fH_p(p.hits)}</td>
+    <td class="r">${glMin(p.r,rpMin.r)||fR(p.r)}</td>
+    <td class="r">${glMin(p.bb,rpMin.bb)||fBB_p(p.bb)}</td>
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
