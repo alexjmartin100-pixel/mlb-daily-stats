@@ -725,7 +725,7 @@ def identify_starters(df: pd.DataFrame) -> set:
     return starters
 
 def fetch_pitcher_box_data(date_str: str) -> dict:
-    """Returns {(mlbam_id, game_pk): {w, sv, hld, bs}} from official MLB box scores."""
+    """Returns {mlbam_id: {w, sv, hld, bs}} from official MLB box scores."""
     try:
         print(f"  Fetching pitcher box score data via MLB Stats API for {date_str}…")
         games = statsapi.schedule(date=date_str)
@@ -738,11 +738,13 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
             if "Final" not in status and "Completed" not in status:
                 continue
             try:
-                bs = statsapi.boxscore_data(int(gpk))
+                boxscore = statsapi.boxscore_data(int(gpk))
             except Exception:
                 continue
+
+            # Per-pitcher stats: W, HLD, BS (saves unreliable here — handled below)
             for side in ("home", "away"):
-                for pk, pd_ in bs.get(side, {}).get("players", {}).items():
+                for pk, pd_ in boxscore.get(side, {}).get("players", {}).items():
                     if not pk.startswith("ID"):
                         continue
                     try:
@@ -750,13 +752,25 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
                     except Exception:
                         continue
                     pit = pd_.get("stats", {}).get("pitching", {})
-                    w = int(pit.get("wins", 0))
-                    sv = int(pit.get("saves", 0))
-                    hld = int(pit.get("holds", 0))
+                    w      = int(pit.get("wins", 0))
+                    hld    = int(pit.get("holds", 0))
                     bs_val = int(pit.get("blownSaves", 0))
-                    if w or sv or hld or bs_val:
+                    if w or hld or bs_val:
                         prev = box_map.get(mid, {"w": 0, "sv": 0, "hld": 0, "bs": 0})
-                        box_map[mid] = {"w": prev["w"]+w, "sv": prev["sv"]+sv, "hld": prev["hld"]+hld, "bs": prev["bs"]+bs_val}
+                        box_map[mid] = {"w": prev["w"]+w, "sv": prev["sv"], "hld": prev["hld"]+hld, "bs": prev["bs"]+bs_val}
+
+            # Saves from game decisions endpoint — more reliable than per-pitcher boxscore
+            try:
+                game_data = statsapi.get("game", {"gamePk": int(gpk)})
+                save_info = game_data.get("liveData", {}).get("decisions", {}).get("save", {})
+                save_id   = save_info.get("id")
+                if save_id:
+                    prev = box_map.get(int(save_id), {"w": 0, "sv": 0, "hld": 0, "bs": 0})
+                    box_map[int(save_id)] = {**prev, "sv": prev["sv"] + 1}
+                    print(f"      Save: {save_info.get('fullName','?')} (id={save_id})")
+            except Exception as e:
+                print(f"      Decisions fetch warning for {gpk}: {e}")
+
         total = len(box_map)
         print(f"    Pitcher box data: {total} pitcher(s) with W/SV/HLD/BS")
         return box_map
@@ -843,11 +857,11 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
         # Get W, SV, HLD, BS from box score data (keyed by player_id only)
         w, sv, hld, bs = 0, 0, 0, 0
         if box_data:
-            pd = box_data.get(int(pid), {})
-            w  = pd.get("w", 0)
-            sv = pd.get("sv", 0)
-            hld = pd.get("hld", 0)
-            bs  = pd.get("bs", 0)
+            pdata = box_data.get(int(pid), {})
+            w  = pdata.get("w", 0)
+            sv = pdata.get("sv", 0)
+            hld = pdata.get("hld", 0)
+            bs  = pdata.get("bs", 0)
 
         total_p = len(gdf)
         ptypes  = []
@@ -945,12 +959,12 @@ def attach_fg_data(pitchers: list, p_info: dict,
         pp_stuff = fg_game.get("pitch_stuff", {})
         for pt in p["pitch_types"]:
             code = pt["code"]
-            sv   = fg_svelo.get(code)
-            gs   = pp_stuff.get(code)
-            pt["season_velo"] = sv
+            svelo = fg_svelo.get(code)
+            gs    = pp_stuff.get(code)
+            pt["season_velo"] = svelo
             pt["game_stuff"]  = gs
-            if code in FASTBALL_TYPES and pt["velo"] and sv:
-                pt["velo_alert"] = abs(pt["velo"] - sv) > 1.0
+            if code in FASTBALL_TYPES and pt["velo"] and svelo:
+                pt["velo_alert"] = abs(pt["velo"] - svelo) > 1.0
             else:
                 pt["velo_alert"] = False
 
