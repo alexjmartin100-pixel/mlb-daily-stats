@@ -822,21 +822,31 @@ def build_hitter_stats(df: pd.DataFrame, sb_map: dict) -> list:
         batted       = gdf[gdf["type"] == "X"]
         bev          = batted[batted["launch_speed"].notna()]
         sb_data      = sb_map.get((int(bid), int(gpk)), [0, 0])
+        # Detect grand slams: HR where on_1b, on_2b, on_3b all occupied
+        last_rows  = gdf.sort_values("pitch_number").groupby("at_bat_number").last()
+        hr_rows    = last_rows[last_rows["events"] == "home_run"]
+        grand_slam = any(
+            pd.notna(row.get("on_1b")) and
+            pd.notna(row.get("on_2b")) and
+            pd.notna(row.get("on_3b"))
+            for _, row in hr_rows.iterrows()
+        )
         rows.append({
-            "id":        int(bid),
-            "game_pk":   int(gpk),
-            "team":      bat_t,
-            "opp":       opp_t,
-            "hr":        int((evts == "home_run").sum()),
-            "k":         int((evts == "strikeout").sum()),
-            "bb":        int(evts.isin(["walk", "intent_walk"]).sum()),
-            "sb":        sb_data[0],
-            "cs":        sb_data[1],
-            "sba":       sb_data[0] + sb_data[1],
-            "hard_hits": int((bev["launch_speed"] >= 95).sum()) if len(bev) else 0,
-            "barrels":   safe_barrels(batted),
-            "max_ev":    round(float(bev["launch_speed"].max()), 1) if len(bev) else None,
-            "bip":       int(len(bev)),
+            "id":         int(bid),
+            "game_pk":    int(gpk),
+            "team":       bat_t,
+            "opp":        opp_t,
+            "hr":         int((evts == "home_run").sum()),
+            "grand_slam": grand_slam,
+            "k":          int((evts == "strikeout").sum()),
+            "bb":         int(evts.isin(["walk", "intent_walk"]).sum()),
+            "sb":         sb_data[0],
+            "cs":         sb_data[1],
+            "sba":        sb_data[0] + sb_data[1],
+            "hard_hits":  int((bev["launch_speed"] >= 95).sum()) if len(bev) else 0,
+            "barrels":    safe_barrels(batted),
+            "max_ev":     round(float(bev["launch_speed"].max()), 1) if len(bev) else None,
+            "bip":        int(len(bev)),
         })
     return rows
 
@@ -931,8 +941,50 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
         })
     return rows
 
+# Mapping from Baseball Savant CSV pitch prefix → Statcast pitch code
+_SAVANT_PT_PREFIX = {
+    "ff": "FF", "si": "SI", "sl": "SL", "ch": "CH", "cu": "CU",
+    "fc": "FC", "fs": "FS", "st": "ST", "sv": "SV", "kc": "KC",
+    "sc": "SC", "cs": "CS", "fa": "FA", "kn": "KN", "ep": "EP",
+}
+
+def fetch_savant_season_velo(year: int, mlbam_ids: set) -> dict:
+    """Returns {mlbam_id: {pitch_code: avg_speed}} from Baseball Savant arsenal CSV."""
+    from io import StringIO
+    print(f"  Fetching Baseball Savant season velocity ({year})…")
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    url  = "https://baseballsavant.mlb.com/leaderboard/pitch-arsenals"
+    try:
+        r = requests.get(url,
+            params={"year": year, "min": 0, "type": "avg_speed",
+                    "hand": "", "pos": "P", "teamId": "", "csv": "true"},
+            headers=hdrs, timeout=25)
+        r.raise_for_status()
+        df = pd.read_csv(StringIO(r.text))
+        df["pitcher"] = pd.to_numeric(df["pitcher"], errors="coerce")
+        result = {}
+        for _, row in df.iterrows():
+            try:
+                pid = int(row["pitcher"])
+            except (ValueError, TypeError):
+                continue
+            velo_by_code = {}
+            for pfx, code in _SAVANT_PT_PREFIX.items():
+                col = f"{pfx}_avg_speed"
+                if col in row.index and pd.notna(row[col]):
+                    velo_by_code[code] = round(float(row[col]), 1)
+            if velo_by_code:
+                result[pid] = velo_by_code
+        hits = sum(1 for pid in mlbam_ids if pid in result)
+        print(f"  ✓ Savant season velo: {len(result)} pitchers, {hits}/{len(mlbam_ids)} matched")
+        return result
+    except Exception as e:
+        print(f"  Savant season velo failed: {e}")
+        return {}
+
 def attach_fg_data(pitchers: list, p_info: dict,
-                   game_stuff: dict, season_velo: dict) -> None:
+                   game_stuff: dict, season_velo: dict,
+                   savant_velo: dict = None) -> None:
     """Attach FanGraphs-sourced Stuff+ and velocity data to pitcher rows."""
     for p in pitchers:
         mlbam     = p["id"]
@@ -949,6 +1001,9 @@ def attach_fg_data(pitchers: list, p_info: dict,
         fg_svelo = (season_velo.get(fg_id)
                     if fg_id and fg_id in season_velo
                     else season_velo.get(name_norm, {}))
+        # Fallback to Baseball Savant season velocity if FanGraphs unavailable
+        if not fg_svelo and savant_velo:
+            fg_svelo = savant_velo.get(mlbam, {})
 
         # Only override Statcast-derived Stuff+/Loc+ if FanGraphs has a value
         if fg_game.get("stuff_plus") is not None:
@@ -1194,7 +1249,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <div id="starters-panel" class="tab-panel">
   <div class="note">
     ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are season averages from Baseball Savant (game-level unavailable — FanGraphs is Cloudflare-blocked).
-    Arsenal: <em>game&thinsp;/&thinsp;season</em> velocity —
+    Arsenal: game velocity <span class="vd">(season avg)</span> —
     fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph below season avg.
     <span class="gs">S+</span> = game Stuff+ for that pitch type.
   </div>
@@ -1441,7 +1496,7 @@ function pitchArsenal(types){
     if(pt.velo!=null){
       const gvCls=pt.velo_alert?'va':'vn';
       const gv=`<span class="${gvCls}">${pt.velo}</span>`;
-      const sv=pt.season_velo!=null?`<span class="vd sv">/${pt.season_velo}</span>`:'';
+      const sv=pt.season_velo!=null?`<span class="vd sv"> (${pt.season_velo})</span>`:'';
       veloHtml=`${gv}${sv}<span class="vd" style="font-size:.65rem"> mph</span>`;
     }
     const stuffHtml=pt.game_stuff!=null?`<span class="gs">S+:${pt.game_stuff}</span>`:'';
@@ -1464,7 +1519,7 @@ function renderH(){
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
-    <td class="r">${gl(h.hr,hL.hr)||fHR(h.hr)}</td>
+    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
@@ -1580,7 +1635,7 @@ function renderTAH(){
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
-    <td class="r">${gl(h.hr,hL.hr)||fHR(h.hr)}</td>
+    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
@@ -1945,20 +2000,25 @@ def main():
     attached_sc = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
     print(f"  Stuff+ from Statcast pitch columns: {attached_sc}/{len(all_pitchers)} pitcher(s)")
 
+    # Season velocity from Baseball Savant (used by all code paths below)
+    pitcher_mlbam_ids = set(p["id"] for p in all_pitchers)
+    savant_velo = fetch_savant_season_velo(year, pitcher_mlbam_ids)
+
     # Source 1: FanGraphs game-log API — uses fg_cookie.txt (cf_clearance) if present
     if _load_fg_cookie():
         print("  fg_cookie.txt found — trying FanGraphs per-game Stuff+/Loc+…")
         game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, {})
-        attach_fg_data(all_pitchers, p_info, game_stuff, {})
+        attach_fg_data(all_pitchers, p_info, game_stuff, {}, savant_velo)
         attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
         print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(all_pitchers)} pitcher(s)")
     else:
         print("  No fg_cookie.txt found — skipping FanGraphs (see instructions to add it)")
+        attach_fg_data(all_pitchers, p_info, {}, {}, savant_velo)
 
     # Source 2: Baseball Savant arsenal leaderboard (season avg, weighted across pitch types)
     missing_ids = {p["id"] for p in all_pitchers if p["stuff_plus"] is None}
     if missing_ids:
-        savant_stuff = fetch_savant_arsenal_stuff(year, set(p["id"] for p in all_pitchers))
+        savant_stuff = fetch_savant_arsenal_stuff(year, pitcher_mlbam_ids)
         for p in all_pitchers:
             if p["id"] in savant_stuff:
                 if p["stuff_plus"] is None:
