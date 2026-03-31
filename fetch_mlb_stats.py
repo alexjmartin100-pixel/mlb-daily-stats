@@ -561,34 +561,43 @@ def _detect_stuff_loc_cols(sample: dict):
 def _fg_search_player_id(name: str) -> int | None:
     """
     Query FanGraphs player search API to get a player's numeric playerid.
-    Used when pybaseball's ID is missing or stale.
-    Uses plain HTTP only — does NOT use Playwright (search API is not CF-protected).
+    Used when pybaseball's ID is missing or stale (fg_id = -1 or None).
+    Tries plain HTTP first (fast), then Playwright (CF-protected fallback).
     """
-    search_urls = [
-        # Primary: autocomplete endpoint
-        ("https://www.fangraphs.com/api/players",
-         {"pos": "all", "stats": "pit", "q": name, "type": "data", "season": ""}),
-        # Fallback: basic player search
-        ("https://www.fangraphs.com/api/players/search",
-         {"q": name, "type": "pit"}),
-    ]
-    for url, params in search_urls:
+    def _parse_players(raw):
+        players = raw if isinstance(raw, list) else raw.get("data", raw.get("players", []))
+        for p in (players if isinstance(players, list) else []):
+            for k in ("playerid", "id", "PlayerID", "fgid"):
+                pid = p.get(k)
+                if pid:
+                    try:
+                        v = int(float(pid))
+                        if v > 0:
+                            return v
+                    except Exception:
+                        pass
+        return None
+
+    search_params = {"pos": "all", "stats": "pit", "q": name, "type": "data", "season": ""}
+
+    # Option 1: plain HTTP (fast, works if not CF-blocked)
+    for url in (_FG_SEARCH, "https://www.fangraphs.com/api/players/search"):
         try:
-            r = requests.get(url, params=params, headers=_FG_DIRECT_HEADERS, timeout=10)
-            if r.status_code != 200:
-                continue
-            raw = r.json()
-            players = raw if isinstance(raw, list) else raw.get("data", raw.get("players", []))
-            for p in (players if isinstance(players, list) else []):
-                for k in ("playerid", "id", "PlayerID", "fgid"):
-                    pid = p.get(k)
-                    if pid:
-                        try:
-                            return int(float(pid))
-                        except Exception:
-                            pass
+            r = requests.get(url, params=search_params, headers=_FG_DIRECT_HEADERS, timeout=10)
+            if r.status_code == 200:
+                result = _parse_players(r.json())
+                if result:
+                    return result
         except Exception:
             pass
+
+    # Option 2: Playwright (uses cached browser with CF cookies — fast after first open)
+    raw = _pw_fetch_json(_FG_SEARCH, search_params)
+    if raw is not None:
+        result = _parse_players(raw)
+        if result:
+            return result
+
     return None
 
 def _call_game_log(player_id, year: int) -> list:
