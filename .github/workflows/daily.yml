@@ -50,7 +50,7 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add mlb_daily_stats.html manifest.json sw.js icon-192.png icon-512.png
+          git add mlb_daily_stats.html
           git diff --cached --quiet || git commit -m "📊 Daily stats update $(date -u +'%Y-%m-%d')"
           git push
 
