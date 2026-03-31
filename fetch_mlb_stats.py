@@ -755,8 +755,9 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
                     hld = int(pit.get("holds", 0))
                     bs_val = int(pit.get("blownSaves", 0))
                     if w or sv or hld or bs_val:
-                        box_map[(mid, int(gpk))] = {"w": w, "sv": sv, "hld": hld, "bs": bs_val}
-        total = sum(1 for v in box_map.values() if v["w"] or v["sv"] or v["hld"] or v["bs"])
+                        prev = box_map.get(mid, {"w": 0, "sv": 0, "hld": 0, "bs": 0})
+                        box_map[mid] = {"w": prev["w"]+w, "sv": prev["sv"]+sv, "hld": prev["hld"]+hld, "bs": prev["bs"]+bs_val}
+        total = len(box_map)
         print(f"    Pitcher box data: {total} pitcher(s) with W/SV/HLD/BS")
         return box_map
     except Exception as e:
@@ -839,15 +840,14 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
         k  = int((evts == "strikeout").sum())
         bb = int(evts.isin(["walk", "intent_walk"]).sum())
 
-        # Get W, SV, HLD, BS from box score data
+        # Get W, SV, HLD, BS from box score data (keyed by player_id only)
         w, sv, hld, bs = 0, 0, 0, 0
         if box_data:
-            box_key = (int(pid), int(gpk))
-            if box_key in box_data:
-                w = box_data[box_key].get("w", 0)
-                sv = box_data[box_key].get("sv", 0)
-                hld = box_data[box_key].get("hld", 0)
-                bs = box_data[box_key].get("bs", 0)
+            pd = box_data.get(int(pid), {})
+            w  = pd.get("w", 0)
+            sv = pd.get("sv", 0)
+            hld = pd.get("hld", 0)
+            bs  = pd.get("bs", 0)
 
         total_p = len(gdf)
         ptypes  = []
@@ -1377,9 +1377,9 @@ function minOf(arr,col){
 const hL={};H_LEAD_COLS.forEach(c=>hL[c]=maxOf(HITTERS,c));
 const spL={};SP_LEAD_COLS.forEach(c=>spL[c]=maxOf(STARTERS,c));
 const rpL={};RP_LEAD_COLS.forEach(c=>rpL[c]=maxOf(RELIEVERS,c));
-// Pitcher H/R/BB: lower is better → gold goes to lowest
-const spMin={hits:minOf(STARTERS,'hits'),r:minOf(STARTERS,'r'),bb:minOf(STARTERS,'bb')};
-const rpMin={hits:minOf(RELIEVERS,'hits'),r:minOf(RELIEVERS,'r'),bb:minOf(RELIEVERS,'bb')};
+// Pitcher H/R/BB/hard_hits/barrels: lower is better → gold goes to lowest
+const spMin={hits:minOf(STARTERS,'hits'),r:minOf(STARTERS,'r'),bb:minOf(STARTERS,'bb'),hard_hits:minOf(STARTERS,'hard_hits'),barrels:minOf(STARTERS,'barrels')};
+const rpMin={hits:minOf(RELIEVERS,'hits'),r:minOf(RELIEVERS,'r'),bb:minOf(RELIEVERS,'bb'),hard_hits:minOf(RELIEVERS,'hard_hits'),barrels:minOf(RELIEVERS,'barrels')};
 // Gold if value equals category leader
 const gl=(v,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${v}</span>`:null;
 const glMin=(v,min)=>(min!=null&&v!=null&&v===min)?`<span class="c-gold">${v}</span>`:null;
@@ -1478,8 +1478,8 @@ function renderSP(){
     <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,spL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,spL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${glMin(p.hard_hits,spMin.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${glMin(p.barrels,spMin.barrels)||fBar(p.barrels)}</td>
     <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
     <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
@@ -1505,10 +1505,10 @@ function renderRP(){
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
-    <td class="r">${gl(p.w,rpL.w)||p.w>0?'${p.w}':'0'}</td>
+    <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,rpL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,rpL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${glMin(p.hard_hits,rpMin.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${glMin(p.barrels,rpMin.barrels)||fBar(p.barrels)}</td>
     <td class="r">${gl(p.stuff_plus,rpL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,rpL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
@@ -1595,8 +1595,8 @@ function renderTASP(){
     <td class="r">${gl(p.k,spL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.w,spL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,spL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,spL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${glMin(p.hard_hits,spMin.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${glMin(p.barrels,spMin.barrels)||fBar(p.barrels)}</td>
     <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
     <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
@@ -1623,10 +1623,10 @@ function renderTARP(){
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
-    <td class="r">${gl(p.w,rpL.w)||p.w>0?'${p.w}':'0'}</td>
+    <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
-    <td class="r">${gl(p.hard_hits,rpL.hard_hits)||fHrd(p.hard_hits)}</td>
-    <td class="r">${gl(p.barrels,rpL.barrels)||fBar(p.barrels)}</td>
+    <td class="r">${glMin(p.hard_hits,rpMin.hard_hits)||fHrd(p.hard_hits)}</td>
+    <td class="r">${glMin(p.barrels,rpMin.barrels)||fBar(p.barrels)}</td>
     <td class="r">${gl(p.stuff_plus,rpL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,rpL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
