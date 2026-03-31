@@ -1962,23 +1962,30 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             hits = sum(1 for pid in our_ids
                        if sp_map.get(pid) is not None)
             if hits == 0:
-                # Savant returns an aggregate column (n_stuff_plus) not per-pitch-type
                 cols_lower = {c.lower(): c for c in sp_df.columns}
+                id_col_sp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                  if k in cols_lower), None)
+                # Try single aggregate column first
                 agg_col = next((cols_lower[k] for k in
                                 ("n_stuff_plus", "stuff_plus", "avg_stuff_plus")
                                 if k in cols_lower), None)
-                id_col_sp = next((cols_lower[k] for k in ("pitcher", "player_id")
-                                  if k in cols_lower), None)
-                print(f"  Stuff+ agg fallback: agg_col={agg_col!r} id_col={id_col_sp!r}  "
-                      f"sp_df cols={list(sp_df.columns)[:8]}")
-                if agg_col and id_col_sp:
+                # Fall back to averaging all per-pitch-type *_stuff_plus columns
+                pt_sp_cols = [c for c in sp_df.columns if c.endswith("_stuff_plus")]
+                print(f"  Stuff+ fallback: agg_col={agg_col!r} pt_cols={pt_sp_cols[:4]} "
+                      f"id_col={id_col_sp!r}")
+                if id_col_sp and (agg_col or pt_sp_cols):
                     for _, row in sp_df.iterrows():
                         try:
                             pid = int(row[id_col_sp])
                         except (ValueError, TypeError):
                             continue
-                        val = (round(float(row[agg_col]), 0)
-                               if pd.notna(row[agg_col]) else None)
+                        if agg_col:
+                            val = (round(float(row[agg_col]), 0)
+                                   if pd.notna(row[agg_col]) else None)
+                        else:
+                            vals = [float(row[c]) for c in pt_sp_cols
+                                    if pd.notna(row.get(c))]
+                            val = round(sum(vals) / len(vals), 0) if vals else None
                         sp_map[pid] = val
             for pid, val in sp_map.items():
                 result[pid] = {"stuff_plus": val, "location_plus": None}
@@ -1998,20 +2005,27 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             lp_hits = sum(1 for pid in our_ids if lp_map.get(pid) is not None)
             if lp_hits == 0:
                 cols_lower = {c.lower(): c for c in lp_df.columns}
+                id_col_lp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                  if k in cols_lower), None)
                 agg_col = next((cols_lower[k] for k in
                                 ("n_pitching_plus", "pitching_plus", "n_location_plus",
                                  "location_plus")
                                 if k in cols_lower), None)
-                id_col_lp = next((cols_lower[k] for k in ("pitcher", "player_id")
-                                  if k in cols_lower), None)
-                if agg_col and id_col_lp:
+                pt_lp_cols = [c for c in lp_df.columns if c.endswith("_pitching_plus")
+                              or c.endswith("_location_plus")]
+                if id_col_lp and (agg_col or pt_lp_cols):
                     for _, row in lp_df.iterrows():
                         try:
                             pid = int(row[id_col_lp])
                         except (ValueError, TypeError):
                             continue
-                        val = (round(float(row[agg_col]), 0)
-                               if pd.notna(row[agg_col]) else None)
+                        if agg_col:
+                            val = (round(float(row[agg_col]), 0)
+                                   if pd.notna(row[agg_col]) else None)
+                        else:
+                            vals = [float(row[c]) for c in pt_lp_cols
+                                    if pd.notna(row.get(c))]
+                            val = round(sum(vals) / len(vals), 0) if vals else None
                         lp_map[pid] = val
             for pid, val in lp_map.items():
                 if pid in result:
