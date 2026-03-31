@@ -1365,7 +1365,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ STARTING PITCHERS ══ -->
 <div id="starters-panel" class="tab-panel">
   <div class="note">
-    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are season averages from Baseball Savant (game-level unavailable — FanGraphs is Cloudflare-blocked).
+    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
     Arsenal: game velocity <span class="vd">(season avg)</span> —
     fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph below season avg.
     <span class="gs">S+</span> = game Stuff+ for that pitch type.
@@ -1394,8 +1394,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
         <th class="sortable r"    data-k="k_bb_pct"      onclick="srtSP(this,'k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="sp-body"></tbody>
@@ -1406,7 +1406,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ RELIEF PITCHERS ══ -->
 <div id="relievers-panel" class="tab-panel">
   <div class="note">
-    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are season averages from Baseball Savant.
+    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
     <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
   </div>
   <div class="legend">
@@ -1435,8 +1435,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
         <th class="sortable r"    data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="rp-body"></tbody>
@@ -1491,8 +1491,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'sp','hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'sp','barrels')">Barrels</th>
         <th class="sortable r"    data-k="k_bb_pct"      onclick="srtTA(this,'sp','k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="ta-sp-body"></tbody>
@@ -1518,8 +1518,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
         <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'rp','hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'rp','barrels')">Barrels</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'rp','stuff_plus')">Stuff+<span class="vd" style="font-size:.58rem"> szn</span></th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'rp','location_plus')">Loc+<span class="vd" style="font-size:.58rem"> szn</span></th>
+        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'rp','stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'rp','location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="ta-rp-body"></tbody>
@@ -1533,7 +1533,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </main>
 
 <footer>
-  Statcast (incl. Stuff+/Loc+) · MLB Stats API (SB) &nbsp;·&nbsp;
+  FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
   Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated __TS__
 </footer>
 
