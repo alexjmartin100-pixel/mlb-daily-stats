@@ -41,7 +41,7 @@ jobs:
       - name: Install system deps and Playwright browser
         run: |
           sudo apt-get install -y xvfb
-          playwright install chromium
+          python -m playwright install chromium
 
       - name: Write FanGraphs cookie
         run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
