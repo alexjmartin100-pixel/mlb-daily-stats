@@ -1894,10 +1894,17 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
 
 # ── Main ───────────────────────────────────────────────────────────────────
 def main():
-    yesterday    = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    import sys
+    from zoneinfo import ZoneInfo
+    _et = ZoneInfo("America/New_York")
+    # Accept explicit date arg (YYYY-MM-DD) for manual runs; otherwise use Eastern Time
+    if len(sys.argv) > 1:
+        yesterday = sys.argv[1]
+    else:
+        yesterday = (datetime.now(_et).date() - timedelta(days=1)).strftime("%Y-%m-%d")
     _yd          = datetime.strptime(yesterday, "%Y-%m-%d")
     date_display = _yd.strftime("%A, %B ") + str(_yd.day) + _yd.strftime(", %Y")
-    _now         = datetime.now()
+    _now         = datetime.now(_et)
     ts           = (_now.strftime("%b ") + str(_now.day) + _now.strftime(", %Y ")
                     + _now.strftime("%I:%M %p").lstrip("0"))
     year         = _yd.year
