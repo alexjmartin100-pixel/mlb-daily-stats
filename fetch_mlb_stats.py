@@ -1942,13 +1942,33 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
         sp_df = _fetch_year_csv("stuff_plus", fetch_year)
         if sp_df is not None:
             sp_map = _weighted_avg(n_df, sp_df, "stuff_plus")
+            hits = sum(1 for pid in our_ids
+                       if sp_map.get(pid) is not None)
+            if hits == 0:
+                # Savant returns an aggregate column (n_stuff_plus) not per-pitch-type
+                cols_lower = {c.lower(): c for c in sp_df.columns}
+                agg_col = next((cols_lower[k] for k in
+                                ("n_stuff_plus", "stuff_plus", "avg_stuff_plus")
+                                if k in cols_lower), None)
+                id_col_sp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                  if k in cols_lower), None)
+                print(f"  Stuff+ agg fallback: agg_col={agg_col!r} id_col={id_col_sp!r}  "
+                      f"sp_df cols={list(sp_df.columns)[:8]}")
+                if agg_col and id_col_sp:
+                    for _, row in sp_df.iterrows():
+                        try:
+                            pid = int(row[id_col_sp])
+                        except (ValueError, TypeError):
+                            continue
+                        val = (round(float(row[agg_col]), 0)
+                               if pd.notna(row[agg_col]) else None)
+                        sp_map[pid] = val
             for pid, val in sp_map.items():
                 result[pid] = {"stuff_plus": val, "location_plus": None}
             hits = sum(1 for pid in our_ids
                        if result.get(pid, {}).get("stuff_plus") is not None)
-            print(f"  Stuff+ weighted avg ({fetch_year}): "
+            print(f"  Stuff+ ({fetch_year}): "
                   f"{hits}/{len(our_ids)} target pitchers matched")
-            # Sample output for diagnostics
             sample = [(pid, result[pid]["stuff_plus"])
                       for pid in our_ids if pid in result][:3]
             if sample:
@@ -1958,6 +1978,24 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
         lp_df = _fetch_year_csv("pitching_plus", fetch_year)
         if lp_df is not None:
             lp_map = _weighted_avg(n_df, lp_df, "pitching_plus")
+            lp_hits = sum(1 for pid in our_ids if lp_map.get(pid) is not None)
+            if lp_hits == 0:
+                cols_lower = {c.lower(): c for c in lp_df.columns}
+                agg_col = next((cols_lower[k] for k in
+                                ("n_pitching_plus", "pitching_plus", "n_location_plus",
+                                 "location_plus")
+                                if k in cols_lower), None)
+                id_col_lp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                  if k in cols_lower), None)
+                if agg_col and id_col_lp:
+                    for _, row in lp_df.iterrows():
+                        try:
+                            pid = int(row[id_col_lp])
+                        except (ValueError, TypeError):
+                            continue
+                        val = (round(float(row[agg_col]), 0)
+                               if pd.notna(row[agg_col]) else None)
+                        lp_map[pid] = val
             for pid, val in lp_map.items():
                 if pid in result:
                     result[pid]["location_plus"] = val
