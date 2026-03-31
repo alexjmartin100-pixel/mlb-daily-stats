@@ -38,6 +38,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Write FanGraphs cookie
+        if: ${{ secrets.FANGRAPHS_COOKIE != '' }}
+        run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
+
       - name: Generate MLB stats dashboard
         run: python fetch_mlb_stats.py
         env:
