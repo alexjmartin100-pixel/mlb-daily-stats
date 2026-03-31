@@ -312,20 +312,51 @@ def _fg_session_from_cookie(cookie_str: str) -> requests.Session:
     return sess
 
 
+_FG_DIRECT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept":           "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language":  "en-US,en;q=0.9",
+    "X-Requested-With": "XMLHttpRequest",
+    "Referer":          "https://www.fangraphs.com/leaders/major-league",
+    "Origin":           "https://www.fangraphs.com",
+    "Connection":       "keep-alive",
+    "Sec-Fetch-Dest":   "empty",
+    "Sec-Fetch-Mode":   "cors",
+    "Sec-Fetch-Site":   "same-origin",
+}
+
 def _pw_fetch_json(url: str, params: dict | None = None) -> object:
     """
     Fetch JSON from a FanGraphs API endpoint.
 
     Priority order:
-      1. fg_cookie.txt  — user-supplied cf_clearance cookie (most reliable)
-      2. Playwright      — headless+stealth Chrome (automatic but may be blocked)
+      1. Direct requests   — plain HTTP with browser-like headers (fastest, no deps)
+      2. fg_cookie.txt     — user-supplied cf_clearance cookie (most reliable fallback)
+      3. Playwright        — headless+stealth Chrome (last resort)
 
     Returns parsed JSON or None on failure.
     """
     from urllib.parse import urlencode
     full_url = (url + "?" + urlencode(params)) if params else url
 
-    # ── Option C: manual cookie file ─────────────────────────────────────
+    # ── Option A: direct requests with browser-like headers ──────────────
+    try:
+        r = requests.get(full_url, headers=_FG_DIRECT_HEADERS, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            # Cloudflare challenge pages return 200 but with HTML, not JSON
+            if isinstance(data, (dict, list)):
+                return data
+        elif r.status_code not in (403, 429, 503):
+            print(f"    Direct request returned {r.status_code} for {url}")
+    except Exception as e:
+        print(f"    Direct request failed: {e}")
+
+    # ── Option B: manual cookie file ─────────────────────────────────────
     cf_cookie = _load_fg_cookie()
     if cf_cookie:
         try:
@@ -339,7 +370,7 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
             print(f"    Cookie request error: {e}")
         return None   # don't fall through to Playwright if cookie file exists
 
-    # ── Option B: Playwright stealth browser ──────────────────────────────
+    # ── Option C: Playwright stealth browser ──────────────────────────────
     page = _get_pw_page()
     if page is None:
         return None
@@ -1219,6 +1250,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
     <div class="leg-item"><span class="leg-dot" style="background:#e74c3c"></span>Max EV: high (red) → low (blue)</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
   </div>
   <div class="controls">
     <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
