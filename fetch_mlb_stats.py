@@ -17,7 +17,7 @@ from datetime import date, timedelta, datetime
 # ── Auto-install (skipped on GitHub Actions / CI where requirements.txt is used) ──
 if not os.environ.get("SKIP_AUTO_INSTALL"):
     print("Checking dependencies…")
-    for _pkg in ("pybaseball", "pandas", "numpy", "requests", "MLB-StatsAPI", "playwright", "playwright-stealth"):
+    for _pkg in ("pybaseball", "pandas", "numpy", "requests", "cloudscraper", "MLB-StatsAPI", "playwright", "playwright-stealth"):
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", _pkg, "--break-system-packages", "-q"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -335,8 +335,9 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
 
     Priority order:
       1. Direct requests   — plain HTTP with browser-like headers (fastest, no deps)
-      2. fg_cookie.txt     — user-supplied cf_clearance cookie (most reliable fallback)
-      3. Playwright        — headless+stealth Chrome (last resort)
+      2. cloudscraper      — auto-solves Cloudflare JS challenges (no IP restriction)
+      3. fg_cookie.txt     — user-supplied cf_clearance cookie (most reliable fallback)
+      4. Playwright        — headless+stealth Chrome (last resort)
 
     Returns parsed JSON or None on failure.
     """
@@ -355,6 +356,22 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
             print(f"    Direct request returned {r.status_code} for {url}")
     except Exception as e:
         print(f"    Direct request failed: {e}")
+
+    # ── Option A2: cloudscraper — solves Cloudflare JS challenge automatically ──
+    try:
+        import cloudscraper
+        scraper = cloudscraper.create_scraper(
+            browser={"browser": "chrome", "platform": "windows", "mobile": False}
+        )
+        r = scraper.get(full_url, timeout=30)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, (dict, list)):
+                return data
+        elif r.status_code not in (403, 429, 503):
+            print(f"    cloudscraper returned {r.status_code}")
+    except Exception as e:
+        print(f"    cloudscraper failed: {e}")
 
     # ── Option B: manual cookie file ─────────────────────────────────────
     cf_cookie = _load_fg_cookie()
