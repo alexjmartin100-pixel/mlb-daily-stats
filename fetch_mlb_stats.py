@@ -14,12 +14,18 @@ Run once each morning; mlb_daily_stats.html is updated in the same folder.
 import subprocess, sys, os, json, unicodedata
 from datetime import date, timedelta, datetime
 
+# Fix Unicode output on Windows (cp1252 can't handle checkmarks etc.)
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 # ── Auto-install (skipped on GitHub Actions / CI where requirements.txt is used) ──
 if not os.environ.get("SKIP_AUTO_INSTALL"):
     print("Checking dependencies…")
+    _pip_flags = ["--break-system-packages"] if sys.platform != "win32" else []
     for _pkg in ("pybaseball", "pandas", "numpy", "requests", "cloudscraper", "MLB-StatsAPI", "playwright", "playwright-stealth"):
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", _pkg, "--break-system-packages", "-q"],
+            [sys.executable, "-m", "pip", "install", _pkg, "-q"] + _pip_flags,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     print("  Installing Playwright Chromium (cached after first run)…")
@@ -242,7 +248,8 @@ def _get_pw_page():
         # "networkidle" due to persistent WebSocket connections.
         page.goto("https://www.fangraphs.com/", wait_until="load", timeout=45_000)
         # Give Cloudflare's JS challenge time to complete and set cf_clearance
-        page.wait_for_timeout(6_000)
+        # 9 s is safer than 6 s — slower machines need more time
+        page.wait_for_timeout(9_000)
         cookies = [c["name"] for c in ctx.cookies()]
         print(f"  Playwright ready — cookies: {cookies}")
         _PW_PAGE = page   # only set here, after successful navigation
@@ -382,15 +389,24 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
             if r.status_code == 200:
                 return r.json()
             print(f"    fg_cookie.txt returned {r.status_code} — "
-                  f"cookie may have expired, refresh fg_cookie.txt")
+                  f"cookie expired or IP mismatch; falling through to Playwright…")
         except Exception as e:
-            print(f"    Cookie request error: {e}")
-        return None   # don't fall through to Playwright if cookie file exists
+            print(f"    Cookie request error: {e}; falling through to Playwright…")
+    # NOTE: intentionally fall through to Playwright even when cookie file exists —
+    # cookie is IP-bound and may be stale; Playwright is the authoritative fallback.
 
     # ── Option C: Playwright stealth browser ──────────────────────────────
+    # _get_pw_page() launches a visible Chromium, applies stealth patches, and
+    # pre-navigates to fangraphs.com so Cloudflare issues a cf_clearance cookie.
+    # We then try two sub-methods:
+    #   C1 — page.evaluate(fetch())  : runs inside the browser, carries cookies
+    #   C2 — direct page.goto()      : navigate the browser tab to the API URL,
+    #                                  then read the raw JSON body text
     page = _get_pw_page()
     if page is None:
         return None
+
+    # C1: fetch() from within the browser context (same-origin, cookies included)
     try:
         result = page.evaluate(f"""
             async () => {{
@@ -410,13 +426,29 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
                 }}
             }}
         """)
+        if isinstance(result, (dict, list)) and not (
+                isinstance(result, dict) and "_err" in result):
+            return result
         if isinstance(result, dict) and "_err" in result:
-            print(f"    FanGraphs fetch error: {result['_err']} — {full_url}")
-            return None
-        return result
+            print(f"    Playwright fetch() error: {result['_err']}")
     except Exception as e:
         print(f"    Playwright evaluate error: {e}")
-        return None
+
+    # C2: navigate the browser tab directly to the API URL and parse the body
+    try:
+        print(f"    Playwright: navigating browser to API URL…")
+        page.goto(full_url, wait_until="load", timeout=25_000)
+        page.wait_for_timeout(3_000)   # let any secondary CF check finish
+        body = page.inner_text("body")
+        if body:
+            data = json.loads(body)
+            if isinstance(data, (dict, list)):
+                print(f"    Playwright direct-navigate succeeded")
+                return data
+    except Exception as e:
+        print(f"    Playwright direct-navigate error: {e}")
+
+    return None
 
 # Keep FG_HEADERS alias for any remaining direct references
 FG_HEADERS: dict = {}
@@ -1955,89 +1987,170 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
                 print(f"  Savant CSV {type_val!r}/{yr} failed: {e}")
                 return None
 
-        # ── Stuff+ weighted avg ──────────────────────────────────────────
-        sp_df = _fetch_year_csv("stuff_plus", fetch_year)
-        if sp_df is not None:
-            sp_map = _weighted_avg(n_df, sp_df, "stuff_plus")
-            hits = sum(1 for pid in our_ids
-                       if sp_map.get(pid) is not None)
-            if hits == 0:
-                cols_lower = {c.lower(): c for c in sp_df.columns}
-                id_col_sp = next((cols_lower[k] for k in ("pitcher", "player_id")
-                                  if k in cols_lower), None)
-                # Try single aggregate column first
-                agg_col = next((cols_lower[k] for k in
-                                ("n_stuff_plus", "stuff_plus", "avg_stuff_plus")
-                                if k in cols_lower), None)
-                # Fall back to averaging all per-pitch-type *_stuff_plus columns
-                pt_sp_cols = [c for c in sp_df.columns if c.endswith("_stuff_plus")]
-                print(f"  Stuff+ fallback: agg_col={agg_col!r} pt_cols={pt_sp_cols[:4]} "
-                      f"id_col={id_col_sp!r}")
-                if id_col_sp and (agg_col or pt_sp_cols):
-                    for _, row in sp_df.iterrows():
+        # ── Stuff+ / Loc+ — try pitch-arsenal-stats (per-pitch-type endpoint) ──
+        # This endpoint has actual Stuff+ values per pitch type per pitcher.
+        # We fetch each pitch type separately and compute a pitch-count-weighted average.
+        def _fetch_by_pitch_type(fetch_yr: int) -> tuple:
+            """Returns ({pid:[sp_wsum,sp_n]}, {pid:[lp_wsum,lp_n]}) from pitch-arsenal-stats."""
+            sp_acc: dict = {}
+            lp_acc: dict = {}
+            arsenal_url = "https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats"
+            pt_codes = ["FF","FA","SI","FC","SL","ST","SV","CH","FS",
+                        "CU","KC","KN","FO","EP","CS"]
+            for pt in pt_codes:
+                try:
+                    rv = requests.get(arsenal_url,
+                        params={"type": "pitcher", "pitchType": pt, "year": fetch_yr,
+                                "min": 0, "minPitches": 0, "team": "", "csv": "true"},
+                        headers=hdrs, timeout=20)
+                    rv.raise_for_status()
+                    dpt = pd.read_csv(StringIO(rv.text))
+                    if len(dpt) == 0:
+                        continue
+                    cl = {c.lower(): c for c in dpt.columns}
+                    id_c  = next((cl[k] for k in
+                                  ("player_id","pitcher_id","pitcher","mlbam")
+                                  if k in cl), None)
+                    cnt_c = next((cl[k] for k in
+                                  ("n_pitches","pitch_count","pitches","total_pitches")
+                                  if k in cl), None)
+                    sp_c  = next((cl[k] for k in
+                                  ("n_stuff_plus","stuff_plus","stuff_plus_avg")
+                                  if k in cl), None)
+                    lp_c  = next((cl[k] for k in
+                                  ("n_pitching_plus","pitching_plus","location_plus",
+                                   "n_location_plus")
+                                  if k in cl), None)
+                    if not id_c:
+                        continue
+                    if pt == "FF":
+                        print(f"  arsenal-stats FF: {len(dpt)} rows, "
+                              f"id={id_c!r} sp={sp_c!r} lp={lp_c!r} "
+                              f"cnt={cnt_c!r}  cols={list(dpt.columns[:8])}")
+                    for _, row in dpt.iterrows():
                         try:
-                            pid = int(row[id_col_sp])
+                            pid = int(row[id_c])
                         except (ValueError, TypeError):
                             continue
-                        if agg_col:
-                            val = (round(float(row[agg_col]), 0)
-                                   if pd.notna(row[agg_col]) else None)
-                        else:
-                            vals = [float(row[c]) for c in pt_sp_cols
-                                    if pd.notna(row.get(c))]
-                            val = round(sum(vals) / len(vals), 0) if vals else None
-                        sp_map[pid] = val
-            for pid, val in sp_map.items():
-                result[pid] = {"stuff_plus": val, "location_plus": None}
+                        n_v = (float(row[cnt_c])
+                               if cnt_c and pd.notna(row.get(cnt_c)) else 1.0)
+                        if sp_c and pd.notna(row.get(sp_c)) and n_v > 0:
+                            if pid not in sp_acc:
+                                sp_acc[pid] = [0.0, 0.0]
+                            sp_acc[pid][0] += float(row[sp_c]) * n_v
+                            sp_acc[pid][1] += n_v
+                        if lp_c and pd.notna(row.get(lp_c)) and n_v > 0:
+                            if pid not in lp_acc:
+                                lp_acc[pid] = [0.0, 0.0]
+                            lp_acc[pid][0] += float(row[lp_c]) * n_v
+                            lp_acc[pid][1] += n_v
+                except Exception:
+                    pass  # skip pitch types that fail
+            return sp_acc, lp_acc
+
+        sp_acc, lp_acc = _fetch_by_pitch_type(fetch_year)
+        if sp_acc:
+            all_pids = set(sp_acc) | set(lp_acc)
+            for pid in all_pids:
+                sp_s = sp_acc.get(pid)
+                lp_s = lp_acc.get(pid)
+                sp = round(sp_s[0] / sp_s[1], 0) if sp_s and sp_s[1] > 0 else None
+                lp = round(lp_s[0] / lp_s[1], 0) if lp_s and lp_s[1] > 0 else None
+                result[pid] = {"stuff_plus": sp, "location_plus": lp}
             hits = sum(1 for pid in our_ids
                        if result.get(pid, {}).get("stuff_plus") is not None)
-            print(f"  Stuff+ ({fetch_year}): "
-                  f"{hits}/{len(our_ids)} target pitchers matched")
-            sample = [(pid, result[pid]["stuff_plus"])
-                      for pid in our_ids if pid in result][:3]
-            if sample:
-                print(f"  Sample values: {sample}")
-
-        # ── Location+ (pitching_plus) weighted avg ───────────────────────
-        lp_df = _fetch_year_csv("pitching_plus", fetch_year)
-        if lp_df is not None:
-            lp_map = _weighted_avg(n_df, lp_df, "pitching_plus")
-            lp_hits = sum(1 for pid in our_ids if lp_map.get(pid) is not None)
-            if lp_hits == 0:
-                cols_lower = {c.lower(): c for c in lp_df.columns}
-                id_col_lp = next((cols_lower[k] for k in ("pitcher", "player_id")
-                                  if k in cols_lower), None)
-                agg_col = next((cols_lower[k] for k in
-                                ("n_pitching_plus", "pitching_plus", "n_location_plus",
-                                 "location_plus")
-                                if k in cols_lower), None)
-                pt_lp_cols = [c for c in lp_df.columns if c.endswith("_pitching_plus")
-                              or c.endswith("_location_plus")]
-                if id_col_lp and (agg_col or pt_lp_cols):
-                    for _, row in lp_df.iterrows():
-                        try:
-                            pid = int(row[id_col_lp])
-                        except (ValueError, TypeError):
-                            continue
-                        if agg_col:
-                            val = (round(float(row[agg_col]), 0)
-                                   if pd.notna(row[agg_col]) else None)
-                        else:
-                            vals = [float(row[c]) for c in pt_lp_cols
-                                    if pd.notna(row.get(c))]
-                            val = round(sum(vals) / len(vals), 0) if vals else None
-                        lp_map[pid] = val
-            for pid, val in lp_map.items():
-                if pid in result:
-                    result[pid]["location_plus"] = val
-                else:
-                    result[pid] = {"stuff_plus": None, "location_plus": val}
             lp_hits = sum(1 for pid in our_ids
                           if result.get(pid, {}).get("location_plus") is not None)
-            print(f"  Loc+ weighted avg ({fetch_year}):   "
-                  f"{lp_hits}/{len(our_ids)} target pitchers matched")
+            print(f"  pitch-arsenal-stats Stuff+ ({fetch_year}): "
+                  f"{hits}/{len(our_ids)} matched")
+            print(f"  pitch-arsenal-stats Loc+   ({fetch_year}): "
+                  f"{lp_hits}/{len(our_ids)} matched")
+            sp_samp = [(pid, result[pid]["stuff_plus"])
+                       for pid in our_ids if pid in result][:3]
+            if sp_samp:
+                print(f"  Sample Stuff+ values: {sp_samp}")
         else:
-            print(f"  pitching_plus CSV not available for {fetch_year} (Loc+ will be blank)")
+            # ── Legacy fallback: pitch-arsenals endpoint (NaN for early season) ──
+            print(f"  pitch-arsenal-stats ({fetch_year}): no data — "
+                  f"trying legacy pitch-arsenals endpoint…")
+            sp_df = _fetch_year_csv("n_stuff_plus", fetch_year)
+            if sp_df is None:
+                sp_df = _fetch_year_csv("stuff_plus", fetch_year)
+            if sp_df is not None:
+                sp_map = _weighted_avg(n_df, sp_df, "stuff_plus")
+                hits = sum(1 for pid in our_ids if sp_map.get(pid) is not None)
+                if hits == 0:
+                    cols_lower = {c.lower(): c for c in sp_df.columns}
+                    id_col_sp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                      if k in cols_lower), None)
+                    agg_col = next((cols_lower[k] for k in
+                                    ("n_stuff_plus", "stuff_plus", "avg_stuff_plus")
+                                    if k in cols_lower), None)
+                    pt_sp_cols = [c for c in sp_df.columns if c.endswith("_stuff_plus")]
+                    print(f"  Stuff+ fallback: agg_col={agg_col!r} "
+                          f"pt_cols={pt_sp_cols[:4]} id_col={id_col_sp!r}")
+                    if id_col_sp and (agg_col or pt_sp_cols):
+                        for _, row in sp_df.iterrows():
+                            try:
+                                pid = int(row[id_col_sp])
+                            except (ValueError, TypeError):
+                                continue
+                            if agg_col:
+                                val = (round(float(row[agg_col]), 0)
+                                       if pd.notna(row[agg_col]) else None)
+                            else:
+                                vals = [float(row[c]) for c in pt_sp_cols
+                                        if pd.notna(row.get(c))]
+                                val = round(sum(vals) / len(vals), 0) if vals else None
+                            sp_map[pid] = val
+                for pid, val in sp_map.items():
+                    result[pid] = {"stuff_plus": val, "location_plus": None}
+                hits = sum(1 for pid in our_ids
+                           if result.get(pid, {}).get("stuff_plus") is not None)
+                print(f"  Stuff+ legacy ({fetch_year}): "
+                      f"{hits}/{len(our_ids)} target pitchers matched")
+
+            # Location+ via legacy endpoint
+            lp_df = _fetch_year_csv("n_pitching_plus", fetch_year)
+            if lp_df is None:
+                lp_df = _fetch_year_csv("pitching_plus", fetch_year)
+            if lp_df is not None:
+                lp_map = _weighted_avg(n_df, lp_df, "pitching_plus")
+                lp_hits = sum(1 for pid in our_ids if lp_map.get(pid) is not None)
+                if lp_hits == 0:
+                    cols_lower = {c.lower(): c for c in lp_df.columns}
+                    id_col_lp = next((cols_lower[k] for k in ("pitcher", "player_id")
+                                      if k in cols_lower), None)
+                    agg_col = next((cols_lower[k] for k in
+                                    ("n_pitching_plus", "pitching_plus", "n_location_plus",
+                                     "location_plus")
+                                    if k in cols_lower), None)
+                    pt_lp_cols = [c for c in lp_df.columns
+                                  if c.endswith("_pitching_plus") or c.endswith("_location_plus")]
+                    if id_col_lp and (agg_col or pt_lp_cols):
+                        for _, row in lp_df.iterrows():
+                            try:
+                                pid = int(row[id_col_lp])
+                            except (ValueError, TypeError):
+                                continue
+                            if agg_col:
+                                val = (round(float(row[agg_col]), 0)
+                                       if pd.notna(row[agg_col]) else None)
+                            else:
+                                vals = [float(row[c]) for c in pt_lp_cols
+                                        if pd.notna(row.get(c))]
+                                val = round(sum(vals) / len(vals), 0) if vals else None
+                            lp_map[pid] = val
+                for pid, val in lp_map.items():
+                    if pid in result:
+                        result[pid]["location_plus"] = val
+                    else:
+                        result[pid] = {"stuff_plus": None, "location_plus": val}
+                lp_hits = sum(1 for pid in our_ids
+                              if result.get(pid, {}).get("location_plus") is not None)
+                print(f"  Loc+ legacy ({fetch_year}): {lp_hits}/{len(our_ids)} matched")
+            else:
+                print(f"  pitching_plus CSV not available for {fetch_year} (Loc+ blank)")
 
         if any(v["stuff_plus"] is not None for v in result.values()):
             yr_label = f" (prior-year {fetch_year})" if fetch_year != year else ""
@@ -2105,16 +2218,15 @@ def main():
     pitcher_mlbam_ids = set(p["id"] for p in all_pitchers)
     savant_velo = fetch_savant_season_velo(year, pitcher_mlbam_ids)
 
-    # Source 1: FanGraphs game-log API — uses fg_cookie.txt (cf_clearance) if present
-    if _load_fg_cookie():
-        print("  fg_cookie.txt found — trying FanGraphs per-game Stuff+/Loc+…")
-        game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, {})
-        attach_fg_data(all_pitchers, p_info, game_stuff, {}, savant_velo)
-        attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
-        print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(all_pitchers)} pitcher(s)")
-    else:
-        print("  No fg_cookie.txt found — skipping FanGraphs (see instructions to add it)")
-        attach_fg_data(all_pitchers, p_info, {}, {}, savant_velo)
+    # Source 1: FanGraphs game-log API
+    # Always tries — uses cookie file if present, then Playwright stealth as fallback.
+    # Playwright launches a visible Chrome window (~9 s) to pass Cloudflare's JS challenge.
+    has_cookie = bool(_load_fg_cookie())
+    print(f"  FanGraphs: {'cookie file found + ' if has_cookie else ''}trying Playwright…")
+    game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, {})
+    attach_fg_data(all_pitchers, p_info, game_stuff, {}, savant_velo)
+    attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
+    print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(all_pitchers)} pitcher(s)")
 
     # Source 2: Baseball Savant arsenal leaderboard (season avg, weighted across pitch types)
     missing_ids = {p["id"] for p in all_pitchers if p["stuff_plus"] is None}
