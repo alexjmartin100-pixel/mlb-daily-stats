@@ -430,7 +430,12 @@ def _pw_fetch_json(url: str, params: dict | None = None) -> object:
                 isinstance(result, dict) and "_err" in result):
             return result
         if isinstance(result, dict) and "_err" in result:
-            print(f"    Playwright fetch() error: {result['_err']}")
+            err_val = result['_err']
+            print(f"    Playwright fetch() error: {err_val}")
+            # 404 = URL/playerid is wrong — C2 navigation will also 404 (and show
+            # a visible 404 page to the user), so skip it entirely.
+            if err_val == 404 or err_val == "404":
+                return None
     except Exception as e:
         print(f"    Playwright evaluate error: {e}")
 
@@ -492,11 +497,14 @@ _GL_URL    = "https://www.fangraphs.com/api/players/game-log"
 _FG_SEARCH = "https://www.fangraphs.com/api/players"
 
 def _unwrap_gl(raw) -> list:
-    """Extract the list of game rows from a FanGraphs game-log API response."""
+    """Extract the list of game rows from a FanGraphs game-log API response.
+    Confirmed format: {'mlb': [...rows...], 'mlb_default_season': [...], ...}
+    """
     if isinstance(raw, list):
         return raw
     if isinstance(raw, dict):
-        for key in ("mlbgamelog", "data", "gamelog", "games", "playerGameLog"):
+        # "mlb" is the confirmed key from network interception (March 2026)
+        for key in ("mlb", "mlbgamelog", "data", "gamelog", "games", "playerGameLog"):
             val = raw.get(key)
             if isinstance(val, list) and val:
                 return val
@@ -534,14 +542,15 @@ def _detect_stuff_loc_cols(sample: dict):
         )
 
     # Exact-name candidates first
+    # sp_stuff / sp_location confirmed from network interception (FanGraphs, March 2026)
     stuff_col = next((c for c in sample
-                      if c in ("Stuff+", "Stuff+ (pfx)", "xStuff+", "SP_stuff",
-                                "stuff_plus", "stuffplus")), None)
+                      if c in ("sp_stuff", "Stuff+", "Stuff+ (pfx)", "xStuff+",
+                                "SP_stuff", "stuff_plus", "stuffplus")), None)
     if not stuff_col:
         stuff_col = next((c for c in sample if _is_overall(c, "stuff")), None)
 
     loc_col = next((c for c in sample
-                    if c in ("Location+", "Location+ (pfx)", "xLocation+",
+                    if c in ("sp_location", "Location+", "Location+ (pfx)", "xLocation+",
                               "SP_loc", "location_plus")), None)
     if not loc_col:
         loc_col = next((c for c in sample
@@ -553,44 +562,61 @@ def _fg_search_player_id(name: str) -> int | None:
     """
     Query FanGraphs player search API to get a player's numeric playerid.
     Used when pybaseball's ID is missing or stale.
+    Uses plain HTTP only — does NOT use Playwright (search API is not CF-protected).
     """
-    try:
-        raw = _pw_fetch_json(
-            _FG_SEARCH,
-            {"pos": "all", "stats": "pit", "q": name,
-             "type": "data", "season": ""},
-        )
-        if raw is None:
-            return None
-        players = raw if isinstance(raw, list) else raw.get("data", raw.get("players", []))
-        for p in players:
-            for k in ("playerid", "id", "PlayerID", "fgid"):
-                pid = p.get(k)
-                if pid:
-                    try:
-                        return int(float(pid))
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+    search_urls = [
+        # Primary: autocomplete endpoint
+        ("https://www.fangraphs.com/api/players",
+         {"pos": "all", "stats": "pit", "q": name, "type": "data", "season": ""}),
+        # Fallback: basic player search
+        ("https://www.fangraphs.com/api/players/search",
+         {"q": name, "type": "pit"}),
+    ]
+    for url, params in search_urls:
+        try:
+            r = requests.get(url, params=params, headers=_FG_DIRECT_HEADERS, timeout=10)
+            if r.status_code != 200:
+                continue
+            raw = r.json()
+            players = raw if isinstance(raw, list) else raw.get("data", raw.get("players", []))
+            for p in (players if isinstance(players, list) else []):
+                for k in ("playerid", "id", "PlayerID", "fgid"):
+                    pid = p.get(k)
+                    if pid:
+                        try:
+                            return int(float(pid))
+                        except Exception:
+                            pass
+        except Exception:
+            pass
     return None
 
 def _call_game_log(player_id, year: int) -> list:
     """
-    Fetch a pitcher's season game log (Stuff+ type) via Playwright.
-    Runs fetch() inside the real Chromium browser so Cloudflare is bypassed.
-    Returns list of game rows, or [].
+    Fetch a pitcher's season game log via Playwright.
+    Uses the exact URL format confirmed by network interception:
+      /api/players/game-log?playerid=X&position=P&type=N
+    No 'season' or 'z' params — those cause 404s.
+
+    type=8  → Pitch Modeling tab (Stuff+, Location+)
+    type=23 → alternate pitch modeling type (try if 8 is empty)
+    type=0  → Standard stats (no Stuff+, but proves connectivity)
     """
-    for type_val in ("stuff", "stuffplus"):
-        data = _pw_fetch_json(
-            _GL_URL,
-            {"playerid": player_id, "position": "P",
-             "type": type_val, "season": year, "z": 0},
-        )
-        if data is not None:
-            rows = _unwrap_gl(data)
-            if rows:
-                return rows
+    # type=0 returns ALL columns including sp_stuff/sp_location (confirmed March 2026).
+    # No 'season' param — it causes 404s. FanGraphs returns the current season
+    # automatically for active players, which is what we want.
+    # No 'z' param either — also causes 404s.
+    from urllib.parse import urlencode
+    _params = {"playerid": player_id, "position": "P", "type": 0}
+    print(f"    _call_game_log → {_GL_URL}?{urlencode(_params)}")
+    data = _pw_fetch_json(
+        _GL_URL,
+        _params,
+    )
+    if data is not None:
+        rows = _unwrap_gl(data)
+        if rows:
+            return rows
     return []
 
 
@@ -620,12 +646,13 @@ def fetch_fg_game_stuff(date_str: str, year: int,
 
         # Build ordered list of candidate player IDs to try
         candidates: list = []
-        if fg_id:
+        if fg_id and fg_id > 0:   # -1 is a Chadwick "not found" sentinel — skip it
             candidates.append(("pybaseball", fg_id))
         nm_fgid = name_to_fgid.get(nm)
         if nm_fgid and nm_fgid != fg_id:
             candidates.append(("velo_map", nm_fgid))
-        candidates.append(("mlbam", mlbam))    # MLBAM sometimes accepted by FG
+        # NOTE: MLBAM IDs are NOT FanGraphs IDs — never add as candidate.
+        # Fallback to FG name search happens below instead.
 
         rows      = []
         found_id  = None
