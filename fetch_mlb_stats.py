@@ -578,7 +578,9 @@ def _fg_search_player_id(name: str) -> int | None:
                         pass
         return None
 
-    search_params = {"pos": "all", "stats": "pit", "q": name, "type": "data", "season": ""}
+    # NOTE: keep params minimal — "type": "data" and "season": "" are not valid
+    # search params for /api/players and caused the endpoint to return no results.
+    search_params = {"pos": "all", "stats": "pit", "q": name}
 
     # Option 1: plain HTTP (fast, works if not CF-blocked)
     for url in (_FG_SEARCH, "https://www.fangraphs.com/api/players/search"):
@@ -1974,12 +1976,21 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             out[pid] = round(weighted / total_n, 0) if total_n > 0 else None
         return out
 
-    # Try current year first, fall back to prior year if too few matches
-    for fetch_year in (year, year - 1):
-        result = {}
+    # Try current year first, then fall back year-by-year for pitchers still missing.
+    # result accumulates across all years — pitchers found earlier are never overwritten.
+    our_ids = set(int(x) for x in mlbam_ids if pd.notna(x))
+    result  = {}
+
+    for fetch_year in (year, year - 1, year - 2, year - 3):
+        # Only continue if some target pitchers are still missing Stuff+
+        still_missing = our_ids - {pid for pid in our_ids
+                                    if result.get(pid, {}).get("stuff_plus") is not None}
+        if not still_missing:
+            print(f"  All {len(our_ids)} pitchers found — stopping year fallback")
+            break
+
         n_df = _fetch_savant_csv("n") if fetch_year == year else None
         if fetch_year != year:
-            # Re-fetch with prior year
             try:
                 r = requests.get(base_url,
                     params={"year": fetch_year, "min": 0, "type": "n",
@@ -1989,7 +2000,8 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
                 r.raise_for_status()
                 n_df = pd.read_csv(StringIO(r.text))
                 n_df[ID_COL] = pd.to_numeric(n_df[ID_COL], errors="coerce")
-                print(f"  Savant n CSV ({fetch_year}): {len(n_df)} rows")
+                print(f"  Savant n CSV ({fetch_year}): {len(n_df)} rows — "
+                      f"checking {len(still_missing)} still-missing pitchers")
             except Exception as e:
                 print(f"  Savant n CSV ({fetch_year}) failed: {e}")
                 continue
@@ -1998,14 +2010,11 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             continue
 
         savant_ids = set(int(x) for x in n_df[ID_COL].dropna())
-        our_ids    = set(int(x) for x in mlbam_ids if pd.notna(x))
-        overlap    = our_ids & savant_ids
+        overlap    = still_missing & savant_ids
         print(f"  Savant {fetch_year}: {len(savant_ids)} pitchers in CSV, "
-              f"{len(overlap)}/{len(our_ids)} of our starters present")
+              f"{len(overlap)}/{len(still_missing)} missing pitchers present")
         if not overlap:
-            print(f"  ✗ No ID overlap with {fetch_year} Savant data — "
-                  f"sample Savant IDs: {sorted(savant_ids)[:5]}, "
-                  f"our IDs: {sorted(our_ids)[:5]}")
+            print(f"  ✗ No missing-pitcher overlap with {fetch_year} Savant data")
             continue
 
         def _fetch_year_csv(type_val: str, yr: int) -> pd.DataFrame | None:
@@ -2088,6 +2097,9 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
         if sp_acc:
             all_pids = set(sp_acc) | set(lp_acc)
             for pid in all_pids:
+                # Never overwrite a pitcher already found in a more recent year
+                if result.get(pid, {}).get("stuff_plus") is not None:
+                    continue
                 sp_s = sp_acc.get(pid)
                 lp_s = lp_acc.get(pid)
                 sp = round(sp_s[0] / sp_s[1], 0) if sp_s and sp_s[1] > 0 else None
@@ -2098,13 +2110,14 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             lp_hits = sum(1 for pid in our_ids
                           if result.get(pid, {}).get("location_plus") is not None)
             print(f"  pitch-arsenal-stats Stuff+ ({fetch_year}): "
-                  f"{hits}/{len(our_ids)} matched")
+                  f"{hits}/{len(our_ids)} total matched (cumulative)")
             print(f"  pitch-arsenal-stats Loc+   ({fetch_year}): "
-                  f"{lp_hits}/{len(our_ids)} matched")
+                  f"{lp_hits}/{len(our_ids)} total matched (cumulative)")
             sp_samp = [(pid, result[pid]["stuff_plus"])
-                       for pid in our_ids if pid in result][:3]
+                       for pid in still_missing if pid in result
+                       and result[pid]["stuff_plus"] is not None][:3]
             if sp_samp:
-                print(f"  Sample Stuff+ values: {sp_samp}")
+                print(f"  New finds this year: {sp_samp}")
         else:
             # ── Legacy fallback: pitch-arsenals endpoint (NaN for early season) ──
             print(f"  pitch-arsenal-stats ({fetch_year}): no data — "
@@ -2188,12 +2201,14 @@ def fetch_savant_arsenal_stuff(year: int, mlbam_ids: set) -> dict:
             else:
                 print(f"  pitching_plus CSV not available for {fetch_year} (Loc+ blank)")
 
-        if any(v["stuff_plus"] is not None for v in result.values()):
-            yr_label = f" (prior-year {fetch_year})" if fetch_year != year else ""
-            print(f"  ✓ Savant Stuff+ attached{yr_label}")
-            return result
+        # Continue to next year for any pitchers still missing
 
-    print("  ✗ Could not retrieve Stuff+/Loc+ from any source")
+    found_total = sum(1 for pid in our_ids
+                      if result.get(pid, {}).get("stuff_plus") is not None)
+    if found_total > 0:
+        print(f"  ✓ Savant Stuff+ final: {found_total}/{len(our_ids)} pitchers matched")
+    else:
+        print("  ✗ Could not retrieve Stuff+/Loc+ from any source")
     return result
 
 
@@ -2259,8 +2274,13 @@ def main():
     # Playwright launches a visible Chrome window (~9 s) to pass Cloudflare's JS challenge.
     has_cookie = bool(_load_fg_cookie())
     print(f"  FanGraphs: {'cookie file found + ' if has_cookie else ''}trying Playwright…")
-    game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, {})
-    attach_fg_data(all_pitchers, p_info, game_stuff, {}, savant_velo)
+    # Fetch FanGraphs season leaderboard to build name→fg_id map.
+    # This is the key fallback for newer players (e.g. 2023-2025 debuts) whose
+    # FG IDs are missing from pybaseball's Chadwick register.
+    fg_velo_dict, fg_name_to_fgid = fetch_fg_season_velo(year)
+    print(f"  FanGraphs season leaderboard: {len(fg_name_to_fgid)} pitcher name→ID mappings")
+    game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, fg_name_to_fgid)
+    attach_fg_data(all_pitchers, p_info, game_stuff, fg_velo_dict, savant_velo)
     attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
     print(f"  Stuff+ after FanGraphs: {attached_fg}/{len(all_pitchers)} pitcher(s)")
 
