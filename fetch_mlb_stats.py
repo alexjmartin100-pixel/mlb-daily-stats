@@ -87,6 +87,16 @@ TEAM_ALEX_NAMES = {
     "max meyer", "reid detmers", "matt brash",
 }
 
+# ── FanGraphs ID overrides ─────────────────────────────────────────────────
+# Maps MLBAM player ID → FanGraphs player ID for pitchers whose fg_id is
+# missing or wrong in pybaseball's Chadwick register (stale for recent debuts).
+# Values can be int (standard FG numeric ID) or str (e.g. "sa..." minor-league IDs).
+# Add entries here whenever a pitcher regularly pitches but has no Stuff+ shown.
+FG_ID_OVERRIDES: dict = {
+    696149: 29868,          # Bubba Chandler (PIT) — debuted 2025, not in Chadwick
+    691725: "sa3017880",    # Andrew Painter (PHI) — debuted 2026, FG uses sa-prefix ID
+}
+
 def ta_norm(name: str) -> str:
     """Normalize a player name for Team Alex matching."""
     nfkd = unicodedata.normalize("NFKD", name)
@@ -570,12 +580,9 @@ def _fg_search_player_id(name: str) -> int | None:
             for k in ("playerid", "id", "PlayerID", "fgid"):
                 pid = p.get(k)
                 if pid:
-                    try:
-                        v = int(float(pid))
-                        if v > 0:
-                            return v
-                    except Exception:
-                        pass
+                    parsed = _parse_fg_id(pid)
+                    if parsed is not None:
+                        return parsed
         return None
 
     # NOTE: keep params minimal — "type": "data" and "season": "" are not valid
@@ -655,10 +662,20 @@ def fetch_fg_game_stuff(date_str: str, year: int,
         name  = info.get("name", f"#{mlbam}")
         nm    = norm_name(name)
 
-        # Build ordered list of candidate player IDs to try
+        # Build ordered list of candidate player IDs to try.
+        # fg_id may be int (standard FG numeric ID) or str (e.g. "sa3017880" sa-prefix).
         candidates: list = []
-        if fg_id and fg_id > 0:   # -1 is a Chadwick "not found" sentinel — skip it
-            candidates.append(("pybaseball", fg_id))
+        # Apply FG_ID_OVERRIDES directly here as the highest-priority source
+        override_id = FG_ID_OVERRIDES.get(mlbam)
+        if override_id and override_id != fg_id:
+            candidates.append(("override", override_id))
+            fg_id = override_id   # also update fg_id so result keying works below
+        if fg_id and fg_id != -1 and fg_id != 0:
+            # Accept both int IDs (> 0) and string sa-prefix IDs
+            if (isinstance(fg_id, str) and fg_id.startswith("sa")) or \
+               (isinstance(fg_id, int) and fg_id > 0):
+                if not any(c[1] == fg_id for c in candidates):
+                    candidates.append(("pybaseball", fg_id))
         nm_fgid = name_to_fgid.get(nm)
         if nm_fgid and nm_fgid != fg_id:
             candidates.append(("velo_map", nm_fgid))
@@ -754,10 +771,9 @@ def fetch_fg_season_velo(year: int) -> tuple:
         name  = row.get("PlayerName", row.get("Name", "")).strip()
         fg_id = row.get("playerid")
         if name and fg_id:
-            try:
-                name_to_fgid[norm_name(name)] = int(float(fg_id))
-            except Exception:
-                pass
+            parsed = _parse_fg_id(fg_id)
+            if parsed is not None:
+                name_to_fgid[norm_name(name)] = parsed
         velo = {}
         seen_codes: set = set()
         for col, pt_code in FG_VELO_COL_MAP.items():
@@ -896,6 +912,31 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
         print(f"  MLB Stats API pitcher box warning: {e}")
         return {}
 
+def _parse_fg_id(raw):
+    """
+    Convert a raw FanGraphs ID value to a usable form.
+    - Numeric IDs (int/float/numeric-string) → int
+    - sa-prefix IDs like "sa3017880"          → str (kept as-is)
+    - Missing / NaN                            → None
+    """
+    if raw is None:
+        return None
+    try:
+        if pd.isna(raw):
+            return None
+    except Exception:
+        pass
+    s = str(raw).strip()
+    if not s or s in ("nan", "None", ""):
+        return None
+    if s.startswith("sa"):   # FanGraphs minor-league / prospect ID (e.g. "sa3017880")
+        return s
+    try:
+        v = int(float(s))
+        return v if v > 0 else None
+    except (ValueError, TypeError):
+        return None
+
 def get_player_info(ids: list) -> dict:
     if not ids:
         return {}
@@ -905,7 +946,7 @@ def get_player_info(ids: list) -> dict:
         for _, r in lkp.iterrows():
             mlbam  = int(r["key_mlbam"])
             raw_fg = r.get("key_fangraphs")
-            fg_id  = int(float(raw_fg)) if pd.notna(raw_fg) else None
+            fg_id  = _parse_fg_id(raw_fg)
             result[mlbam] = {
                 "name":  title_name(f"{r['name_first']} {r['name_last']}"),
                 "fg_id": fg_id,
@@ -927,6 +968,15 @@ def get_player_info(ids: list) -> dict:
                         result[mid] = {"name": title_name(full), "fg_id": None}
             except Exception:
                 pass
+
+    # Apply hardcoded overrides (players missing from or wrong in Chadwick register)
+    for mlbam, override_fg_id in FG_ID_OVERRIDES.items():
+        if mlbam in result:
+            if result[mlbam].get("fg_id") in (None, -1):
+                result[mlbam]["fg_id"] = override_fg_id
+                print(f"  FG_ID_OVERRIDES: {result[mlbam]['name']} (mlbam={mlbam}) → fg_id={override_fg_id}")
+        # If player not found via pybaseball yet, they'll still get the override applied
+        # in fetch_fg_game_stuff via a direct FG_ID_OVERRIDES check
 
     return result
 
