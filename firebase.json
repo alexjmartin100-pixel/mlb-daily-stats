@@ -16,6 +16,12 @@
       ".gitignore",
       ".git/**"
     ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/mlb_daily_stats.html"
+      }
+    ],
     "headers": [
       {
         "source": "**",
