@@ -655,6 +655,24 @@ def fetch_fg_game_stuff(date_str: str, year: int,
     loc_col     : str | None = None
     found_ct    : int  = 0
 
+    # Process pitchers in priority order so players with known FG IDs are fetched
+    # before Cloudflare starts rate-limiting the session (~85-90 requests in).
+    # Priority: FG_ID_OVERRIDES first → known pybaseball fg_id → everyone else.
+    def _pitcher_priority(p):
+        mid = p["id"]
+        if mid in FG_ID_OVERRIDES:
+            return 0
+        fg = p_info.get(mid, {}).get("fg_id")
+        parsed = _parse_fg_id(fg)
+        if parsed is not None:
+            return 1
+        nm = norm_name(p_info.get(mid, {}).get("name", ""))
+        if nm in name_to_fgid:
+            return 2
+        return 3
+
+    pitchers = sorted(pitchers, key=_pitcher_priority)
+
     for p in pitchers:
         mlbam = p["id"]
         info  = p_info.get(mlbam, {})
@@ -686,7 +704,7 @@ def fetch_fg_game_stuff(date_str: str, year: int,
         found_id  = None
         for src, cand_id in candidates:
             rows = _call_game_log(cand_id, year)
-            time.sleep(0.5)   # avoid Cloudflare rate-limiting after rapid-fire requests
+            time.sleep(2.0)   # avoid Cloudflare rate-limiting after rapid-fire requests
             if rows:
                 found_id = cand_id
                 print(f"    {name}: got {len(rows)} game-log rows via {src} id={cand_id}")
@@ -697,7 +715,7 @@ def fetch_fg_game_stuff(date_str: str, year: int,
             searched_id = _fg_search_player_id(name)
             if searched_id and searched_id not in [c[1] for c in candidates]:
                 rows = _call_game_log(searched_id, year)
-                time.sleep(0.5)
+                time.sleep(2.0)
                 if rows:
                     found_id = searched_id
                     print(f"    {name}: got {len(rows)} game-log rows via FG search id={searched_id}")
