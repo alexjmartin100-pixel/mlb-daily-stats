@@ -93,8 +93,10 @@ TEAM_ALEX_NAMES = {
 # Values can be int (standard FG numeric ID) or str (e.g. "sa..." minor-league IDs).
 # Add entries here whenever a pitcher regularly pitches but has no Stuff+ shown.
 FG_ID_OVERRIDES: dict = {
-    696149: 29868,          # Bubba Chandler (PIT) — debuted 2025, not in Chadwick
-    691725: "sa3017880",    # Andrew Painter (PHI) — debuted 2026, FG uses sa-prefix ID
+    # Only needed for players whose Chadwick entry has a WRONG (not missing) FG ID.
+    # Players with a blank Chadwick key_fangraphs are handled automatically via the
+    # xMLBAMID→playerid mapping extracted from the FanGraphs leaderboard at startup.
+    691725: 30091,   # Andrew Painter (PHI) — Chadwick has stale minor-league ID sa3017880
 }
 
 def ta_norm(name: str) -> str:
@@ -760,9 +762,10 @@ def fetch_fg_game_stuff(date_str: str, year: int,
 def fetch_fg_season_velo(year: int) -> tuple:
     """
     Season-avg velocity per pitch type.
-    Returns (velo_dict, name_to_fgid) where:
-      velo_dict   = {norm_name | fg_id: {pitch_code: avg_velo}}
-      name_to_fgid= {norm_name: fg_id}   (useful for pitchers missing from pybaseball)
+    Returns (velo_dict, name_to_fgid, mlbam_to_fgid) where:
+      velo_dict    = {norm_name | fg_id: {pitch_code: avg_velo}}
+      name_to_fgid = {norm_name: fg_id}   (fallback for pitchers missing from Chadwick)
+      mlbam_to_fgid= {mlbam_id: fg_id}    (built from xMLBAMID column; direct MLBAM→FG map)
     """
     print(f"  Fetching FanGraphs season velocity ({year})…")
     base = {
@@ -779,14 +782,27 @@ def fetch_fg_season_velo(year: int) -> tuple:
         rows = []
     if not rows:
         print("    Could not retrieve season velocity.")
-        return {}, {}
+        return {}, {}, {}
 
     sample_v = rows[0]
     matched_vcols = [c for c in sample_v if c in FG_VELO_COL_MAP]
     print(f"    Season velo: {len(rows)} rows, matched velo columns: {matched_vcols or 'none'}")
 
-    velo_dict    = {}
-    name_to_fgid = {}
+    velo_dict     = {}
+    name_to_fgid  = {}
+    mlbam_to_fgid = {}
+
+    def _extract_mlbam(row, parsed_fg):
+        """Extract xMLBAMID from a leaderboard row and add to mlbam_to_fgid."""
+        raw = row.get("xMLBAMID")
+        if raw:
+            try:
+                mid = int(float(raw))
+                if mid > 0:
+                    mlbam_to_fgid[mid] = parsed_fg
+            except (ValueError, TypeError):
+                pass
+
     for row in rows:
         name  = row.get("PlayerName", row.get("Name", "")).strip()
         fg_id = row.get("playerid")
@@ -794,6 +810,7 @@ def fetch_fg_season_velo(year: int) -> tuple:
             parsed = _parse_fg_id(fg_id)
             if parsed is not None:
                 name_to_fgid[norm_name(name)] = parsed
+                _extract_mlbam(row, parsed)
         velo = {}
         seen_codes: set = set()
         for col, pt_code in FG_VELO_COL_MAP.items():
@@ -812,7 +829,29 @@ def fetch_fg_season_velo(year: int) -> tuple:
                     velo_dict[int(float(fg_id))] = velo
                 except Exception:
                     pass
-    return velo_dict, name_to_fgid
+
+    # If the velocity leaderboard had no xMLBAMID column, also fetch the Stuff+
+    # leaderboard (type=8) which always includes xMLBAMID.  This gives us a direct
+    # MLBAM→FG map for every pitcher FanGraphs has ever tracked — including recent
+    # debutants whose Chadwick key_fangraphs field is still blank.
+    if not mlbam_to_fgid:
+        type8_rows = fg_api({**base, "type": "8"}, "Stuff+ leaderboard (type=8, for MLBAM→FG map)")
+        for row in (type8_rows or []):
+            fg_id = row.get("playerid")
+            if not fg_id:
+                continue
+            parsed = _parse_fg_id(fg_id)
+            if parsed is None:
+                continue
+            _extract_mlbam(row, parsed)
+            # Also supplement name_to_fgid with any names not already present
+            name = row.get("Name", row.get("PlayerName", "")).strip()
+            if name:
+                name_to_fgid.setdefault(norm_name(name), parsed)
+        if mlbam_to_fgid:
+            print(f"    Built {len(mlbam_to_fgid)} MLBAM→FG ID mappings from Stuff+ leaderboard")
+
+    return velo_dict, name_to_fgid, mlbam_to_fgid
 
 # ── MLB Stats API: stolen bases ───────────────────────────────────────────
 def fetch_mlb_sb(date_str: str) -> dict:
@@ -2006,8 +2045,21 @@ def main():
     # Fetch FanGraphs season leaderboard to build name→fg_id map.
     # This is the key fallback for newer players (e.g. 2023-2025 debuts) whose
     # FG IDs are missing from pybaseball's Chadwick register.
-    fg_velo_dict, fg_name_to_fgid = fetch_fg_season_velo(year)
-    print(f"  FanGraphs season leaderboard: {len(fg_name_to_fgid)} pitcher name→ID mappings")
+    fg_velo_dict, fg_name_to_fgid, fg_mlbam_to_fgid = fetch_fg_season_velo(year)
+    print(f"  FanGraphs season leaderboard: {len(fg_name_to_fgid)} name→ID, {len(fg_mlbam_to_fgid)} MLBAM→ID mappings")
+
+    # Patch p_info: fill in FG IDs for players whose Chadwick key_fangraphs is blank,
+    # using the xMLBAMID→playerid mapping extracted from the FanGraphs leaderboard.
+    # This promotes those pitchers from priority-3 (CF-blocked name search) to
+    # priority-1 (known FG ID), so they're processed before Cloudflare rate-limits kick in.
+    leaderboard_patched = 0
+    for mlbam, fg_id in fg_mlbam_to_fgid.items():
+        if mlbam in p_info and p_info[mlbam].get("fg_id") is None:
+            p_info[mlbam]["fg_id"] = fg_id
+            leaderboard_patched += 1
+    if leaderboard_patched:
+        print(f"  Patched {leaderboard_patched} missing FG ID(s) via leaderboard xMLBAMID column")
+
     game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, fg_name_to_fgid)
     attach_fg_data(all_pitchers, p_info, game_stuff, fg_velo_dict, savant_velo)
     attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
@@ -2024,46 +2076,4 @@ def main():
     hitters.sort(key=lambda x: (x["barrels"], x["hard_hits"]), reverse=True)
     all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
-    n_games = df["game_pk"].nunique()
-    html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                          ta_hitters, ta_starters, ta_relievers)
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-
-    print(f"\n✅  Dashboard saved → {out_path}")
-    starters = [p for p in all_pitchers if p.get("ip_float", 0) >= 3]
-    relievers = [p for p in all_pitchers if p.get("ip_float", 0) < 3]
-    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(starters)} starters · {len(relievers)} relievers\n")
-
-    _close_pw()   # shut down Chromium
-
-    # ── Firebase deploy (runs automatically if Firebase CLI is installed) ──
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    firebase_rc = os.path.join(script_dir, ".firebaserc")
-    if os.path.exists(firebase_rc):
-        print("[ Firebase ] Deploying to Firebase Hosting…")
-        try:
-            result = subprocess.run(
-                ["firebase", "deploy", "--only", "hosting", "--non-interactive"],
-                cwd=script_dir, capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode == 0:
-                # Extract hosting URL from output
-                for line in result.stdout.splitlines():
-                    if "web.app" in line or "firebaseapp.com" in line:
-                        print(f"  ✅ Live at: {line.strip()}")
-                        break
-                else:
-                    print("  ✅ Firebase deploy successful")
-            else:
-                print(f"  ⚠️  Firebase deploy failed: {result.stderr[:300]}")
-        except FileNotFoundError:
-            print("  Firebase CLI not found — skipping deploy")
-            print("  (Run 'npm install -g firebase-tools' to enable auto-deploy)")
-        except Exception as e:
-            print(f"  Firebase deploy error: {e}")
-
-
-if __name__ == "__main__":
-    main()
+    n_g
