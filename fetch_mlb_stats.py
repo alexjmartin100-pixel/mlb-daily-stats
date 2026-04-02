@@ -2651,7 +2651,7 @@ const fBB_h= v=>v>0?`${v}`:'0';
 const fSB  = v=>v>0?`${v}`:'0';
 const fHrd = v=>v>0?`${v}`:'0';
 const fBar = v=>v>0?`${v}`:'0';
-const fEV  = (v,b)=>{if(v==null||b===0)return D();const t=Math.max(0,Math.min(1,(v-_evMin)/(_evMax-_evMin||1)));const r=Math.round(50+205*t),g=Math.round(120-55*t),bl=Math.round(255-200*t);return `<span style="color:rgb(${r},${g},${bl});font-weight:600">${v}</span>`;};
+const fEV  = (v,b)=>{if(v==null||b===0)return D();const t=Math.max(0,Math.min(1,(v-_evMin)/(_evMax-_evMin||1)));let r,g,bl;if(t<0.5){const s=t*2;r=Math.round(50+(235-50)*s);g=Math.round(110+(235-110)*s);bl=Math.round(255+(235-255)*s);}else{const s=(t-0.5)*2;r=Math.round(235+(255-235)*s);g=Math.round(235+(60-235)*s);bl=Math.round(235+(50-235)*s);}return `<span style="color:rgb(${r},${g},${bl});font-weight:600">${v}</span>`;};
 const fIP  = (v,s)=>s;
 const fH_p = v=>v>0?`${v}`:'0';
 const fR   = v=>v>0?`${v}`:'0';
@@ -3068,10 +3068,21 @@ function mkRankColor(cfg_obj, col, val){
   const total = cfg.vals.length;
   if(total<=1) return null;
   const t = better/(total-1);
-  // Vivid red (best) → vivid blue (worst), bright on dark bg
-  const r=Math.round(255*(1-t)+50*t);
-  const g=Math.round(75*(1-t)+115*t);
-  const b=Math.round(55*(1-t)+255*t);
+  // Red → white (middle) → blue, like a diverging heatmap
+  let r,g,b;
+  if(t<0.5){
+    // best side: red(255,60,50) → white(235,235,235)
+    const s=t*2;
+    r=Math.round(255+(235-255)*s);
+    g=Math.round(60+(235-60)*s);
+    b=Math.round(50+(235-50)*s);
+  } else {
+    // worst side: white(235,235,235) → blue(50,110,255)
+    const s=(t-0.5)*2;
+    r=Math.round(235+(50-235)*s);
+    g=Math.round(235+(110-235)*s);
+    b=Math.round(235+(255-235)*s);
+  }
   return `rgb(${r},${g},${b})`;
 }
 
