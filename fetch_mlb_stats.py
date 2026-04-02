@@ -1251,6 +1251,220 @@ def attach_fg_data(pitchers: list, p_info: dict,
             else:
                 pt["velo_alert"] = False
 
+# ── Season Batting Leaderboard ─────────────────────────────────────────────
+def fetch_season_batting_leaderboard(year: int) -> list:
+    """
+    Fetch season batting leaderboard combining FanGraphs + Savant data.
+    Returns a list of player dicts sorted by HR desc, each with 'qualified' flag.
+    Stats: R, HR, RBI, SB, SBA, OBP, wOBA, xwOBA, Chase%, Whiff%, K%, SO, BB%,
+           Hard Hit%, Barrel%, Barrels, Sweet Spot%, Avg EV, Max EV, Bat Speed, Sprint Speed.
+    """
+    from io import StringIO
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    players = {}  # mlbam_id -> stat dict
+
+    # ── Step 1: FanGraphs batting stats (all batters ≥1 PA) ──────────────────
+    print("  [LB] FanGraphs batting stats…")
+    qual_pa = 50  # fallback threshold
+    try:
+        fg = pybaseball.batting_stats(year, qual=1)
+        # Build FG playerid → MLBAM via Chadwick register
+        fg_to_mlbam = {}
+        try:
+            chad = pybaseball.chadwick_register()
+            for _, cr in chad.iterrows():
+                fgk = cr.get("key_fangraphs")
+                mk  = cr.get("key_mlbam")
+                if pd.notna(fgk) and pd.notna(mk):
+                    try:
+                        fg_to_mlbam[int(fgk)] = int(mk)
+                    except (ValueError, TypeError):
+                        pass
+        except Exception as e2:
+            print(f"  [LB] Chadwick register failed: {e2}")
+
+        max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
+        qual_pa = max(5, round(max_g * 3.1))
+
+        def _pct(v):
+            try:
+                f = float(str(v).replace("%", ""))
+                return round(f * 100, 1) if f < 1.5 else round(f, 1)
+            except (ValueError, TypeError):
+                return None
+
+        def _int(v):
+            try:
+                return int(float(v))
+            except (ValueError, TypeError):
+                return 0
+
+        def _flt(v, p=3):
+            try:
+                return round(float(v), p)
+            except (ValueError, TypeError):
+                return None
+
+        for _, row in fg.iterrows():
+            try:
+                fg_id = int(row.get("playerid") or row.get("IDfg") or 0)
+            except (ValueError, TypeError):
+                continue
+            if fg_id == 0:
+                continue
+            mlbam = fg_to_mlbam.get(fg_id)
+            if mlbam is None:
+                continue
+            pa  = _int(row.get("PA", 0))
+            sb  = _int(row.get("SB", 0))
+            cs  = _int(row.get("CS", 0))
+            players[mlbam] = {
+                "id":      mlbam,
+                "name":    str(row.get("Name", "")).strip(),
+                "team":    str(row.get("Team", "")).strip(),
+                "pa":      pa,
+                "qualified": pa >= qual_pa,
+                "r":       _int(row.get("R",   0)),
+                "hr":      _int(row.get("HR",  0)),
+                "rbi":     _int(row.get("RBI", 0)),
+                "sb":      sb,
+                "sba":     sb + cs,
+                "obp":     _flt(row.get("OBP"),  3),
+                "woba":    _flt(row.get("wOBA"), 3),
+                "k_pct":   _pct(row.get("K%")),
+                "bb_pct":  _pct(row.get("BB%")),
+                "so":      _int(row.get("SO", 0)),
+                "xwoba": None, "chase_pct": None, "whiff_pct": None,
+                "hard_hit_pct": None, "barrel_pct": None, "barrels": None,
+                "sweet_spot_pct": None, "avg_ev": None, "max_ev": None,
+                "bat_speed": None, "sprint_speed": None,
+            }
+        print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
+    except Exception as e:
+        print(f"  [LB] FanGraphs batting stats failed: {e}")
+
+    # ── Step 2: Savant EV / Barrel stats ─────────────────────────────────────
+    print("  [LB] Savant EV/Barrel…")
+    try:
+        ev = pybaseball.statcast_batter_exitvelo_barrels(year, minBBE=1)
+        for _, row in ev.iterrows():
+            try:
+                mid = int(row["player_id"])
+            except (ValueError, TypeError):
+                continue
+            if mid not in players:
+                continue
+            p = players[mid]
+            def _sv(c, df=ev):
+                try:
+                    return round(float(row[c]), 1) if c in df.columns and pd.notna(row[c]) else None
+                except (ValueError, TypeError):
+                    return None
+            p["avg_ev"]         = _sv("avg_hit_speed")
+            p["max_ev"]         = _sv("max_hit_speed")
+            p["sweet_spot_pct"] = _sv("anglesweetspotpercent")
+            p["hard_hit_pct"]   = _sv("ev95percent")
+            p["barrel_pct"]     = _sv("brl_percent")
+            try:
+                p["barrels"] = int(row["barrels"]) if "barrels" in ev.columns and pd.notna(row["barrels"]) else None
+            except (ValueError, TypeError):
+                p["barrels"] = None
+        print(f"  [LB] ✓ EV/Barrel {len(ev)} rows")
+    except Exception as e:
+        print(f"  [LB] Savant EV/Barrel failed: {e}")
+
+    # ── Step 3: Savant xwOBA / Chase% / Whiff% ───────────────────────────────
+    print("  [LB] Savant xwOBA/Chase/Whiff…")
+    try:
+        r3 = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/custom",
+            params={"year": year, "type": "batter", "filter": "",
+                    "sort": "4", "sortDir": "desc", "min": "1",
+                    "selections": "xwoba,oz_swing_percent,whiff_percent",
+                    "csv": "true"},
+            headers=hdrs, timeout=30)
+        r3.raise_for_status()
+        sv3 = pd.read_csv(StringIO(r3.text))
+        mid_col3 = next((c for c in ["player_id", "batter"] if c in sv3.columns), None)
+        for _, row in sv3.iterrows():
+            if mid_col3 is None:
+                break
+            try:
+                mid = int(row[mid_col3])
+            except (ValueError, TypeError):
+                continue
+            if mid not in players:
+                continue
+            p = players[mid]
+            try:
+                if "xwoba" in sv3.columns and pd.notna(row.get("xwoba")):
+                    p["xwoba"] = round(float(row["xwoba"]), 3)
+            except (ValueError, TypeError):
+                pass
+            for sv_col, p_key in [("oz_swing_percent", "chase_pct"), ("whiff_percent", "whiff_pct")]:
+                try:
+                    if sv_col in sv3.columns and pd.notna(row.get(sv_col)):
+                        p[p_key] = round(float(row[sv_col]), 1)
+                except (ValueError, TypeError):
+                    pass
+        print(f"  [LB] ✓ xwOBA/Chase/Whiff {len(sv3)} rows")
+    except Exception as e:
+        print(f"  [LB] Savant xwOBA/Chase/Whiff failed: {e}")
+
+    # ── Step 4: Savant bat speed ──────────────────────────────────────────────
+    print("  [LB] Savant bat speed…")
+    try:
+        r4 = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/bat-tracking",
+            params={"year": year, "type": "batter", "min": "1", "csv": "true"},
+            headers=hdrs, timeout=30)
+        r4.raise_for_status()
+        bt = pd.read_csv(StringIO(r4.text))
+        mid_col4 = next((c for c in ["player_id", "batter_id"] if c in bt.columns), None)
+        bs_col   = next((c for c in ["bat_speed", "avg_bat_speed"] if c in bt.columns), None)
+        if mid_col4 and bs_col:
+            for _, row in bt.iterrows():
+                try:
+                    mid = int(row[mid_col4])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in players:
+                    continue
+                v = row.get(bs_col)
+                try:
+                    players[mid]["bat_speed"] = round(float(v), 1) if pd.notna(v) else None
+                except (ValueError, TypeError):
+                    pass
+        print(f"  [LB] ✓ bat speed {len(bt)} rows")
+    except Exception as e:
+        print(f"  [LB] Savant bat speed failed: {e}")
+
+    # ── Step 5: Sprint speed ──────────────────────────────────────────────────
+    print("  [LB] Savant sprint speed…")
+    try:
+        ss = pybaseball.statcast_sprint_speed(year)
+        for _, row in ss.iterrows():
+            try:
+                mid = int(row["player_id"])
+            except (ValueError, TypeError):
+                continue
+            if mid not in players:
+                continue
+            v = row.get("sprint_speed")
+            try:
+                players[mid]["sprint_speed"] = round(float(v), 1) if pd.notna(v) else None
+            except (ValueError, TypeError):
+                pass
+        print(f"  [LB] ✓ sprint speed {len(ss)} rows")
+    except Exception as e:
+        print(f"  [LB] Savant sprint speed failed: {e}")
+
+    out = sorted(players.values(), key=lambda x: (x.get("hr") or 0), reverse=True)
+    q = sum(1 for p in out if p["qualified"])
+    print(f"  [LB] Done: {len(out)} total players, {q} qualified (≥{qual_pa} PA)")
+    return out
+
+
 # ── HTML Template ──────────────────────────────────────────────────────────
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -1404,6 +1618,15 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .tab-btn.ta-btn{color:#c9a227}
 .tab-btn.ta-btn.active{color:#f0c040;border-bottom-color:#f0c040}
 .tab-btn.ta-btn.active .tab-count{background:#b8860b}
+.tab-btn.lb-btn{color:#5dade2}
+.tab-btn.lb-btn.active{color:#85c1e9;border-bottom-color:#5dade2}
+.tab-btn.lb-btn.active .tab-count{background:#1a5276}
+/* Leaderboard */
+#lb-panel .note{margin-bottom:9px}
+#lb-panel .controls{margin-bottom:11px}
+#lb-panel .qual-toggle{display:flex;align-items:center;gap:7px;font-size:.77rem;color:var(--muted);cursor:pointer;user-select:none;}
+#lb-panel .qual-toggle input{cursor:pointer;accent-color:var(--accent)}
+.lb-th-inv{color:#85c1e9 !important}
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
@@ -1437,6 +1660,9 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </button>
   <button class="tab-btn ta-btn" onclick="showTab('teamalex',this)">
     👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
+  </button>
+  <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
+    📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
   </button>
 </div>
 
@@ -1639,6 +1865,56 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
   <div class="note" style="margin-top:14px">
     Only roster members who played yesterday are shown.
+  </div>
+</div>
+
+<!-- ══ SEASON BATTING LEADERBOARD ══ -->
+<div id="leaderboard-panel" class="tab-panel">
+  <div class="note">
+    ⓘ &nbsp;Season batting leaderboard — FanGraphs + Baseball Savant.
+    <strong>Default view:</strong> qualified hitters only (≥3.1 PA/team game).
+    Use search to find any player.
+    Cell colors = league rank among qualified hitters:
+    <span style="color:#f0c040;font-weight:700">Gold</span> = #1 &nbsp;·&nbsp;
+    <span style="color:#c0392b;font-weight:700">Dark red</span> = top &nbsp;·&nbsp;
+    <span style="color:#1a3a8a;font-weight:700">Dark blue</span> = bottom.
+    <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
+  </div>
+  <div class="controls">
+    <input id="lb-search" type="text" placeholder="Search any player or team…" oninput="filterLB()">
+    <label class="qual-toggle" id="lb-qual-lbl">
+      <input type="checkbox" id="lb-qual-chk" checked onchange="filterLB()"> Qualified only
+    </label>
+    <span class="row-count" id="lb-cnt"></span>
+    <span class="sort-hint">Click headers to sort</span>
+  </div>
+  <div class="table-wrap">
+    <table id="lb-tbl">
+      <thead><tr>
+        <th class="sortable"   data-k="name"          onclick="srtLB(this,'name')">Player</th>
+        <th class="sortable r" data-k="r"             onclick="srtLB(this,'r')">R</th>
+        <th class="sortable r" data-k="hr"            onclick="srtLB(this,'hr')">HR</th>
+        <th class="sortable r" data-k="rbi"           onclick="srtLB(this,'rbi')">RBI</th>
+        <th class="sortable r" data-k="sb"            onclick="srtLB(this,'sb')">SB</th>
+        <th class="sortable r" data-k="obp"           onclick="srtLB(this,'obp')">OBP</th>
+        <th class="sortable r" data-k="woba"          onclick="srtLB(this,'woba')">wOBA</th>
+        <th class="sortable r" data-k="xwoba"         onclick="srtLB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtLB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtLB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtLB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-k="so"           onclick="srtLB(this,'so')">SO</th>
+        <th class="sortable r" data-k="bb_pct"        onclick="srtLB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-k="hard_hit_pct"  onclick="srtLB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-k="barrel_pct"    onclick="srtLB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r" data-k="barrels"       onclick="srtLB(this,'barrels')">Barrels</th>
+        <th class="sortable r" data-k="sweet_spot_pct" onclick="srtLB(this,'sweet_spot_pct')">Swt Spot%</th>
+        <th class="sortable r" data-k="avg_ev"        onclick="srtLB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-k="max_ev"        onclick="srtLB(this,'max_ev')">Max EV</th>
+        <th class="sortable r" data-k="bat_speed"     onclick="srtLB(this,'bat_speed')">Bat Spd</th>
+        <th class="sortable r" data-k="sprint_speed"  onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
+      </tr></thead>
+      <tbody id="lb-body"></tbody>
+    </table>
   </div>
 </div>
 
@@ -1951,13 +2227,146 @@ taHD.sort((a,b)=>cmp(a,b,'barrels',-1));
 taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
 renderTAH();renderTASP();renderTARP();
+
+// ── Season Batting Leaderboard ─────────────────────────────────────────────
+const LB_ALL  = __LB_JSON__;
+const LB_QUAL = LB_ALL.filter(p=>p.qualified);
+
+document.getElementById('lb-tc').textContent = LB_QUAL.length;
+
+// Per-column config: inv=true means lower is better
+const LB_COL_CFG = {
+  r:             {inv:false}, hr:            {inv:false}, rbi:          {inv:false},
+  sb:            {inv:false}, obp:           {inv:false}, woba:         {inv:false},
+  xwoba:         {inv:false}, chase_pct:     {inv:true},  whiff_pct:    {inv:true},
+  k_pct:         {inv:true},  so:            {inv:true},  bb_pct:       {inv:false},
+  hard_hit_pct:  {inv:false}, barrel_pct:    {inv:false}, barrels:      {inv:false},
+  sweet_spot_pct:{inv:false}, avg_ev:        {inv:false}, max_ev:       {inv:false},
+  bat_speed:     {inv:false}, sprint_speed:  {inv:false},
+};
+
+// Build sorted value lists from qualified hitters (the rank reference population)
+Object.keys(LB_COL_CFG).forEach(col=>{
+  const cfg = LB_COL_CFG[col];
+  const vals = LB_QUAL.map(p=>p[col]).filter(v=>v!==null&&v!==undefined&&!isNaN(v));
+  cfg.sorted = [...vals].sort((a,b)=>cfg.inv?a-b:b-a);  // index 0 = best
+  cfg.vals   = vals;
+  cfg.best   = cfg.sorted.length ? cfg.sorted[0] : null;
+});
+
+function lbRankColor(col, val){
+  if(val===null||val===undefined) return null;
+  const cfg = LB_COL_CFG[col];
+  if(!cfg||!cfg.sorted.length) return null;
+  if(val===cfg.best) return '#f0c040';  // gold = league leader
+  // Count how many qualified players are strictly better
+  const better = cfg.inv
+    ? cfg.vals.filter(v=>v<val-0.00001).length
+    : cfg.vals.filter(v=>v>val+0.00001).length;
+  const total = cfg.vals.length;
+  if(total<=1) return null;
+  const t = better/(total-1);  // t=0 → near top, t=1 → near bottom
+  // Dark red (top) → dark blue (bottom)
+  const r=Math.round(150*(1-t)+25*t);
+  const g=Math.round(25+40*Math.sin(Math.PI*(1-t)));
+  const b=Math.round(20*(1-t)+165*t);
+  return `rgb(${r},${g},${b})`;
+}
+
+const D2=()=>'<span class="c-dim">—</span>';
+
+function lbCell(col, val, dispVal){
+  if(val===null||val===undefined) return D2();
+  const color=lbRankColor(col,val);
+  const fw=color?';font-weight:600':'';
+  const style=color?` style="color:${color}${fw}"`:'';
+  return `<span${style}>${dispVal!==undefined?dispVal:val}</span>`;
+}
+
+function fmtPct(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1)+'%');}
+function fmtEV(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1));}
+function fmtSpd(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1));}
+function fmtInt(col,v){return v==null?D2():lbCell(col,v,v);}
+function fmtRate(col,v){
+  // Format OBP/wOBA/xwOBA: display as ".350" style with color
+  if(v==null) return D2();
+  const s=v.toFixed(3).replace('0.','.');  // ".350" or "1.000"
+  const color=lbRankColor(col,v);
+  const style=color?` style="color:${color};font-weight:600"`:'';
+  return `<span${style}>${s}</span>`;
+}
+function fmtSB(p){
+  // SB coloring based on SB count; display as "SB/SBA"
+  const color=lbRankColor('sb',p.sb);
+  const style=color?` style="color:${color};font-weight:600"`:'';
+  if(p.sba>0) return `<span${style}>${p.sb}</span><span class="c-dim" style="font-size:.68rem">/${p.sba}</span>`;
+  return `<span${style}>${p.sb}</span>`;
+}
+
+let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1;
+
+function renderLB(){
+  const tb=document.getElementById('lb-body');
+  const ct=document.getElementById('lb-cnt');
+  if(!lbD.length){
+    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
+    ct.textContent='';return;
+  }
+  ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
+  tb.innerHTML=lbD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${fmtInt('r',   p.r)}</td>
+    <td class="r">${fmtInt('hr',  p.hr)}</td>
+    <td class="r">${fmtInt('rbi', p.rbi)}</td>
+    <td class="r">${fmtSB(p)}</td>
+    <td class="r">${fmtRate('obp',   p.obp)}</td>
+    <td class="r">${fmtRate('woba',  p.woba)}</td>
+    <td class="r">${fmtRate('xwoba', p.xwoba)}</td>
+    <td class="r">${fmtPct('chase_pct',    p.chase_pct)}</td>
+    <td class="r">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
+    <td class="r">${fmtPct('k_pct',        p.k_pct)}</td>
+    <td class="r">${fmtInt('so',           p.so)}</td>
+    <td class="r">${fmtPct('bb_pct',       p.bb_pct)}</td>
+    <td class="r">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
+    <td class="r">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
+    <td class="r">${fmtInt('barrels',      p.barrels)}</td>
+    <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+    <td class="r">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
+    <td class="r">${fmtEV( 'max_ev',       p.max_ev)}</td>
+    <td class="r">${fmtSpd('bat_speed',    p.bat_speed)}</td>
+    <td class="r">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+  </tr>`).join('');
+}
+
+function filterLB(){
+  const q   = document.getElementById('lb-search').value.toLowerCase().trim();
+  const qual = document.getElementById('lb-qual-chk').checked;
+  // Hide "Qualified only" checkbox when search is active (show all when searching)
+  document.getElementById('lb-qual-lbl').style.opacity = q ? '0.4' : '1';
+  let base = q ? LB_ALL : (qual ? LB_QUAL : LB_ALL);
+  if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+  lbD=[...base];
+  if(lbSC) lbD.sort((a,b)=>cmp(a,b,lbSC,lbSD));
+  renderLB();
+}
+
+function srtLB(th,col){
+  if(lbSC===col)lbSD*=-1;else{lbSC=col;lbSD=-1;}
+  clrSort('lb-tbl');th.classList.add(lbSD===1?'sort-asc':'sort-desc');
+  lbD.sort((a,b)=>cmp(a,b,col,lbSD));renderLB();
+}
+
+lbD.sort((a,b)=>cmp(a,b,'hr',-1));
+document.querySelector('#lb-tbl th[data-k="hr"]')?.classList.add('sort-desc');
+renderLB();
 </script>
 </body>
 </html>
 """
 
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
-                ta_hitters, ta_starters, ta_relievers):
+                ta_hitters, ta_starters, ta_relievers,
+                lb_data=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -1978,6 +2387,7 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
         .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
         .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
+        .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
     )
 
 
@@ -2073,13 +2483,16 @@ def main():
     ta_relievers = [p for p in ta_all_pitchers if p.get("ip_float", 0) < 3]
     print(f"  Team Alex: {len(ta_hitters)} hitter(s), {len(ta_starters)} starter(s), {len(ta_relievers)} reliever(s) played yesterday")
 
+    print("\n[ 5c/6 ] Season batting leaderboard")
+    lb_data = fetch_season_batting_leaderboard(year)
+
     print("\n[ 6/6 ] Rendering HTML")
     hitters.sort(key=lambda x: (x["barrels"], x["hard_hits"]), reverse=True)
     all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
     n_games = df["game_pk"].nunique()
     html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                          ta_hitters, ta_starters, ta_relievers)
+                          ta_hitters, ta_starters, ta_relievers, lb_data)
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(html)
