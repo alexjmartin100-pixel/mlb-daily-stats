@@ -1992,8 +1992,8 @@ tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
 tbody tr:last-child{border-bottom:none}
 tbody tr:hover{background:rgba(0,0,0,.04)}
 tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
-tbody td{padding:8px 9px;vertical-align:middle}
-tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+tbody td{padding:8px 9px;vertical-align:middle;color:#e8f2ff}
+tbody td.r{text-align:right;font-variant-numeric:tabular-nums;color:#e8f2ff;font-weight:500}
 td.nm{font-weight:600;white-space:nowrap;color:var(--text);font-size:.83rem;
   position:sticky;left:0;z-index:2;background:var(--bg);}
 tbody tr:nth-child(even) td.nm{background:color-mix(in srgb,var(--card) 40%,var(--bg));}
