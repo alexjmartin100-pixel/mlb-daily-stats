@@ -780,14 +780,6 @@ def fetch_fg_season_velo(year: int) -> tuple:
         if rows and any(k in rows[0] for k in FG_VELO_COL_MAP):
             break
         rows = []
-    if not rows:
-        print("    Could not retrieve season velocity.")
-        return {}, {}, {}
-
-    sample_v = rows[0]
-    matched_vcols = [c for c in sample_v if c in FG_VELO_COL_MAP]
-    print(f"    Season velo: {len(rows)} rows, matched velo columns: {matched_vcols or 'none'}")
-
     velo_dict     = {}
     name_to_fgid  = {}
     mlbam_to_fgid = {}
@@ -802,6 +794,15 @@ def fetch_fg_season_velo(year: int) -> tuple:
                     mlbam_to_fgid[mid] = parsed_fg
             except (ValueError, TypeError):
                 pass
+
+    if not rows:
+        # Velocity leaderboard returned no usable rows — skip velo but still
+        # fall through to the type=8 fetch below to build the MLBAM→FG ID map.
+        print("    Could not retrieve season velocity — will still build MLBAM→FG map from Stuff+ leaderboard.")
+    else:
+        sample_v = rows[0]
+        matched_vcols = [c for c in sample_v if c in FG_VELO_COL_MAP]
+        print(f"    Season velo: {len(rows)} rows, matched velo columns: {matched_vcols or 'none'}")
 
     for row in rows:
         name  = row.get("PlayerName", row.get("Name", "")).strip()
