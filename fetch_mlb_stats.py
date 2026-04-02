@@ -1634,6 +1634,27 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
             except (ValueError, TypeError):
                 hld = 0
 
+            # FanGraphs also carries O-Swing%, SwStr%, Swing%, xERA,
+            # Barrel%, HardHit%, EV, FBv — use as baseline; Savant overwrites later
+            fg_chase   = _pct(row.get("O-Swing%"))
+            fg_xera    = _flt(row.get("xERA"), 3)
+            fg_barrel  = _pct(row.get("Barrel%"))
+            fg_hh      = _pct(row.get("HardHit%"))
+            fg_ev      = _flt(row.get("EV"), 1)
+            fg_fbv     = _flt(row.get("FBv"), 1)
+            # Whiff% (per swing) = SwStr% / Swing% — different from SwStr% alone
+            fg_whiff   = None
+            try:
+                swstr = float(str(row.get("SwStr%", "")).replace("%",""))
+                swing = float(str(row.get("Swing%", "")).replace("%",""))
+                if swing > 0:
+                    # Convert both to fractions if they look like percents (>1.5)
+                    if swstr > 1.5: swstr /= 100
+                    if swing > 1.5: swing /= 100
+                    fg_whiff = round(swstr / swing * 100, 1)
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
             rec = {
                 "id":          mlbam,
                 "name":        str(row.get("Name", "")).strip(),
@@ -1654,11 +1675,16 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "gb_pct":      _pct(row.get("GB%")),
                 "is_sp":       is_sp,
                 "qualified":   ip_val >= (qual_sp_ip if is_sp else qual_rp_ip),
-                # Savant-filled later
-                "xera": None, "xwoba": None, "woba": None,
-                "chase_pct": None, "whiff_pct": None,
-                "barrel_pct": None, "hard_hit_pct": None,
-                "avg_ev": None, "fb_velo": None,
+                # FanGraphs baseline (Savant will overwrite where available)
+                "xera":        fg_xera,
+                "chase_pct":   fg_chase,
+                "whiff_pct":   fg_whiff,
+                "barrel_pct":  fg_barrel,
+                "hard_hit_pct":fg_hh,
+                "avg_ev":      fg_ev,
+                "fb_velo":     fg_fbv,
+                # Savant-only (no FG equivalent)
+                "xwoba": None, "woba": None,
             }
             if is_sp:
                 starters_d[mlbam] = rec
@@ -1687,7 +1713,8 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
             headers=hdrs, timeout=30)
         r2.raise_for_status()
         sv2 = pd.read_csv(StringIO(r2.text))
-        mid_col = next((c for c in ["player_id", "pitcher", "mlbam_id"] if c in sv2.columns), None)
+        mid_col = next((c for c in ["player_id", "pitcher", "mlbam_id", "id"] if c in sv2.columns), None)
+        print(f"  [PLB] Savant pitcher CSV: {len(sv2)} rows, id_col={mid_col}, cols={list(sv2.columns[:12])}")
         if mid_col:
             col_map = {
                 "xera":              ("xera",         3),
