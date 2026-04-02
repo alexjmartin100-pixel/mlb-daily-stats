@@ -1427,7 +1427,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             r4 = requests.get(bs_url, params=bs_params, headers=hdrs, timeout=30)
             r4.raise_for_status()
             bt = pd.read_csv(StringIO(r4.text))
-            mid_col4 = next((c for c in ["player_id","batter_id","mlbam_id","batter"] if c in bt.columns), None)
+            mid_col4 = next((c for c in ["player_id","batter_id","mlbam_id","batter","id"] if c in bt.columns), None)
             bs_col   = next((c for c in ["bat_speed","avg_bat_speed","mean_bat_speed"] if c in bt.columns), None)
             if not mid_col4 or not bs_col:
                 print(f"  [LB] bat speed: cols not found in {bs_url.split('/')[-1]} — got: {list(bt.columns[:10])}")
@@ -1721,19 +1721,64 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     except Exception as e:
         print(f"  [PLB] Savant pitcher stats failed: {e}")
 
+    # ── Step 2b: Savant pitcher exit velo barrels (Barrel%, Hard Hit%, Avg EV) ─
+    # The custom CSV (Step 2) often lacks these cols for pitchers; use dedicated endpoint
+    print("  [PLB] Savant pitcher exit velo / barrels…")
+    try:
+        pev = pybaseball.statcast_pitcher_exitvelo_barrels(year, minBBE=1)
+        mid_col_ev = next((c for c in ["pitcher","player_id","mlbam_id","id"] if c in pev.columns), None)
+        if mid_col_ev:
+            ev_col_map = {
+                "avg_hit_speed": ("avg_ev",       1),
+                "ev95percent":   ("hard_hit_pct", 1),
+                "brl_percent":   ("barrel_pct",   1),
+            }
+            matched = 0
+            for _, row in pev.iterrows():
+                try:
+                    mid = int(row[mid_col_ev])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in all_pitchers_d:
+                    continue
+                p = all_pitchers_d[mid]
+                for ev_col, (p_key, prec) in ev_col_map.items():
+                    if ev_col in pev.columns and pd.notna(row.get(ev_col)):
+                        try:
+                            p[p_key] = round(float(row[ev_col]), prec)
+                        except (ValueError, TypeError):
+                            pass
+                matched += 1
+            print(f"  [PLB] ✓ Pitcher exit velo barrels: {len(pev)} rows, {matched} matched")
+        else:
+            print(f"  [PLB] Pitcher exit velo: no ID col — got {list(pev.columns[:8])}")
+    except Exception as e:
+        print(f"  [PLB] Pitcher exit velo barrels failed: {e}")
+
     # ── Step 3: Savant pitch arsenals (avg FB velo) ───────────────────────────
     print("  [PLB] Savant FB velo…")
-    try:
-        r3 = requests.get(
-            "https://baseballsavant.mlb.com/leaderboard/pitch-arsenals",
-            params={"year": year, "min": "1", "type": "n_ff,n_si,n_fc",
-                    "hand": "", "csv": "true"},
-            headers=hdrs, timeout=30)
-        r3.raise_for_status()
-        sv3 = pd.read_csv(StringIO(r3.text))
-        mid_col = next((c for c in ["player_id", "pitcher"] if c in sv3.columns), None)
-        matched = 0
-        if mid_col:
+    fb_velo_ok = False
+    # Attempt 1: pitch-arsenals endpoint (individual pitch type, includes avg speed)
+    for pa_type in ["n_ff", "n_si", "n_fc"]:
+        try:
+            r3 = requests.get(
+                "https://baseballsavant.mlb.com/leaderboard/pitch-arsenals",
+                params={"year": year, "min": "1", "type": pa_type,
+                        "hand": "", "csv": "true"},
+                headers=hdrs, timeout=30)
+            r3.raise_for_status()
+            sv3 = pd.read_csv(StringIO(r3.text))
+            mid_col = next((c for c in ["player_id", "pitcher", "id"] if c in sv3.columns), None)
+            if not mid_col:
+                print(f"  [PLB] pitch-arsenals({pa_type}): no ID col — got {list(sv3.columns[:10])}")
+                continue
+            # Velocity column candidates: may vary by Savant version
+            velo_cols = [c for c in sv3.columns if any(kw in c.lower() for kw in
+                         ["avg_speed","velocity","mph","speed"])]
+            if not velo_cols:
+                print(f"  [PLB] pitch-arsenals({pa_type}): no velo cols — got {list(sv3.columns[:15])}")
+                continue
+            matched = 0
             for _, row in sv3.iterrows():
                 try:
                     mid = int(row[mid_col])
@@ -1741,23 +1786,64 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                     continue
                 if mid not in all_pitchers_d:
                     continue
-                # Take highest velocity fastball type (FF > SI > FC)
-                velo = None
-                for vc in ["avg_speed_ff", "velocity_ff", "avg_speed_si", "velocity_si",
-                           "avg_speed_fc", "velocity_fc"]:
-                    if vc in sv3.columns and pd.notna(row.get(vc)):
+                if all_pitchers_d[mid].get("fb_velo") is not None:
+                    continue  # already have FF velo from earlier pitch type
+                for vc in velo_cols:
+                    if pd.notna(row.get(vc)):
                         try:
-                            v = float(row[vc])
-                            if velo is None or v > velo:
-                                velo = v
+                            all_pitchers_d[mid]["fb_velo"] = round(float(row[vc]), 1)
+                            matched += 1
+                            break
                         except (ValueError, TypeError):
                             pass
-                if velo is not None:
-                    all_pitchers_d[mid]["fb_velo"] = round(velo, 1)
-                    matched += 1
-        print(f"  [PLB] ✓ FB velo {len(sv3)} rows, {matched} matched")
-    except Exception as e:
-        print(f"  [PLB] Savant FB velo failed: {e}")
+            print(f"  [PLB] pitch-arsenals({pa_type}): {len(sv3)} rows, {matched} matched, velo_cols={velo_cols}")
+            if matched > 0:
+                fb_velo_ok = True
+        except Exception as e:
+            print(f"  [PLB] pitch-arsenals({pa_type}) failed: {e}")
+    # Attempt 2: Savant custom leaderboard with fastball speed selections
+    if not fb_velo_ok:
+        try:
+            r3b = requests.get(
+                "https://baseballsavant.mlb.com/leaderboard/custom",
+                params={"year": year, "type": "pitcher", "filter": "",
+                        "sort": "4", "sortDir": "desc", "min": "1",
+                        "selections": "n_ff_formatted,n_si_formatted,ff_avg_speed,si_avg_speed,fc_avg_speed",
+                        "csv": "true"},
+                headers=hdrs, timeout=30)
+            r3b.raise_for_status()
+            sv3b = pd.read_csv(StringIO(r3b.text))
+            mid_col = next((c for c in ["player_id","pitcher","id"] if c in sv3b.columns), None)
+            speed_cols = [c for c in sv3b.columns if "avg_speed" in c or "mph" in c]
+            print(f"  [PLB] custom-fb-velo: cols={list(sv3b.columns[:15])}, speed_cols={speed_cols}")
+            if mid_col and speed_cols:
+                matched = 0
+                for _, row in sv3b.iterrows():
+                    try:
+                        mid = int(row[mid_col])
+                    except (ValueError, TypeError):
+                        continue
+                    if mid not in all_pitchers_d:
+                        continue
+                    velo = None
+                    for sc in speed_cols:
+                        if pd.notna(row.get(sc)):
+                            try:
+                                v = float(row[sc])
+                                if velo is None or v > velo:
+                                    velo = v
+                            except (ValueError, TypeError):
+                                pass
+                    if velo is not None:
+                        all_pitchers_d[mid]["fb_velo"] = round(velo, 1)
+                        matched += 1
+                print(f"  [PLB] custom-fb-velo: {len(sv3b)} rows, {matched} matched")
+                if matched > 0:
+                    fb_velo_ok = True
+        except Exception as e:
+            print(f"  [PLB] custom-fb-velo failed: {e}")
+    if not fb_velo_ok:
+        print("  [PLB] FB velo: all attempts failed")
 
     sp_out = sorted(starters_d.values(),  key=lambda x: (x.get("ip_f") or 0), reverse=True)
     rp_out = sorted(relievers_d.values(), key=lambda x: (-(x.get("era") or 99), x.get("ip_f") or 0), reverse=False)
@@ -1816,8 +1902,8 @@ if ('serviceWorker' in navigator) {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#ffffff;--card:#f2f5f9;--card2:#e6ecf3;--border:#c8d4e0;
-  --text:#1a2a3a;--muted:#5a7080;--accent:#e31837;--gold:#b8860b;
+  --bg:#0f1923;--card:#182130;--card2:#1e2c3d;--border:#243447;
+  --text:#dce8f0;--muted:#6b8599;--accent:#e31837;--gold:#f0c040;
   --green:#1a8040;--orange:#b85a00;--blue:#1a6699;--red:#c0392b;
   --radius:8px;
 }
@@ -1916,8 +2002,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   border-bottom:1px solid var(--border);margin-bottom:10px;
   display:flex;align-items:center;gap:7px}
 .tab-btn.ta-btn{color:#a07800}
-.tab-btn.ta-btn.active{color:#b8860b;border-bottom-color:#b8860b}
-.tab-btn.ta-btn.active .tab-count{background:#b8860b;color:#fff}
+.tab-btn.ta-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+.tab-btn.ta-btn.active .tab-count{background:var(--gold);color:#0f1923}
 .tab-btn.lb-btn{color:#1a6699}
 .tab-btn.lb-btn.active{color:#155080;border-bottom-color:#1a6699}
 .tab-btn.lb-btn.active .tab-count{background:#1a6699;color:#fff}
@@ -2082,7 +2168,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px">
     <span style="font-size:1.6rem">👑</span>
     <div>
-      <div style="font-size:1.05rem;font-weight:800;color:#b8860b">Team Alex</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
       <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
   </div>
@@ -2145,7 +2231,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 
   <div class="ta-section-hdr">⚾ Starting Pitchers <span class="tab-count" id="ta-sp-tc">—</span></div>
-  <div class="table-wrap" style="margin-bottom:24px">
+  <div class="toggle-group" style="margin-bottom:10px">
+    <button class="tgl-btn active" id="ta-sp-yday-btn" onclick="showTASPView('yday',this)">Yesterday</button>
+    <button class="tgl-btn" id="ta-sp-season-btn" onclick="showTASPView('season',this)">Season</button>
+  </div>
+  <!-- Yesterday game stats -->
+  <div id="ta-sp-yday-wrap" class="table-wrap" style="margin-bottom:24px">
     <table id="ta-sp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtTA(this,'sp','name')">Pitcher</th>
@@ -2168,9 +2259,43 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <tbody id="ta-sp-body"></tbody>
     </table>
   </div>
+  <!-- Season stats -->
+  <div id="ta-sp-season-wrap" class="table-wrap" style="display:none;margin-bottom:24px">
+    <table id="ta-sp-lb-tbl">
+      <thead><tr>
+        <th class="sortable"   data-k="name"         onclick="srtTASPLB(this,'name')">Pitcher</th>
+        <th class="sortable r" data-k="ip_f"         onclick="srtTASPLB(this,'ip_f')">IP</th>
+        <th class="sortable r" data-k="w"            onclick="srtTASPLB(this,'w')">W</th>
+        <th class="sortable r lb-th-inv" data-k="era"  onclick="srtTASPLB(this,'era')">ERA</th>
+        <th class="sortable r lb-th-inv" data-k="whip" onclick="srtTASPLB(this,'whip')">WHIP</th>
+        <th class="sortable r lb-th-inv" data-k="xera" onclick="srtTASPLB(this,'xera')">xERA</th>
+        <th class="sortable r lb-th-inv" data-k="siera" onclick="srtTASPLB(this,'siera')">SIERA</th>
+        <th class="sortable r" data-k="stuff_plus"   onclick="srtTASPLB(this,'stuff_plus')">Stf+</th>
+        <th class="sortable r" data-k="loc_plus"     onclick="srtTASPLB(this,'loc_plus')">Loc+</th>
+        <th class="sortable r" data-k="k"            onclick="srtTASPLB(this,'k')">K</th>
+        <th class="sortable r" data-k="k_pct"        onclick="srtTASPLB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtTASPLB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-k="chase_pct"    onclick="srtTASPLB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r" data-k="whiff_pct"    onclick="srtTASPLB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtTASPLB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtTASPLB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-k="gb_pct"       onclick="srtTASPLB(this,'gb_pct')">GB%</th>
+        <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtTASPLB(this,'woba')">wOBA</th>
+        <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtTASPLB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtTASPLB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-k="fb_velo"      onclick="srtTASPLB(this,'fb_velo')">FB Velo</th>
+      </tr></thead>
+      <tbody id="ta-sp-lb-body"></tbody>
+    </table>
+  </div>
 
   <div class="ta-section-hdr">🔥 Relief Pitchers <span class="tab-count" id="ta-rp-tc">—</span></div>
-  <div class="table-wrap">
+  <div class="toggle-group" style="margin-bottom:10px">
+    <button class="tgl-btn active" id="ta-rp-yday-btn" onclick="showTARPView('yday',this)">Yesterday</button>
+    <button class="tgl-btn" id="ta-rp-season-btn" onclick="showTARPView('season',this)">Season</button>
+  </div>
+  <!-- Yesterday game stats -->
+  <div id="ta-rp-yday-wrap" class="table-wrap" style="margin-bottom:24px">
     <table id="ta-rp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtTA(this,'rp','name')">Pitcher</th>
@@ -2195,8 +2320,39 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <tbody id="ta-rp-body"></tbody>
     </table>
   </div>
+  <!-- Season stats -->
+  <div id="ta-rp-season-wrap" class="table-wrap" style="display:none;margin-bottom:24px">
+    <table id="ta-rp-lb-tbl">
+      <thead><tr>
+        <th class="sortable"   data-k="name"         onclick="srtTARPLB(this,'name')">Pitcher</th>
+        <th class="sortable r" data-k="ip_f"         onclick="srtTARPLB(this,'ip_f')">IP</th>
+        <th class="sortable r" data-k="w"            onclick="srtTARPLB(this,'w')">W</th>
+        <th class="sortable r" data-k="sv"           onclick="srtTARPLB(this,'sv')">SV/SVO</th>
+        <th class="sortable r" data-k="hld"          onclick="srtTARPLB(this,'hld')">HLD</th>
+        <th class="sortable r lb-th-inv" data-k="era"  onclick="srtTARPLB(this,'era')">ERA</th>
+        <th class="sortable r lb-th-inv" data-k="whip" onclick="srtTARPLB(this,'whip')">WHIP</th>
+        <th class="sortable r lb-th-inv" data-k="xera" onclick="srtTARPLB(this,'xera')">xERA</th>
+        <th class="sortable r lb-th-inv" data-k="siera" onclick="srtTARPLB(this,'siera')">SIERA</th>
+        <th class="sortable r" data-k="stuff_plus"   onclick="srtTARPLB(this,'stuff_plus')">Stf+</th>
+        <th class="sortable r" data-k="loc_plus"     onclick="srtTARPLB(this,'loc_plus')">Loc+</th>
+        <th class="sortable r" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
+        <th class="sortable r" data-k="k_pct"        onclick="srtTARPLB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtTARPLB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-k="chase_pct"    onclick="srtTARPLB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r" data-k="whiff_pct"    onclick="srtTARPLB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtTARPLB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtTARPLB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-k="gb_pct"       onclick="srtTARPLB(this,'gb_pct')">GB%</th>
+        <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtTARPLB(this,'woba')">wOBA</th>
+        <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtTARPLB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtTARPLB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-k="fb_velo"      onclick="srtTARPLB(this,'fb_velo')">FB Velo</th>
+      </tr></thead>
+      <tbody id="ta-rp-lb-body"></tbody>
+    </table>
+  </div>
   <div class="note" style="margin-top:14px">
-    Yesterday view: only roster members who played yesterday. Season view: all roster members with stats. Season colors = league rank vs all qualified hitters.
+    Yesterday view: only roster members who played yesterday. Season view: all roster members with stats. Season cell colors = league rank among all qualified pitchers.
   </div>
 </div>
 
@@ -2638,6 +2794,82 @@ function srtTALB(th,col){
   taLBD.sort((a,b)=>cmp(a,b,col,taLBSD));renderTALB();
 }
 
+function renderTASPLB(){
+  const tb=document.getElementById('ta-sp-lb-body');
+  if(!taSPLBD.length){
+    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season SP data for Team Alex yet.</p></div></td></tr>';return;
+  }
+  const D=plCellSP;
+  tb.innerHTML=taSPLBD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r">${D('w',p.w,p.w)}</td>
+    <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+    <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+    <td class="r">${D('k',p.k,p.k)}</td>
+    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+  </tr>`).join('');
+}
+
+function srtTASPLB(th,col){
+  if(taSPLBSC===col)taSPLBSD*=-1;else{taSPLBSC=col;taSPLBSD=PL_INV_SORT.has(col)?1:-1;}
+  clrSort('ta-sp-lb-tbl');th.classList.add(taSPLBSD===1?'sort-asc':'sort-desc');
+  taSPLBD.sort((a,b)=>cmp(a,b,col,taSPLBSD));renderTASPLB();
+}
+
+function renderTARPLB(){
+  const tb=document.getElementById('ta-rp-lb-body');
+  if(!taRPLBD.length){
+    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No season RP data for Team Alex yet.</p></div></td></tr>';return;
+  }
+  const D=plCellRP;
+  tb.innerHTML=taRPLBD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r">${D('w',p.w,p.w)}</td>
+    <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+    <td class="r">${D('hld',p.hld,p.hld)}</td>
+    <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+    <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+    <td class="r">${D('k',p.k,p.k)}</td>
+    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+  </tr>`).join('');
+}
+
+function srtTARPLB(th,col){
+  if(taRPLBSC===col)taRPLBSD*=-1;else{taRPLBSC=col;taRPLBSD=PL_INV_SORT.has(col)?1:-1;}
+  clrSort('ta-rp-lb-tbl');th.classList.add(taRPLBSD===1?'sort-asc':'sort-desc');
+  taRPLBD.sort((a,b)=>cmp(a,b,col,taRPLBSD));renderTARPLB();
+}
+
 function renderTAH(){
   const tb=document.getElementById('ta-h-body');
   document.getElementById('ta-h-tc').textContent=taHD.length;
@@ -2737,6 +2969,21 @@ taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
 renderTAH();renderTASP();renderTARP();
 
+function showTASPView(view,btn){
+  document.querySelectorAll('#ta-sp-yday-btn,#ta-sp-season-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ta-sp-yday-wrap').style.display=view==='yday'?'':'none';
+  document.getElementById('ta-sp-season-wrap').style.display=view==='season'?'':'none';
+  if(view==='season') renderTASPLB();
+}
+function showTARPView(view,btn){
+  document.querySelectorAll('#ta-rp-yday-btn,#ta-rp-season-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ta-rp-yday-wrap').style.display=view==='yday'?'':'none';
+  document.getElementById('ta-rp-season-wrap').style.display=view==='season'?'':'none';
+  if(view==='season') renderTARPLB();
+}
+
 // ── Season Leaderboard data ────────────────────────────────────────────────
 const LB_ALL  = __LB_JSON__;
 const LB_QUAL = LB_ALL.filter(p=>p.qualified);
@@ -2745,9 +2992,13 @@ const LB_SP_QUAL = LB_SP_ALL.filter(p=>p.qualified);
 const LB_RP_ALL  = __LB_RP_JSON__;
 const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
 
-// Now that LB_ALL is defined, initialize TA season leaderboard data
-const TA_LB = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
+// Now that LB_ALL/LB_SP_ALL/LB_RP_ALL are defined, initialize TA season data
+const TA_LB    = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
 taLBD = [...TA_LB];
+const TA_SP_LB = LB_SP_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
+const TA_RP_LB = LB_RP_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
+let taSPLBD=[...TA_SP_LB], taSPLBSC='ip_f', taSPLBSD=-1;
+let taRPLBD=[...TA_RP_LB], taRPLBSC='sv',   taRPLBSD=-1;
 
 document.getElementById('lb-tc').textContent = LB_QUAL.length;
 
