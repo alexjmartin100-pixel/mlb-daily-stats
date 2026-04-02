@@ -1412,17 +1412,27 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         print(f"  [LB] Savant xwOBA/Chase/Whiff failed: {e}")
 
     # ── Step 4: Savant bat speed ──────────────────────────────────────────────
+    # Try bat-tracking leaderboard first, then fall back to custom leaderboard
     print("  [LB] Savant bat speed…")
-    try:
-        r4 = requests.get(
-            "https://baseballsavant.mlb.com/leaderboard/bat-tracking",
-            params={"year": year, "type": "batter", "min": "1", "csv": "true"},
-            headers=hdrs, timeout=30)
-        r4.raise_for_status()
-        bt = pd.read_csv(StringIO(r4.text))
-        mid_col4 = next((c for c in ["player_id", "batter_id"] if c in bt.columns), None)
-        bs_col   = next((c for c in ["bat_speed", "avg_bat_speed"] if c in bt.columns), None)
-        if mid_col4 and bs_col:
+    bat_speed_ok = False
+    for bs_url, bs_params in [
+        ("https://baseballsavant.mlb.com/leaderboard/bat-tracking",
+         {"year": year, "type": "batter", "min": "1", "csv": "true"}),
+        ("https://baseballsavant.mlb.com/leaderboard/custom",
+         {"year": year, "type": "batter", "filter": "", "sort": "4",
+          "sortDir": "desc", "min": "1",
+          "selections": "bat_speed,fast_swing_rate", "csv": "true"}),
+    ]:
+        try:
+            r4 = requests.get(bs_url, params=bs_params, headers=hdrs, timeout=30)
+            r4.raise_for_status()
+            bt = pd.read_csv(StringIO(r4.text))
+            mid_col4 = next((c for c in ["player_id","batter_id","mlbam_id","batter"] if c in bt.columns), None)
+            bs_col   = next((c for c in ["bat_speed","avg_bat_speed","mean_bat_speed"] if c in bt.columns), None)
+            if not mid_col4 or not bs_col:
+                print(f"  [LB] bat speed: cols not found in {bs_url.split('/')[-1]} — got: {list(bt.columns[:10])}")
+                continue
+            matched = 0
             for _, row in bt.iterrows():
                 try:
                     mid = int(row[mid_col4])
@@ -1433,31 +1443,77 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 v = row.get(bs_col)
                 try:
                     players[mid]["bat_speed"] = round(float(v), 1) if pd.notna(v) else None
+                    matched += 1
                 except (ValueError, TypeError):
                     pass
-        print(f"  [LB] ✓ bat speed {len(bt)} rows")
-    except Exception as e:
-        print(f"  [LB] Savant bat speed failed: {e}")
+            print(f"  [LB] ✓ bat speed ({bs_url.split('/')[-1]}): {len(bt)} rows, {matched} matched")
+            bat_speed_ok = True
+            break
+        except Exception as e:
+            print(f"  [LB] bat speed attempt failed ({bs_url.split('/')[-1]}): {e}")
+    if not bat_speed_ok:
+        print("  [LB] bat speed: all attempts failed")
 
     # ── Step 5: Sprint speed ──────────────────────────────────────────────────
+    # Use min_opp=1 (pybaseball default is 10, too high early season)
     print("  [LB] Savant sprint speed…")
-    try:
-        ss = pybaseball.statcast_sprint_speed(year)
-        for _, row in ss.iterrows():
-            try:
-                mid = int(row["player_id"])
-            except (ValueError, TypeError):
+    sprint_ok = False
+    for ss_min in [1, 0]:
+        try:
+            ss = pybaseball.statcast_sprint_speed(year, min_opp=ss_min)
+            if ss.empty:
                 continue
-            if mid not in players:
-                continue
-            v = row.get("sprint_speed")
-            try:
-                players[mid]["sprint_speed"] = round(float(v), 1) if pd.notna(v) else None
-            except (ValueError, TypeError):
-                pass
-        print(f"  [LB] ✓ sprint speed {len(ss)} rows")
-    except Exception as e:
-        print(f"  [LB] Savant sprint speed failed: {e}")
+            id_col = next((c for c in ["player_id","mlbam_id","batter"] if c in ss.columns), None)
+            if not id_col:
+                print(f"  [LB] sprint speed: no ID column found — got: {list(ss.columns[:8])}")
+                break
+            matched = 0
+            for _, row in ss.iterrows():
+                try:
+                    mid = int(row[id_col])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in players:
+                    continue
+                v = row.get("sprint_speed")
+                try:
+                    players[mid]["sprint_speed"] = round(float(v), 1) if pd.notna(v) else None
+                    matched += 1
+                except (ValueError, TypeError):
+                    pass
+            print(f"  [LB] ✓ sprint speed (min_opp={ss_min}): {len(ss)} rows, {matched} matched")
+            sprint_ok = True
+            break
+        except Exception as e:
+            print(f"  [LB] sprint speed attempt (min_opp={ss_min}) failed: {e}")
+    if not sprint_ok:
+        # Final fallback: Savant sprint speed CSV directly
+        try:
+            rs = requests.get(
+                "https://baseballsavant.mlb.com/leaderboard/sprint_speed",
+                params={"year": year, "position": "", "team": "", "min": "0", "csv": "true"},
+                headers=hdrs, timeout=30)
+            rs.raise_for_status()
+            ss2 = pd.read_csv(StringIO(rs.text))
+            id_col = next((c for c in ["player_id","mlbam_id"] if c in ss2.columns), None)
+            matched = 0
+            if id_col and "sprint_speed" in ss2.columns:
+                for _, row in ss2.iterrows():
+                    try:
+                        mid = int(row[id_col])
+                    except (ValueError, TypeError):
+                        continue
+                    if mid not in players:
+                        continue
+                    v = row.get("sprint_speed")
+                    try:
+                        players[mid]["sprint_speed"] = round(float(v), 1) if pd.notna(v) else None
+                        matched += 1
+                    except (ValueError, TypeError):
+                        pass
+            print(f"  [LB] ✓ sprint speed (CSV fallback): {len(ss2)} rows, {matched} matched")
+        except Exception as e:
+            print(f"  [LB] sprint speed CSV fallback failed: {e}")
 
     out = sorted(players.values(), key=lambda x: (x.get("hr") or 0), reverse=True)
     q = sum(1 for p in out if p["qualified"])
@@ -1516,9 +1572,9 @@ if ('serviceWorker' in navigator) {
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1923;--card:#182130;--card2:#1e2c3d;--border:#243447;
-  --text:#dce8f0;--muted:#6b8599;--accent:#e31837;--gold:#f0c040;
-  --green:#2ecc71;--orange:#e67e22;--blue:#3498db;--red:#e74c3c;
+  --bg:#ffffff;--card:#f2f5f9;--card2:#e6ecf3;--border:#c8d4e0;
+  --text:#1a2a3a;--muted:#5a7080;--accent:#e31837;--gold:#b8860b;
+  --green:#1a8040;--orange:#b85a00;--blue:#1a6699;--red:#c0392b;
   --radius:8px;
 }
 html{font-size:14px;background:var(--bg);color:var(--text);
@@ -1577,21 +1633,21 @@ thead th.r{text-align:right}
 thead th.sc{color:#5d9bc8 !important}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
 tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:rgba(255,255,255,.04)}
-tbody tr:nth-child(even){background:rgba(255,255,255,.017)}
+tbody tr:hover{background:rgba(0,0,0,.04)}
+tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
 tbody td{padding:8px 9px;vertical-align:middle}
 tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
-td.nm{font-weight:600;white-space:nowrap;color:#fff;font-size:.83rem}
-.tm{display:inline-block;background:rgba(255,255,255,.06);border:1px solid var(--border);
+td.nm{font-weight:600;white-space:nowrap;color:#0d1f2d;font-size:.83rem}
+.tm{display:inline-block;background:rgba(0,0,0,.07);border:1px solid var(--border);
   border-radius:4px;padding:1px 6px;font-size:.65rem;font-weight:800;
-  letter-spacing:.5px;color:#9bbcd0;white-space:nowrap;}
+  letter-spacing:.5px;color:#2a5070;white-space:nowrap;}
 .c-barrel{color:var(--gold);font-weight:700}
 .c-great{color:var(--green);font-weight:600}
-.c-good{color:#7dcea0}
+.c-good{color:#1a6e40}
 .c-warn{color:var(--orange)}
 .c-neg{color:var(--red)}
-.c-dim{color:#3d5264}
-.c-blue{color:#5dade2}
+.c-dim{color:#8aa0ae}
+.c-blue{color:#1a6699}
 /* Arsenal */
 .arsenal{display:flex;flex-direction:column;gap:4px;min-width:230px}
 .pt-row{display:grid;grid-template-columns:52px 32px 1fr auto;
@@ -1605,8 +1661,8 @@ td.nm{font-weight:600;white-space:nowrap;color:#fff;font-size:.83rem}
 .vn{color:var(--text)}
 .c-gold{color:var(--gold);font-weight:700}
 .vd{color:var(--muted)}
-.sv{color:#7fb3d3;font-size:.67rem}
-.gs{color:#a0cfee}
+.sv{color:#2e6e9e;font-size:.67rem}
+.gs{color:#1a5a80}
 .empty{text-align:center;padding:48px;color:var(--muted)}
 .empty .ico{font-size:2.2rem;margin-bottom:8px}
 footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
@@ -1615,18 +1671,23 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   text-transform:uppercase;letter-spacing:.9px;padding:10px 2px 6px;
   border-bottom:1px solid var(--border);margin-bottom:10px;
   display:flex;align-items:center;gap:7px}
-.tab-btn.ta-btn{color:#c9a227}
-.tab-btn.ta-btn.active{color:#f0c040;border-bottom-color:#f0c040}
-.tab-btn.ta-btn.active .tab-count{background:#b8860b}
-.tab-btn.lb-btn{color:#5dade2}
-.tab-btn.lb-btn.active{color:#85c1e9;border-bottom-color:#5dade2}
-.tab-btn.lb-btn.active .tab-count{background:#1a5276}
+.tab-btn.ta-btn{color:#a07800}
+.tab-btn.ta-btn.active{color:#b8860b;border-bottom-color:#b8860b}
+.tab-btn.ta-btn.active .tab-count{background:#b8860b;color:#fff}
+.tab-btn.lb-btn{color:#1a6699}
+.tab-btn.lb-btn.active{color:#155080;border-bottom-color:#1a6699}
+.tab-btn.lb-btn.active .tab-count{background:#1a6699;color:#fff}
+/* Toggle group (pitcher type / TA view) */
+.toggle-group{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;width:fit-content;margin-bottom:14px;}
+.tgl-btn{background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);padding:6px 18px;font-size:.82rem;font-weight:600;cursor:pointer;transition:background .15s,color .15s;}
+.tgl-btn:last-child{border-right:none}
+.tgl-btn.active{background:var(--accent);color:#fff;}
 /* Leaderboard */
 #lb-panel .note{margin-bottom:9px}
 #lb-panel .controls{margin-bottom:11px}
 #lb-panel .qual-toggle{display:flex;align-items:center;gap:7px;font-size:.77rem;color:var(--muted);cursor:pointer;user-select:none;}
 #lb-panel .qual-toggle input{cursor:pointer;accent-color:var(--accent)}
-.lb-th-inv{color:#85c1e9 !important}
+.lb-th-inv{color:#1a6699 !important}
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
@@ -1652,11 +1713,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn active" onclick="showTab('hitters',this)">
     🏏 Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
-  <button class="tab-btn" onclick="showTab('starters',this)">
-    ⚾ Starting Pitchers <span class="tab-count" id="sp-tc">—</span>
-  </button>
-  <button class="tab-btn" onclick="showTab('relievers',this)">
-    🔥 Relief Pitchers <span class="tab-count" id="rp-tc">—</span>
+  <button class="tab-btn" onclick="showTab('pitchers',this)">
+    ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
   </button>
   <button class="tab-btn ta-btn" onclick="showTab('teamalex',this)">
     👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
@@ -1700,23 +1758,30 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 </div>
 
-<!-- ══ STARTING PITCHERS ══ -->
-<div id="starters-panel" class="tab-panel">
+<!-- ══ PITCHERS (Starters + Relievers) ══ -->
+<div id="pitchers-panel" class="tab-panel">
   <div class="note">
     ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
     Arsenal: game velocity <span class="vd">(season avg)</span> —
     fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph below season avg.
     <span class="gs">S+</span> = game Stuff+ for that pitch type.
+    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
   </div>
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
   </div>
+  <div class="toggle-group">
+    <button class="tgl-btn active" id="pitch-sp-btn" onclick="showPitchType('sp',this)">⚾ Starters <span id="p-sp-tc" style="opacity:.6;font-size:.75em"></span></button>
+    <button class="tgl-btn" id="pitch-rp-btn" onclick="showPitchType('rp',this)">🔥 Relievers <span id="p-rp-tc" style="opacity:.6;font-size:.75em"></span></button>
+  </div>
   <div class="controls">
-    <input id="sp-search" type="text" placeholder="Search pitcher or team…" oninput="filterSP()">
-    <span class="row-count" id="sp-cnt"></span>
+    <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
+    <span class="row-count" id="p-cnt"></span>
     <span class="sort-hint">Click headers to sort</span>
   </div>
-  <div class="table-wrap">
+
+  <!-- Starters table -->
+  <div id="p-sp-wrap" class="table-wrap">
     <table id="sp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
@@ -1739,23 +1804,9 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <tbody id="sp-body"></tbody>
     </table>
   </div>
-</div>
 
-<!-- ══ RELIEF PITCHERS ══ -->
-<div id="relievers-panel" class="tab-panel">
-  <div class="note">
-    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
-    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
-  </div>
-  <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-  </div>
-  <div class="controls">
-    <input id="rp-search" type="text" placeholder="Search pitcher or team…" oninput="filterRP()">
-    <span class="row-count" id="rp-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
-  </div>
-  <div class="table-wrap">
+  <!-- Relievers table (hidden by default) -->
+  <div id="p-rp-wrap" class="table-wrap" style="display:none">
     <table id="rp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
@@ -1787,13 +1838,20 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px">
     <span style="font-size:1.6rem">👑</span>
     <div>
-      <div style="font-size:1.05rem;font-weight:800;color:#f0c040">Team Alex</div>
-      <div style="font-size:.72rem;color:var(--muted)">24-player roster · yesterday's game results</div>
+      <div style="font-size:1.05rem;font-weight:800;color:#b8860b">Team Alex</div>
+      <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
   </div>
 
+  <!-- Hitters section with Yesterday / Season toggle -->
   <div class="ta-section-hdr">🏏 Hitters <span class="tab-count" id="ta-h-tc">—</span></div>
-  <div class="table-wrap" style="margin-bottom:24px">
+  <div class="toggle-group" style="margin-bottom:10px">
+    <button class="tgl-btn active" id="ta-h-yday-btn" onclick="showTAHView('yday',this)">Yesterday</button>
+    <button class="tgl-btn" id="ta-h-season-btn" onclick="showTAHView('season',this)">Season</button>
+  </div>
+
+  <!-- Yesterday game stats table -->
+  <div id="ta-h-yday-wrap" class="table-wrap" style="margin-bottom:24px">
     <table id="ta-h-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"      onclick="srtTA(this,'h','name')">Player</th>
@@ -1809,6 +1867,36 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-k="max_ev"    onclick="srtTA(this,'h','max_ev')">Max EV</th>
       </tr></thead>
       <tbody id="ta-h-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Season stats table (hidden by default) -->
+  <div id="ta-h-season-wrap" class="table-wrap" style="display:none;margin-bottom:24px">
+    <table id="ta-lb-tbl">
+      <thead><tr>
+        <th class="sortable"   data-k="name"           onclick="srtTALB(this,'name')">Player</th>
+        <th class="sortable r" data-k="r"              onclick="srtTALB(this,'r')">R</th>
+        <th class="sortable r" data-k="hr"             onclick="srtTALB(this,'hr')">HR</th>
+        <th class="sortable r" data-k="rbi"            onclick="srtTALB(this,'rbi')">RBI</th>
+        <th class="sortable r" data-k="sb"             onclick="srtTALB(this,'sb')">SB</th>
+        <th class="sortable r" data-k="obp"            onclick="srtTALB(this,'obp')">OBP</th>
+        <th class="sortable r" data-k="woba"           onclick="srtTALB(this,'woba')">wOBA</th>
+        <th class="sortable r" data-k="xwoba"          onclick="srtTALB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtTALB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtTALB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtTALB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-k="so"           onclick="srtTALB(this,'so')">SO</th>
+        <th class="sortable r" data-k="bb_pct"         onclick="srtTALB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-k="hard_hit_pct"   onclick="srtTALB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-k="barrel_pct"     onclick="srtTALB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r" data-k="barrels"        onclick="srtTALB(this,'barrels')">Barrels</th>
+        <th class="sortable r" data-k="sweet_spot_pct" onclick="srtTALB(this,'sweet_spot_pct')">Swt Spot%</th>
+        <th class="sortable r" data-k="avg_ev"         onclick="srtTALB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-k="max_ev"         onclick="srtTALB(this,'max_ev')">Max EV</th>
+        <th class="sortable r" data-k="bat_speed"      onclick="srtTALB(this,'bat_speed')">Bat Spd</th>
+        <th class="sortable r" data-k="sprint_speed"   onclick="srtTALB(this,'sprint_speed')">Sprt Spd</th>
+      </tr></thead>
+      <tbody id="ta-lb-body"></tbody>
     </table>
   </div>
 
@@ -1864,7 +1952,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     </table>
   </div>
   <div class="note" style="margin-top:14px">
-    Only roster members who played yesterday are shown.
+    Yesterday view: only roster members who played yesterday. Season view: all roster members with stats. Season colors = league rank vs all qualified hitters.
   </div>
 </div>
 
@@ -1933,6 +2021,7 @@ const RELIEVERS  = ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter);
 const TA_HITTERS = __TA_H_JSON__;
 const TA_STARTERS= __TA_SP_JSON__;
 const TA_RELIEVERS=__TA_RP_JSON__;
+const TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['hr','bb','k','sb','sba','hard_hits','barrels','max_ev'];
@@ -1961,14 +2050,48 @@ const glMin=(v,min)=>(min!=null&&v!=null&&v===min)?`<span class="c-gold">${v}</s
 const _evVals=HITTERS.filter(h=>h.max_ev!=null&&h.bip>0).map(h=>h.max_ev);
 const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.max(..._evVals):115;
 
+// Inverted-sort columns (lower = better): first click → ascending
+const LB_INV_SORT=new Set(['k_pct','chase_pct','whiff_pct','so']);
+
+// Pitchers tab counts
+document.getElementById('p-tc').textContent=STARTERS.length+RELIEVERS.length;
+document.getElementById('p-sp-tc').textContent=STARTERS.length;
+document.getElementById('p-rp-tc').textContent=RELIEVERS.length;
+
 let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
+let pitchType='sp';  // current pitcher sub-view
 
 function showTab(nm,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(nm+'-panel').classList.add('active');
+}
+
+function showPitchType(type,btn){
+  pitchType=type;
+  document.querySelectorAll('#pitchers-panel .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('p-sp-wrap').style.display=type==='sp'?'':'none';
+  document.getElementById('p-rp-wrap').style.display=type==='rp'?'':'none';
+  // re-apply current search to the newly visible table
+  filterP();
+}
+
+function filterP(){
+  const q=document.getElementById('p-search').value.toLowerCase().trim();
+  if(pitchType==='sp'){
+    spD=q?STARTERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...STARTERS];
+    if(spSC)spD.sort((a,b)=>cmp(a,b,spSC,spSD));
+    document.getElementById('p-cnt').textContent=`${spD.length} starter${spD.length===1?'':'s'}`;
+    renderSP();
+  } else {
+    rpD=q?RELIEVERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...RELIEVERS];
+    if(rpSC)rpD.sort((a,b)=>cmp(a,b,rpSC,rpSD));
+    document.getElementById('p-cnt').textContent=`${rpD.length} reliever${rpD.length===1?'':'s'}`;
+    renderRP();
+  }
 }
 
 const D  = ()=>'<span class="c-dim">—</span>';
@@ -2037,10 +2160,7 @@ function renderH(){
 
 function renderSP(){
   const tb=document.getElementById('sp-body');
-  const ct=document.getElementById('sp-cnt');
-  document.getElementById('sp-tc').textContent=spD.length;
-  if(!spD.length){tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
-  ct.textContent=`${spD.length} starter${spD.length===1?'':'s'}`;
+  if(!spD.length){tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';return;}
   tb.innerHTML=spD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
@@ -2063,10 +2183,7 @@ function renderSP(){
 
 function renderRP(){
   const tb=document.getElementById('rp-body');
-  const ct=document.getElementById('rp-cnt');
-  document.getElementById('rp-tc').textContent=rpD.length;
-  if(!rpD.length){tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';ct.textContent='';return;}
-  ct.textContent=`${rpD.length} reliever${rpD.length===1?'':'s'}`;
+  if(!rpD.length){tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';return;}
   tb.innerHTML=rpD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
@@ -2096,24 +2213,16 @@ function cmp(a,b,col,dir){
 }
 function clrSort(id){document.querySelectorAll(`#${id} thead th`).forEach(t=>t.classList.remove('sort-asc','sort-desc'));}
 function srtH(th,col){if(hSC===col)hSD*=-1;else{hSC=col;hSD=-1;}clrSort('h-tbl');th.classList.add(hSD===1?'sort-asc':'sort-desc');hD.sort((a,b)=>cmp(a,b,col,hSD));renderH();}
-function srtSP(th,col){if(spSC===col)spSD*=-1;else{spSC=col;spSD=-1;}clrSort('sp-tbl');th.classList.add(spSD===1?'sort-asc':'sort-desc');spD.sort((a,b)=>cmp(a,b,col,spSD));renderSP();}
-function srtRP(th,col){if(rpSC===col)rpSD*=-1;else{rpSC=col;rpSD=-1;}clrSort('rp-tbl');th.classList.add(rpSD===1?'sort-asc':'sort-desc');rpD.sort((a,b)=>cmp(a,b,col,rpSD));renderRP();}
+function srtSP(th,col){if(spSC===col)spSD*=-1;else{spSC=col;spSD=-1;}clrSort('sp-tbl');th.classList.add(spSD===1?'sort-asc':'sort-desc');spD.sort((a,b)=>cmp(a,b,col,spSD));document.getElementById('p-cnt').textContent=`${spD.length} starter${spD.length===1?'':'s'}`;renderSP();}
+function srtRP(th,col){if(rpSC===col)rpSD*=-1;else{rpSC=col;rpSD=-1;}clrSort('rp-tbl');th.classList.add(rpSD===1?'sort-asc':'sort-desc');rpD.sort((a,b)=>cmp(a,b,col,rpSD));document.getElementById('p-cnt').textContent=`${rpD.length} reliever${rpD.length===1?'':'s'}`;renderRP();}
 
 function filterH(){
   const q=document.getElementById('h-search').value.toLowerCase().trim();
   hD=q?HITTERS.filter(h=>h.name.toLowerCase().includes(q)||h.team.toLowerCase().includes(q)||h.opp.toLowerCase().includes(q)):[...HITTERS];
   if(hSC)hD.sort((a,b)=>cmp(a,b,hSC,hSD));renderH();
 }
-function filterSP(){
-  const q=document.getElementById('sp-search').value.toLowerCase().trim();
-  spD=q?STARTERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...STARTERS];
-  if(spSC)spD.sort((a,b)=>cmp(a,b,spSC,spSD));renderSP();
-}
-function filterRP(){
-  const q=document.getElementById('rp-search').value.toLowerCase().trim();
-  rpD=q?RELIEVERS.filter(p=>p.name.toLowerCase().includes(q)||p.team.toLowerCase().includes(q)||p.opp.toLowerCase().includes(q)):[...RELIEVERS];
-  if(rpSC)rpD.sort((a,b)=>cmp(a,b,rpSC,rpSD));renderRP();
-}
+function filterSP(){filterP();}
+function filterRP(){filterP();}
 
 hD.sort((a,b)=>cmp(a,b,'barrels',-1));
 spD.sort((a,b)=>cmp(a,b,'ip_float',-1));
@@ -2126,8 +2235,62 @@ renderH();renderSP();renderRP();
 // ── Team Alex ─────────────────────────────────────────────────────────────
 let taHD=[...TA_HITTERS], taSPD=[...TA_STARTERS], taRPD=[...TA_RELIEVERS];
 let taHSC='barrels', taHSD=-1, taSPSC='ip_float', taSPSD=-1, taRPSC='sv', taRPSD=-1;
+let taHView='yday';  // 'yday' or 'season'
 
 document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
+
+// Build TA season leaderboard from LB_ALL using roster name matching
+function taNorm(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\./g,'').trim();
+}
+const TA_LB = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
+
+let taLBD=[...TA_LB], taLBSC='hr', taLBSD=-1;
+
+function showTAHView(view,btn){
+  taHView=view;
+  document.querySelectorAll('#teamalex-panel .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ta-h-yday-wrap').style.display=view==='yday'?'':'none';
+  document.getElementById('ta-h-season-wrap').style.display=view==='season'?'':'none';
+  if(view==='season') renderTALB();
+}
+
+function renderTALB(){
+  const tb=document.getElementById('ta-lb-body');
+  if(!taLBD.length){
+    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season data for Team Alex yet.</p></div></td></tr>';return;
+  }
+  tb.innerHTML=taLBD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${fmtInt('r',   p.r)}</td>
+    <td class="r">${fmtInt('hr',  p.hr)}</td>
+    <td class="r">${fmtInt('rbi', p.rbi)}</td>
+    <td class="r">${fmtSB(p)}</td>
+    <td class="r">${fmtRate('obp',   p.obp)}</td>
+    <td class="r">${fmtRate('woba',  p.woba)}</td>
+    <td class="r">${fmtRate('xwoba', p.xwoba)}</td>
+    <td class="r">${fmtPct('chase_pct',    p.chase_pct)}</td>
+    <td class="r">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
+    <td class="r">${fmtPct('k_pct',        p.k_pct)}</td>
+    <td class="r">${fmtInt('so',           p.so)}</td>
+    <td class="r">${fmtPct('bb_pct',       p.bb_pct)}</td>
+    <td class="r">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
+    <td class="r">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
+    <td class="r">${fmtInt('barrels',      p.barrels)}</td>
+    <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+    <td class="r">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
+    <td class="r">${fmtEV( 'max_ev',       p.max_ev)}</td>
+    <td class="r">${fmtSpd('bat_speed',    p.bat_speed)}</td>
+    <td class="r">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+  </tr>`).join('');
+}
+
+function srtTALB(th,col){
+  if(taLBSC===col)taLBSD*=-1;else{taLBSC=col;taLBSD=LB_INV_SORT.has(col)?1:-1;}
+  clrSort('ta-lb-tbl');th.classList.add(taLBSD===1?'sort-asc':'sort-desc');
+  taLBD.sort((a,b)=>cmp(a,b,col,taLBSD));renderTALB();
+}
 
 function renderTAH(){
   const tb=document.getElementById('ta-h-body');
@@ -2351,7 +2514,8 @@ function filterLB(){
 }
 
 function srtLB(th,col){
-  if(lbSC===col)lbSD*=-1;else{lbSC=col;lbSD=-1;}
+  // Inverted columns (lower=better): first click sorts ascending
+  if(lbSC===col)lbSD*=-1;else{lbSC=col;lbSD=LB_INV_SORT.has(col)?1:-1;}
   clrSort('lb-tbl');th.classList.add(lbSD===1?'sort-asc':'sort-desc');
   lbD.sort((a,b)=>cmp(a,b,col,lbSD));renderLB();
 }
@@ -2388,6 +2552,7 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
         .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
         .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
+        .replace("__TA_NAMES_JSON__", json.dumps(sorted(TEAM_ALEX_NAMES)))
     )
 
 
