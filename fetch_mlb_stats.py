@@ -1521,6 +1521,250 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     return out
 
 
+# ── Season Pitching Leaderboard ────────────────────────────────────────────
+def fetch_season_pitching_leaderboard(year: int) -> dict:
+    """
+    Fetch season pitching leaderboard combining FanGraphs + Savant.
+    Returns {'starters': [...], 'relievers': [...]}.
+    Starters: IP, W, ERA, WHIP, xERA, SIERA, Stuff+, Loc+, K, K%, BB%,
+              Chase%, Whiff%, Barrel%, Hard Hit%, GB%, wOBA, xwOBA, Avg EV, FB Velo
+    Relievers: same + SV/SVO, Holds
+    """
+    from io import StringIO
+    hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    starters_d  = {}   # mlbam_id -> dict
+    relievers_d = {}   # mlbam_id -> dict
+
+    def _pct(v):
+        try:
+            f = float(str(v).replace("%", ""))
+            return round(f * 100, 1) if f < 1.5 else round(f, 1)
+        except (ValueError, TypeError):
+            return None
+
+    def _int(v):
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return 0
+
+    def _flt(v, p=2):
+        try:
+            return round(float(v), p)
+        except (ValueError, TypeError):
+            return None
+
+    # ── Step 1: FanGraphs pitching stats ──────────────────────────────────────
+    print("  [PLB] FanGraphs pitching stats…")
+    qual_sp_ip = 10.0
+    qual_rp_ip = 3.0
+    try:
+        fg = pybaseball.pitching_stats(year, qual=1)
+        # Build FG playerid → MLBAM via Chadwick register
+        fg_to_mlbam = {}
+        try:
+            chad = pybaseball.chadwick_register()
+            for _, cr in chad.iterrows():
+                fgk = cr.get("key_fangraphs")
+                mk  = cr.get("key_mlbam")
+                if pd.notna(fgk) and pd.notna(mk):
+                    try:
+                        fg_to_mlbam[int(fgk)] = int(mk)
+                    except (ValueError, TypeError):
+                        pass
+        except Exception as e2:
+            print(f"  [PLB] Chadwick register failed: {e2}")
+
+        max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
+        qual_sp_ip = max(3.0, round(max_g * 1.0, 1))
+        qual_rp_ip = max(1.0, round(max_g * 0.5, 1))
+
+        for _, row in fg.iterrows():
+            try:
+                fg_id = int(row.get("playerid") or row.get("IDfg") or 0)
+            except (ValueError, TypeError):
+                continue
+            if fg_id == 0:
+                continue
+            mlbam = fg_to_mlbam.get(fg_id)
+            if mlbam is None:
+                continue
+
+            try:
+                ip_val = float(row.get("IP", 0) or 0)
+            except (ValueError, TypeError):
+                ip_val = 0.0
+
+            try:
+                gs = int(float(row.get("GS", 0) or 0))
+                g  = int(float(row.get("G",  1) or 1))
+            except (ValueError, TypeError):
+                gs, g = 0, 1
+
+            is_sp = gs > 0 and (gs / max(g, 1)) >= 0.5
+
+            # Try to get Stuff+ / Loc+ from FG columns
+            stuff_plus = None
+            loc_plus   = None
+            for sc in ["Stuff+", "stuff_plus", "StuffPlus", "Stf+"]:
+                if sc in fg.columns and pd.notna(row.get(sc)):
+                    try:
+                        stuff_plus = int(round(float(row[sc])))
+                    except (ValueError, TypeError):
+                        pass
+                    break
+            for lc in ["Location+", "location_plus", "Loc+", "LocationPlus"]:
+                if lc in fg.columns and pd.notna(row.get(lc)):
+                    try:
+                        loc_plus = int(round(float(row[lc])))
+                    except (ValueError, TypeError):
+                        pass
+                    break
+
+            try:
+                sv = int(float(row.get("SV", 0) or 0))
+            except (ValueError, TypeError):
+                sv = 0
+            try:
+                bs = int(float(row.get("BS", 0) or 0))
+            except (ValueError, TypeError):
+                bs = 0
+            try:
+                hld = int(float(row.get("HLD", 0) or row.get("H", 0) or 0))
+            except (ValueError, TypeError):
+                hld = 0
+
+            rec = {
+                "id":          mlbam,
+                "name":        str(row.get("Name", "")).strip(),
+                "team":        str(row.get("Team", "")).strip(),
+                "ip_f":        round(ip_val, 1),
+                "w":           _int(row.get("W", 0)),
+                "sv":          sv,
+                "sv_opp":      sv + bs,
+                "hld":         hld,
+                "era":         _flt(row.get("ERA"), 2),
+                "whip":        _flt(row.get("WHIP"), 2),
+                "siera":       _flt(row.get("SIERA") or row.get("Sierra"), 2),
+                "stuff_plus":  stuff_plus,
+                "loc_plus":    loc_plus,
+                "k":           _int(row.get("SO") or row.get("K") or 0),
+                "k_pct":       _pct(row.get("K%")),
+                "bb_pct":      _pct(row.get("BB%")),
+                "gb_pct":      _pct(row.get("GB%")),
+                "is_sp":       is_sp,
+                "qualified":   ip_val >= (qual_sp_ip if is_sp else qual_rp_ip),
+                # Savant-filled later
+                "xera": None, "xwoba": None, "woba": None,
+                "chase_pct": None, "whiff_pct": None,
+                "barrel_pct": None, "hard_hit_pct": None,
+                "avg_ev": None, "fb_velo": None,
+            }
+            if is_sp:
+                starters_d[mlbam] = rec
+            else:
+                relievers_d[mlbam] = rec
+
+        qs = sum(1 for p in starters_d.values()  if p["qualified"])
+        qr = sum(1 for p in relievers_d.values() if p["qualified"])
+        print(f"  [PLB] FG: {len(starters_d)} SP ({qs} qual ≥{qual_sp_ip} IP), "
+              f"{len(relievers_d)} RP ({qr} qual ≥{qual_rp_ip} IP)")
+    except Exception as e:
+        print(f"  [PLB] FanGraphs pitching stats failed: {e}")
+
+    all_pitchers_d = {**starters_d, **relievers_d}
+
+    # ── Step 2: Savant pitcher stats (xERA, xwOBA, wOBA, Chase%, Whiff%, Barrel%, Hard Hit%, Avg EV) ──
+    print("  [PLB] Savant pitcher stats…")
+    try:
+        r2 = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/custom",
+            params={"year": year, "type": "pitcher", "filter": "",
+                    "sort": "4", "sortDir": "desc", "min": "1",
+                    "selections": "xera,xwoba,woba,oz_swing_percent,whiff_percent,"
+                                  "brl_percent,ev95percent,avg_hit_speed",
+                    "csv": "true"},
+            headers=hdrs, timeout=30)
+        r2.raise_for_status()
+        sv2 = pd.read_csv(StringIO(r2.text))
+        mid_col = next((c for c in ["player_id", "pitcher", "mlbam_id"] if c in sv2.columns), None)
+        if mid_col:
+            col_map = {
+                "xera":              ("xera",         3),
+                "xwoba":             ("xwoba",        3),
+                "woba":              ("woba",         3),
+                "oz_swing_percent":  ("chase_pct",    1),
+                "whiff_percent":     ("whiff_pct",    1),
+                "brl_percent":       ("barrel_pct",   1),
+                "ev95percent":       ("hard_hit_pct", 1),
+                "avg_hit_speed":     ("avg_ev",       1),
+            }
+            matched = 0
+            for _, row in sv2.iterrows():
+                try:
+                    mid = int(row[mid_col])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in all_pitchers_d:
+                    continue
+                p = all_pitchers_d[mid]
+                for sv_col, (p_key, prec) in col_map.items():
+                    if sv_col in sv2.columns and pd.notna(row.get(sv_col)):
+                        try:
+                            p[p_key] = round(float(row[sv_col]), prec)
+                        except (ValueError, TypeError):
+                            pass
+                matched += 1
+            print(f"  [PLB] ✓ Savant pitcher stats {len(sv2)} rows, {matched} matched")
+        else:
+            print(f"  [PLB] Savant pitcher stats: no ID col — got {list(sv2.columns[:8])}")
+    except Exception as e:
+        print(f"  [PLB] Savant pitcher stats failed: {e}")
+
+    # ── Step 3: Savant pitch arsenals (avg FB velo) ───────────────────────────
+    print("  [PLB] Savant FB velo…")
+    try:
+        r3 = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/pitch-arsenals",
+            params={"year": year, "min": "1", "type": "n_ff,n_si,n_fc",
+                    "hand": "", "csv": "true"},
+            headers=hdrs, timeout=30)
+        r3.raise_for_status()
+        sv3 = pd.read_csv(StringIO(r3.text))
+        mid_col = next((c for c in ["player_id", "pitcher"] if c in sv3.columns), None)
+        matched = 0
+        if mid_col:
+            for _, row in sv3.iterrows():
+                try:
+                    mid = int(row[mid_col])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in all_pitchers_d:
+                    continue
+                # Take highest velocity fastball type (FF > SI > FC)
+                velo = None
+                for vc in ["avg_speed_ff", "velocity_ff", "avg_speed_si", "velocity_si",
+                           "avg_speed_fc", "velocity_fc"]:
+                    if vc in sv3.columns and pd.notna(row.get(vc)):
+                        try:
+                            v = float(row[vc])
+                            if velo is None or v > velo:
+                                velo = v
+                        except (ValueError, TypeError):
+                            pass
+                if velo is not None:
+                    all_pitchers_d[mid]["fb_velo"] = round(velo, 1)
+                    matched += 1
+        print(f"  [PLB] ✓ FB velo {len(sv3)} rows, {matched} matched")
+    except Exception as e:
+        print(f"  [PLB] Savant FB velo failed: {e}")
+
+    sp_out = sorted(starters_d.values(),  key=lambda x: (x.get("ip_f") or 0), reverse=True)
+    rp_out = sorted(relievers_d.values(), key=lambda x: (-(x.get("era") or 99), x.get("ip_f") or 0), reverse=False)
+    print(f"  [PLB] Done: {len(sp_out)} SP, {len(rp_out)} RP")
+    return {"starters": sp_out, "relievers": rp_out}
+
+
 # ── HTML Template ──────────────────────────────────────────────────────────
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -1956,53 +2200,156 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 </div>
 
-<!-- ══ SEASON BATTING LEADERBOARD ══ -->
+<!-- ══ SEASON LEADERBOARD ══ -->
 <div id="leaderboard-panel" class="tab-panel">
-  <div class="note">
-    ⓘ &nbsp;Season batting leaderboard — FanGraphs + Baseball Savant.
-    <strong>Default view:</strong> qualified hitters only (≥3.1 PA/team game).
-    Use search to find any player.
-    Cell colors = league rank among qualified hitters:
-    <span style="color:#f0c040;font-weight:700">Gold</span> = #1 &nbsp;·&nbsp;
-    <span style="color:#c0392b;font-weight:700">Dark red</span> = top &nbsp;·&nbsp;
-    <span style="color:#1a3a8a;font-weight:700">Dark blue</span> = bottom.
-    <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
+  <div class="toggle-group" style="margin-bottom:14px">
+    <button class="tgl-btn active" onclick="showLBType('h',this)">🏏 Hitters</button>
+    <button class="tgl-btn" onclick="showLBType('sp',this)">⚾ SP</button>
+    <button class="tgl-btn" onclick="showLBType('rp',this)">🔥 RP</button>
   </div>
-  <div class="controls">
-    <input id="lb-search" type="text" placeholder="Search any player or team…" oninput="filterLB()">
-    <label class="qual-toggle" id="lb-qual-lbl">
-      <input type="checkbox" id="lb-qual-chk" checked onchange="filterLB()"> Qualified only
-    </label>
-    <span class="row-count" id="lb-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
+
+  <!-- ── Hitters view ── -->
+  <div id="lb-h-wrap">
+    <div class="note">
+      ⓘ &nbsp;Season batting leaderboard — FanGraphs + Baseball Savant.
+      <strong>Default view:</strong> qualified hitters only (≥3.1 PA/team game).
+      Use search to find any player.
+      Cell colors = league rank among qualified hitters:
+      <span style="color:#f0c040;font-weight:700">Gold</span> = #1 &nbsp;·&nbsp;
+      <span style="color:#c0392b;font-weight:700">Dark red</span> = top &nbsp;·&nbsp;
+      <span style="color:#1a3a8a;font-weight:700">Dark blue</span> = bottom.
+      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
+    </div>
+    <div class="controls">
+      <input id="lb-search" type="text" placeholder="Search any player or team…" oninput="filterLB()">
+      <label class="qual-toggle" id="lb-qual-lbl">
+        <input type="checkbox" id="lb-qual-chk" checked onchange="filterLB()"> Qualified only
+      </label>
+      <span class="row-count" id="lb-cnt"></span>
+      <span class="sort-hint">Click headers to sort</span>
+    </div>
+    <div class="table-wrap">
+      <table id="lb-tbl">
+        <thead><tr>
+          <th class="sortable"   data-k="name"           onclick="srtLB(this,'name')">Player</th>
+          <th class="sortable r" data-k="r"              onclick="srtLB(this,'r')">R</th>
+          <th class="sortable r" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
+          <th class="sortable r" data-k="rbi"            onclick="srtLB(this,'rbi')">RBI</th>
+          <th class="sortable r" data-k="sb"             onclick="srtLB(this,'sb')">SB</th>
+          <th class="sortable r" data-k="obp"            onclick="srtLB(this,'obp')">OBP</th>
+          <th class="sortable r" data-k="woba"           onclick="srtLB(this,'woba')">wOBA</th>
+          <th class="sortable r" data-k="xwoba"          onclick="srtLB(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtLB(this,'chase_pct')">Chase%</th>
+          <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtLB(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtLB(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-k="so"           onclick="srtLB(this,'so')">SO</th>
+          <th class="sortable r" data-k="bb_pct"         onclick="srtLB(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-k="hard_hit_pct"   onclick="srtLB(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-k="barrel_pct"     onclick="srtLB(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r" data-k="barrels"        onclick="srtLB(this,'barrels')">Barrels</th>
+          <th class="sortable r" data-k="sweet_spot_pct" onclick="srtLB(this,'sweet_spot_pct')">Swt Spot%</th>
+          <th class="sortable r" data-k="avg_ev"         onclick="srtLB(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-k="max_ev"         onclick="srtLB(this,'max_ev')">Max EV</th>
+          <th class="sortable r" data-k="bat_speed"      onclick="srtLB(this,'bat_speed')">Bat Spd</th>
+          <th class="sortable r" data-k="sprint_speed"   onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
+        </tr></thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
   </div>
-  <div class="table-wrap">
-    <table id="lb-tbl">
-      <thead><tr>
-        <th class="sortable"   data-k="name"          onclick="srtLB(this,'name')">Player</th>
-        <th class="sortable r" data-k="r"             onclick="srtLB(this,'r')">R</th>
-        <th class="sortable r" data-k="hr"            onclick="srtLB(this,'hr')">HR</th>
-        <th class="sortable r" data-k="rbi"           onclick="srtLB(this,'rbi')">RBI</th>
-        <th class="sortable r" data-k="sb"            onclick="srtLB(this,'sb')">SB</th>
-        <th class="sortable r" data-k="obp"           onclick="srtLB(this,'obp')">OBP</th>
-        <th class="sortable r" data-k="woba"          onclick="srtLB(this,'woba')">wOBA</th>
-        <th class="sortable r" data-k="xwoba"         onclick="srtLB(this,'xwoba')">xwOBA</th>
-        <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtLB(this,'chase_pct')">Chase%</th>
-        <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtLB(this,'whiff_pct')">Whiff%</th>
-        <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtLB(this,'k_pct')">K%</th>
-        <th class="sortable r lb-th-inv" data-k="so"           onclick="srtLB(this,'so')">SO</th>
-        <th class="sortable r" data-k="bb_pct"        onclick="srtLB(this,'bb_pct')">BB%</th>
-        <th class="sortable r" data-k="hard_hit_pct"  onclick="srtLB(this,'hard_hit_pct')">Hard Hit%</th>
-        <th class="sortable r" data-k="barrel_pct"    onclick="srtLB(this,'barrel_pct')">Barrel%</th>
-        <th class="sortable r" data-k="barrels"       onclick="srtLB(this,'barrels')">Barrels</th>
-        <th class="sortable r" data-k="sweet_spot_pct" onclick="srtLB(this,'sweet_spot_pct')">Swt Spot%</th>
-        <th class="sortable r" data-k="avg_ev"        onclick="srtLB(this,'avg_ev')">Avg EV</th>
-        <th class="sortable r" data-k="max_ev"        onclick="srtLB(this,'max_ev')">Max EV</th>
-        <th class="sortable r" data-k="bat_speed"     onclick="srtLB(this,'bat_speed')">Bat Spd</th>
-        <th class="sortable r" data-k="sprint_speed"  onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
-      </tr></thead>
-      <tbody id="lb-body"></tbody>
-    </table>
+
+  <!-- ── SP view ── -->
+  <div id="lb-sp-wrap" style="display:none">
+    <div class="note">
+      ⓘ &nbsp;Season SP leaderboard — FanGraphs + Baseball Savant.
+      <strong>Default view:</strong> qualified starters only (≥1 IP/team game).
+      Cell colors = league rank among qualified starters.
+      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
+    </div>
+    <div class="controls">
+      <input id="lb-sp-search" type="text" placeholder="Search pitcher or team…" oninput="filterLBSP()">
+      <label class="qual-toggle" id="lb-sp-qual-lbl">
+        <input type="checkbox" id="lb-sp-qual-chk" checked onchange="filterLBSP()"> Qualified only
+      </label>
+      <span class="row-count" id="lb-sp-cnt"></span>
+      <span class="sort-hint">Click headers to sort</span>
+    </div>
+    <div class="table-wrap">
+      <table id="lb-sp-tbl">
+        <thead><tr>
+          <th class="sortable"   data-k="name"         onclick="srtLBSP(this,'name')">Pitcher</th>
+          <th class="sortable r" data-k="ip_f"         onclick="srtLBSP(this,'ip_f')">IP</th>
+          <th class="sortable r" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
+          <th class="sortable r lb-th-inv" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
+          <th class="sortable r lb-th-inv" data-k="whip" onclick="srtLBSP(this,'whip')">WHIP</th>
+          <th class="sortable r lb-th-inv" data-k="xera" onclick="srtLBSP(this,'xera')">xERA</th>
+          <th class="sortable r lb-th-inv" data-k="siera" onclick="srtLBSP(this,'siera')">SIERA</th>
+          <th class="sortable r" data-k="stuff_plus"   onclick="srtLBSP(this,'stuff_plus')">Stf+</th>
+          <th class="sortable r" data-k="loc_plus"     onclick="srtLBSP(this,'loc_plus')">Loc+</th>
+          <th class="sortable r" data-k="k"            onclick="srtLBSP(this,'k')">K</th>
+          <th class="sortable r" data-k="k_pct"        onclick="srtLBSP(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtLBSP(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-k="chase_pct"    onclick="srtLBSP(this,'chase_pct')">Chase%</th>
+          <th class="sortable r" data-k="whiff_pct"    onclick="srtLBSP(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtLBSP(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtLBSP(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-k="gb_pct"       onclick="srtLBSP(this,'gb_pct')">GB%</th>
+          <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtLBSP(this,'woba')">wOBA</th>
+          <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtLBSP(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtLBSP(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-k="fb_velo"      onclick="srtLBSP(this,'fb_velo')">FB Velo</th>
+        </tr></thead>
+        <tbody id="lb-sp-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── RP view ── -->
+  <div id="lb-rp-wrap" style="display:none">
+    <div class="note">
+      ⓘ &nbsp;Season RP leaderboard — FanGraphs + Baseball Savant.
+      <strong>Default view:</strong> qualified relievers only (≥0.5 IP/team game).
+      Cell colors = league rank among qualified relievers.
+      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
+    </div>
+    <div class="controls">
+      <input id="lb-rp-search" type="text" placeholder="Search pitcher or team…" oninput="filterLBRP()">
+      <label class="qual-toggle" id="lb-rp-qual-lbl">
+        <input type="checkbox" id="lb-rp-qual-chk" checked onchange="filterLBRP()"> Qualified only
+      </label>
+      <span class="row-count" id="lb-rp-cnt"></span>
+      <span class="sort-hint">Click headers to sort</span>
+    </div>
+    <div class="table-wrap">
+      <table id="lb-rp-tbl">
+        <thead><tr>
+          <th class="sortable"   data-k="name"         onclick="srtLBRP(this,'name')">Pitcher</th>
+          <th class="sortable r" data-k="ip_f"         onclick="srtLBRP(this,'ip_f')">IP</th>
+          <th class="sortable r" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
+          <th class="sortable r" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
+          <th class="sortable r" data-k="hld"          onclick="srtLBRP(this,'hld')">HLD</th>
+          <th class="sortable r lb-th-inv" data-k="era"  onclick="srtLBRP(this,'era')">ERA</th>
+          <th class="sortable r lb-th-inv" data-k="whip" onclick="srtLBRP(this,'whip')">WHIP</th>
+          <th class="sortable r lb-th-inv" data-k="xera" onclick="srtLBRP(this,'xera')">xERA</th>
+          <th class="sortable r lb-th-inv" data-k="siera" onclick="srtLBRP(this,'siera')">SIERA</th>
+          <th class="sortable r" data-k="stuff_plus"   onclick="srtLBRP(this,'stuff_plus')">Stf+</th>
+          <th class="sortable r" data-k="loc_plus"     onclick="srtLBRP(this,'loc_plus')">Loc+</th>
+          <th class="sortable r" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
+          <th class="sortable r" data-k="k_pct"        onclick="srtLBRP(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtLBRP(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-k="chase_pct"    onclick="srtLBRP(this,'chase_pct')">Chase%</th>
+          <th class="sortable r" data-k="whiff_pct"    onclick="srtLBRP(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtLBRP(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtLBRP(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-k="gb_pct"       onclick="srtLBRP(this,'gb_pct')">GB%</th>
+          <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtLBRP(this,'woba')">wOBA</th>
+          <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtLBRP(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtLBRP(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-k="fb_velo"      onclick="srtLBRP(this,'fb_velo')">FB Velo</th>
+        </tr></thead>
+        <tbody id="lb-rp-body"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -2239,13 +2586,12 @@ let taHView='yday';  // 'yday' or 'season'
 
 document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
 
-// Build TA season leaderboard from LB_ALL using roster name matching
+// taNorm defined here; TA_LB/taLBD initialized below after LB_ALL is defined
 function taNorm(s){
   return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\./g,'').trim();
 }
-const TA_LB = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
-
-let taLBD=[...TA_LB], taLBSC='hr', taLBSD=-1;
+// Placeholder declarations so srtTALB / renderTALB can reference them
+let taLBD=[], taLBSC='hr', taLBSD=-1;
 
 function showTAHView(view,btn){
   taHView=view;
@@ -2391,13 +2737,50 @@ taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
 renderTAH();renderTASP();renderTARP();
 
-// ── Season Batting Leaderboard ─────────────────────────────────────────────
+// ── Season Leaderboard data ────────────────────────────────────────────────
 const LB_ALL  = __LB_JSON__;
 const LB_QUAL = LB_ALL.filter(p=>p.qualified);
+const LB_SP_ALL  = __LB_SP_JSON__;
+const LB_SP_QUAL = LB_SP_ALL.filter(p=>p.qualified);
+const LB_RP_ALL  = __LB_RP_JSON__;
+const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
+
+// Now that LB_ALL is defined, initialize TA season leaderboard data
+const TA_LB = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
+taLBD = [...TA_LB];
 
 document.getElementById('lb-tc').textContent = LB_QUAL.length;
 
-// Per-column config: inv=true means lower is better
+// ── Generic rank-color engine ──────────────────────────────────────────────
+function buildCfg(cfg_obj, qual_arr){
+  Object.keys(cfg_obj).forEach(col=>{
+    const cfg = cfg_obj[col];
+    const vals = qual_arr.map(p=>p[col]).filter(v=>v!==null&&v!==undefined&&!isNaN(v));
+    cfg.sorted = [...vals].sort((a,b)=>cfg.inv?a-b:b-a);
+    cfg.vals   = vals;
+    cfg.best   = cfg.sorted.length ? cfg.sorted[0] : null;
+  });
+}
+
+function mkRankColor(cfg_obj, col, val){
+  if(val===null||val===undefined) return null;
+  const cfg = cfg_obj[col];
+  if(!cfg||!cfg.sorted||!cfg.sorted.length) return null;
+  if(val===cfg.best) return '#f0c040';
+  const better = cfg.inv
+    ? cfg.vals.filter(v=>v<val-0.00001).length
+    : cfg.vals.filter(v=>v>val+0.00001).length;
+  const total = cfg.vals.length;
+  if(total<=1) return null;
+  const t = better/(total-1);
+  const r=Math.round(150*(1-t)+25*t);
+  const g=Math.round(25+40*Math.sin(Math.PI*(1-t)));
+  const b=Math.round(20*(1-t)+165*t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Hitter leaderboard column config ──────────────────────────────────────
+// inv=true → lower is better (for hitters)
 const LB_COL_CFG = {
   r:             {inv:false}, hr:            {inv:false}, rbi:          {inv:false},
   sb:            {inv:false}, obp:           {inv:false}, woba:         {inv:false},
@@ -2407,35 +2790,38 @@ const LB_COL_CFG = {
   sweet_spot_pct:{inv:false}, avg_ev:        {inv:false}, max_ev:       {inv:false},
   bat_speed:     {inv:false}, sprint_speed:  {inv:false},
 };
+buildCfg(LB_COL_CFG, LB_QUAL);
 
-// Build sorted value lists from qualified hitters (the rank reference population)
-Object.keys(LB_COL_CFG).forEach(col=>{
-  const cfg = LB_COL_CFG[col];
-  const vals = LB_QUAL.map(p=>p[col]).filter(v=>v!==null&&v!==undefined&&!isNaN(v));
-  cfg.sorted = [...vals].sort((a,b)=>cfg.inv?a-b:b-a);  // index 0 = best
-  cfg.vals   = vals;
-  cfg.best   = cfg.sorted.length ? cfg.sorted[0] : null;
-});
+function lbRankColor(col, val){ return mkRankColor(LB_COL_CFG, col, val); }
 
-function lbRankColor(col, val){
-  if(val===null||val===undefined) return null;
-  const cfg = LB_COL_CFG[col];
-  if(!cfg||!cfg.sorted.length) return null;
-  if(val===cfg.best) return '#f0c040';  // gold = league leader
-  // Count how many qualified players are strictly better
-  const better = cfg.inv
-    ? cfg.vals.filter(v=>v<val-0.00001).length
-    : cfg.vals.filter(v=>v>val+0.00001).length;
-  const total = cfg.vals.length;
-  if(total<=1) return null;
-  const t = better/(total-1);  // t=0 → near top, t=1 → near bottom
-  // Dark red (top) → dark blue (bottom)
-  const r=Math.round(150*(1-t)+25*t);
-  const g=Math.round(25+40*Math.sin(Math.PI*(1-t)));
-  const b=Math.round(20*(1-t)+165*t);
-  return `rgb(${r},${g},${b})`;
-}
+// ── Pitcher leaderboard column configs ────────────────────────────────────
+// Note: Chase% and Whiff% NOT inverted for pitchers (higher = better for pitcher)
+const PL_SP_COL_CFG = {
+  ip_f:{inv:false}, w:{inv:false},
+  era:{inv:true},  whip:{inv:true},  xera:{inv:true},  siera:{inv:true},
+  stuff_plus:{inv:false}, loc_plus:{inv:false},
+  k:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
+  chase_pct:{inv:false}, whiff_pct:{inv:false},
+  barrel_pct:{inv:true}, hard_hit_pct:{inv:true}, gb_pct:{inv:false},
+  woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
+};
+const PL_RP_COL_CFG = {
+  ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false},
+  era:{inv:true},  whip:{inv:true},  xera:{inv:true},  siera:{inv:true},
+  stuff_plus:{inv:false}, loc_plus:{inv:false},
+  k:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
+  chase_pct:{inv:false}, whiff_pct:{inv:false},
+  barrel_pct:{inv:true}, hard_hit_pct:{inv:true}, gb_pct:{inv:false},
+  woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
+};
+buildCfg(PL_SP_COL_CFG, LB_SP_QUAL);
+buildCfg(PL_RP_COL_CFG, LB_RP_QUAL);
 
+// ── Inverted sort sets ─────────────────────────────────────────────────────
+// For pitchers, bb_pct/barrel_pct/hard_hit_pct/woba/xwoba/avg_ev/era/xera/siera/whip = first click ascending
+const PL_INV_SORT = new Set(['era','whip','xera','siera','bb_pct','barrel_pct','hard_hit_pct','woba','xwoba','avg_ev']);
+
+// ── Shared display helpers ─────────────────────────────────────────────────
 const D2=()=>'<span class="c-dim">—</span>';
 
 function lbCell(col, val, dispVal){
@@ -2445,27 +2831,55 @@ function lbCell(col, val, dispVal){
   const style=color?` style="color:${color}${fw}"`:'';
   return `<span${style}>${dispVal!==undefined?dispVal:val}</span>`;
 }
+function plCellSP(col, val, disp){
+  if(val===null||val===undefined) return D2();
+  const color=mkRankColor(PL_SP_COL_CFG, col, val);
+  const fw=color?';font-weight:600':'';
+  const style=color?` style="color:${color}${fw}"`:'';
+  return `<span${style}>${disp!==undefined?disp:val}</span>`;
+}
+function plCellRP(col, val, disp){
+  if(val===null||val===undefined) return D2();
+  const color=mkRankColor(PL_RP_COL_CFG, col, val);
+  const fw=color?';font-weight:600':'';
+  const style=color?` style="color:${color}${fw}"`:'';
+  return `<span${style}>${disp!==undefined?disp:val}</span>`;
+}
 
 function fmtPct(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1)+'%');}
 function fmtEV(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1));}
 function fmtSpd(col,v){return v==null?D2():lbCell(col,v,v.toFixed(1));}
 function fmtInt(col,v){return v==null?D2():lbCell(col,v,v);}
 function fmtRate(col,v){
-  // Format OBP/wOBA/xwOBA: display as ".350" style with color
   if(v==null) return D2();
-  const s=v.toFixed(3).replace('0.','.');  // ".350" or "1.000"
+  const s=v.toFixed(3).replace('0.','.');
   const color=lbRankColor(col,v);
   const style=color?` style="color:${color};font-weight:600"`:'';
   return `<span${style}>${s}</span>`;
 }
 function fmtSB(p){
-  // SB coloring based on SB count; display as "SB/SBA"
   const color=lbRankColor('sb',p.sb);
   const style=color?` style="color:${color};font-weight:600"`:'';
   if(p.sba>0) return `<span${style}>${p.sb}</span><span class="c-dim" style="font-size:.68rem">/${p.sba}</span>`;
   return `<span${style}>${p.sb}</span>`;
 }
 
+// ── Leaderboard type toggle ────────────────────────────────────────────────
+let lbType='h';
+function showLBType(type, btn){
+  lbType=type;
+  document.querySelectorAll('#leaderboard-panel .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('lb-h-wrap').style.display  = type==='h'  ? '' : 'none';
+  document.getElementById('lb-sp-wrap').style.display = type==='sp' ? '' : 'none';
+  document.getElementById('lb-rp-wrap').style.display = type==='rp' ? '' : 'none';
+  const cnt = type==='h' ? LB_QUAL.length : type==='sp' ? LB_SP_QUAL.length : LB_RP_QUAL.length;
+  document.getElementById('lb-tc').textContent = cnt;
+  if(type==='sp') renderLBSP();
+  if(type==='rp') renderLBRP();
+}
+
+// ── Hitter leaderboard ─────────────────────────────────────────────────────
 let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1;
 
 function renderLB(){
@@ -2504,7 +2918,6 @@ function renderLB(){
 function filterLB(){
   const q   = document.getElementById('lb-search').value.toLowerCase().trim();
   const qual = document.getElementById('lb-qual-chk').checked;
-  // Hide "Qualified only" checkbox when search is active (show all when searching)
   document.getElementById('lb-qual-lbl').style.opacity = q ? '0.4' : '1';
   let base = q ? LB_ALL : (qual ? LB_QUAL : LB_ALL);
   if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
@@ -2514,7 +2927,6 @@ function filterLB(){
 }
 
 function srtLB(th,col){
-  // Inverted columns (lower=better): first click sorts ascending
   if(lbSC===col)lbSD*=-1;else{lbSC=col;lbSD=LB_INV_SORT.has(col)?1:-1;}
   clrSort('lb-tbl');th.classList.add(lbSD===1?'sort-asc':'sort-desc');
   lbD.sort((a,b)=>cmp(a,b,col,lbSD));renderLB();
@@ -2523,6 +2935,116 @@ function srtLB(th,col){
 lbD.sort((a,b)=>cmp(a,b,'hr',-1));
 document.querySelector('#lb-tbl th[data-k="hr"]')?.classList.add('sort-desc');
 renderLB();
+
+// ── SP Leaderboard ─────────────────────────────────────────────────────────
+let lbSpD=[...LB_SP_QUAL], lbSpSC='ip_f', lbSpSD=-1;
+
+function renderLBSP(){
+  const tb=document.getElementById('lb-sp-body');
+  const ct=document.getElementById('lb-sp-cnt');
+  if(!lbSpD.length){
+    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
+    ct.textContent='';return;
+  }
+  ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
+  const D=plCellSP;
+  tb.innerHTML=lbSpD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r">${D('w',           p.w,           p.w)}</td>
+    <td class="r">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
+    <td class="r">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
+    <td class="r">${D('k',           p.k,           p.k)}</td>
+    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+  </tr>`).join('');
+}
+
+function filterLBSP(){
+  const q    = document.getElementById('lb-sp-search').value.toLowerCase().trim();
+  const qual = document.getElementById('lb-sp-qual-chk').checked;
+  document.getElementById('lb-sp-qual-lbl').style.opacity = q ? '0.4' : '1';
+  let base = q ? LB_SP_ALL : (qual ? LB_SP_QUAL : LB_SP_ALL);
+  if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+  lbSpD=[...base];
+  if(lbSpSC) lbSpD.sort((a,b)=>cmp(a,b,lbSpSC,lbSpSD));
+  renderLBSP();
+}
+
+function srtLBSP(th,col){
+  if(lbSpSC===col)lbSpSD*=-1;else{lbSpSC=col;lbSpSD=PL_INV_SORT.has(col)?1:-1;}
+  clrSort('lb-sp-tbl');th.classList.add(lbSpSD===1?'sort-asc':'sort-desc');
+  lbSpD.sort((a,b)=>cmp(a,b,col,lbSpSD));renderLBSP();
+}
+
+// ── RP Leaderboard ─────────────────────────────────────────────────────────
+let lbRpD=[...LB_RP_QUAL], lbRpSC='sv', lbRpSD=-1;
+
+function renderLBRP(){
+  const tb=document.getElementById('lb-rp-body');
+  const ct=document.getElementById('lb-rp-cnt');
+  if(!lbRpD.length){
+    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
+    ct.textContent='';return;
+  }
+  ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
+  const D=plCellRP;
+  tb.innerHTML=lbRpD.map(p=>`<tr>
+    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r">${D('w',           p.w,           p.w)}</td>
+    <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+    <td class="r">${D('hld',         p.hld,         p.hld)}</td>
+    <td class="r">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
+    <td class="r">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
+    <td class="r">${D('k',           p.k,           p.k)}</td>
+    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+  </tr>`).join('');
+}
+
+function filterLBRP(){
+  const q    = document.getElementById('lb-rp-search').value.toLowerCase().trim();
+  const qual = document.getElementById('lb-rp-qual-chk').checked;
+  document.getElementById('lb-rp-qual-lbl').style.opacity = q ? '0.4' : '1';
+  let base = q ? LB_RP_ALL : (qual ? LB_RP_QUAL : LB_RP_ALL);
+  if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+  lbRpD=[...base];
+  if(lbRpSC) lbRpD.sort((a,b)=>cmp(a,b,lbRpSC,lbRpSD));
+  renderLBRP();
+}
+
+function srtLBRP(th,col){
+  if(lbRpSC===col)lbRpSD*=-1;else{lbRpSC=col;lbRpSD=PL_INV_SORT.has(col)?1:-1;}
+  clrSort('lb-rp-tbl');th.classList.add(lbRpSD===1?'sort-asc':'sort-desc');
+  lbRpD.sort((a,b)=>cmp(a,b,col,lbRpSD));renderLBRP();
+}
 </script>
 </body>
 </html>
@@ -2530,7 +3052,7 @@ renderLB();
 
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
                 ta_hitters, ta_starters, ta_relievers,
-                lb_data=None):
+                lb_data=None, lb_pitch_data=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -2542,6 +3064,9 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         else:
             relievers.append(p_copy)
 
+    lb_sp = (lb_pitch_data or {}).get("starters", [])
+    lb_rp = (lb_pitch_data or {}).get("relievers", [])
+
     return (HTML_TEMPLATE
         .replace("__DATE_DISPLAY__", date_display)
         .replace("__N_GAMES__", str(n_games))
@@ -2552,6 +3077,8 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
         .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
         .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
+        .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
+        .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
         .replace("__TA_NAMES_JSON__", json.dumps(sorted(TEAM_ALEX_NAMES)))
     )
 
@@ -2651,13 +3178,17 @@ def main():
     print("\n[ 5c/6 ] Season batting leaderboard")
     lb_data = fetch_season_batting_leaderboard(year)
 
+    print("\n[ 5d/6 ] Season pitching leaderboard")
+    lb_pitch_data = fetch_season_pitching_leaderboard(year)
+
     print("\n[ 6/6 ] Rendering HTML")
     hitters.sort(key=lambda x: (x["barrels"], x["hard_hits"]), reverse=True)
     all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
 
     n_games = df["game_pk"].nunique()
     html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                          ta_hitters, ta_starters, ta_relievers, lb_data)
+                          ta_hitters, ta_starters, ta_relievers,
+                          lb_data, lb_pitch_data)
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(html)
