@@ -1630,7 +1630,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
             except (ValueError, TypeError):
                 bs = 0
             try:
-                hld = int(float(row.get("HLD", 0) or row.get("H", 0) or 0))
+                hld = int(float(row.get("HLD", 0) or 0))
             except (ValueError, TypeError):
                 hld = 0
 
@@ -2047,7 +2047,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 #lb-panel .controls{margin-bottom:11px}
 #lb-panel .qual-toggle{display:flex;align-items:center;gap:7px;font-size:.77rem;color:var(--muted);cursor:pointer;user-select:none;}
 #lb-panel .qual-toggle input{cursor:pointer;accent-color:var(--accent)}
-.lb-th-inv{color:#1a6699 !important}
+.lb-th-inv{} /* lower-is-better marker — no visual distinction */
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
@@ -2404,7 +2404,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <span style="color:#f0c040;font-weight:700">Gold</span> = #1 &nbsp;·&nbsp;
       <span style="color:#c0392b;font-weight:700">Dark red</span> = top &nbsp;·&nbsp;
       <span style="color:#1a3a8a;font-weight:700">Dark blue</span> = bottom.
-      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
     </div>
     <div class="controls">
       <input id="lb-search" type="text" placeholder="Search any player or team…" oninput="filterLB()">
@@ -2450,7 +2449,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       ⓘ &nbsp;Season SP leaderboard — FanGraphs + Baseball Savant.
       <strong>Default view:</strong> qualified starters only (≥1 IP/team game).
       Cell colors = league rank among qualified starters.
-      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
     </div>
     <div class="controls">
       <input id="lb-sp-search" type="text" placeholder="Search pitcher or team…" oninput="filterLBSP()">
@@ -2496,7 +2494,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       ⓘ &nbsp;Season RP leaderboard — FanGraphs + Baseball Savant.
       <strong>Default view:</strong> qualified relievers only (≥0.5 IP/team game).
       Cell colors = league rank among qualified relievers.
-      <span style="color:#85c1e9">Blue-header columns</span> = lower is better.
     </div>
     <div class="controls">
       <input id="lb-rp-search" type="text" placeholder="Search pitcher or team…" oninput="filterLBRP()">
