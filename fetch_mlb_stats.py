@@ -1967,10 +1967,13 @@ tbody tr:hover{background:rgba(0,0,0,.04)}
 tbody tr:nth-child(even){background:rgba(0,0,0,.025)}
 tbody td{padding:8px 9px;vertical-align:middle}
 tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
-td.nm{font-weight:600;white-space:nowrap;color:#0d1f2d;font-size:.83rem}
-.tm{display:inline-block;background:rgba(0,0,0,.07);border:1px solid var(--border);
-  border-radius:4px;padding:1px 6px;font-size:.65rem;font-weight:800;
-  letter-spacing:.5px;color:#2a5070;white-space:nowrap;}
+td.nm{font-weight:600;white-space:nowrap;color:var(--text);font-size:.83rem;
+  position:sticky;left:0;z-index:2;background:var(--bg);}
+tbody tr:nth-child(even) td.nm{background:color-mix(in srgb,var(--card) 40%,var(--bg));}
+tbody tr:hover td.nm{background:color-mix(in srgb,var(--card2) 60%,var(--bg));}
+thead th:first-child{position:sticky;left:0;z-index:3;background:var(--card2);}
+.tm{display:inline-block;border-radius:4px;padding:1px 6px;font-size:.65rem;font-weight:800;
+  letter-spacing:.5px;white-space:nowrap;border:1px solid transparent;}
 .c-barrel{color:var(--gold);font-weight:700}
 .c-great{color:var(--green);font-weight:600}
 .c-good{color:#1a6e40}
@@ -2598,7 +2601,24 @@ function filterP(){
 }
 
 const D  = ()=>'<span class="c-dim">—</span>';
-const tm = t=>`<span class="tm">${t}</span>`;
+// MLB team color map: abbreviation → [primaryColor, textColor]
+const TEAM_COLORS = {
+  ARI:['#A71930','#fff'], ATL:['#CE1141','#fff'], BAL:['#DF4601','#fff'],
+  BOS:['#BD3039','#fff'], CHC:['#0E3386','#fff'], CWS:['#27251F','#fff'],
+  CIN:['#C6011F','#fff'], CLE:['#00385D','#fff'], COL:['#33006F','#fff'],
+  DET:['#0C2340','#fff'], HOU:['#002D62','#fff'], KC:['#004687','#fff'],
+  LAA:['#BA0021','#fff'], LAD:['#005A9C','#fff'], MIA:['#00A3E0','#fff'],
+  MIL:['#12284B','#fff'], MIN:['#002B5C','#fff'], NYM:['#002D72','#fff'],
+  NYY:['#003087','#fff'], OAK:['#003831','#fff'], PHI:['#E81828','#fff'],
+  PIT:['#FDB827','#1a1a1a'], SD:['#2F241D','#fff'], SEA:['#0C2C56','#fff'],
+  SF:['#FD5A1E','#fff'],  STL:['#C41E3A','#fff'], TB:['#092C5C','#fff'],
+  TEX:['#003278','#fff'], TOR:['#134A8E','#fff'], WSH:['#AB0003','#fff'],
+};
+const tm = t => {
+  const tc = TEAM_COLORS[t];
+  if(tc) return `<span class="tm" style="background:${tc[0]};color:${tc[1]};border-color:${tc[0]}44">${t}</span>`;
+  return `<span class="tm" style="background:rgba(255,255,255,.12);color:var(--text)">${t}</span>`;
+};
 
 // Counting stats: show 0 when absent; rate/measurement stats: keep dash
 const fHR  = v=>v>0?`${v}`:'0';
@@ -2764,7 +2784,7 @@ function renderTALB(){
     tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season data for Team Alex yet.</p></div></td></tr>';return;
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${fmtInt('r',   p.r)}</td>
     <td class="r">${fmtInt('hr',  p.hr)}</td>
     <td class="r">${fmtInt('rbi', p.rbi)}</td>
@@ -2801,7 +2821,7 @@ function renderTASPLB(){
   }
   const D=plCellSP;
   tb.innerHTML=taSPLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r">${D('w',p.w,p.w)}</td>
     <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
@@ -2838,7 +2858,7 @@ function renderTARPLB(){
   }
   const D=plCellRP;
   tb.innerHTML=taRPLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r">${D('w',p.w,p.w)}</td>
     <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
@@ -3142,7 +3162,7 @@ function renderLB(){
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${fmtInt('r',   p.r)}</td>
     <td class="r">${fmtInt('hr',  p.hr)}</td>
     <td class="r">${fmtInt('rbi', p.rbi)}</td>
@@ -3200,7 +3220,7 @@ function renderLBSP(){
   ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
   const D=plCellSP;
   tb.innerHTML=lbSpD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r">${D('w',           p.w,           p.w)}</td>
     <td class="r">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
@@ -3254,7 +3274,7 @@ function renderLBRP(){
   ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
   const D=plCellRP;
   tb.innerHTML=lbRpD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?'<span class="tm">'+p.team+'</span>':''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r">${D('w',           p.w,           p.w)}</td>
     <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
