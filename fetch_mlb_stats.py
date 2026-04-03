@@ -1744,6 +1744,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "k":           _int(row.get("SO") or row.get("K") or 0),
                 "k_pct":       _pct(row.get("K%")),
                 "bb_pct":      _pct(row.get("BB%")),
+                "k_bb_pct":    round(_pct(row.get("K%")) - _pct(row.get("BB%")), 1) if _pct(row.get("K%")) is not None and _pct(row.get("BB%")) is not None else None,
                 "gb_pct":      _pct(row.get("GB%")),
                 "is_sp":       is_sp,
                 "qualified":   ip_val >= (qual_sp_ip if is_sp else qual_rp_ip),
@@ -2148,7 +2149,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .col-picker-actions button{flex:1;padding:4px 8px;font-size:.74rem;background:var(--card2);
   border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
 .col-picker-actions button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
-.col-picker-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px;max-height:260px;overflow-y:auto}
+.col-picker-grid{display:grid;grid-template-columns:1fr 1fr;grid-auto-flow:row;gap:3px 14px;max-height:260px;overflow-y:auto}
 .col-picker-item{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text);
   cursor:pointer;padding:3px 0;white-space:nowrap}
 .col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
@@ -2405,11 +2406,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-col="w" data-k="w"            onclick="srtTASPLB(this,'w')">W</th>
         <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtTASPLB(this,'era')">ERA</th>
         <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtTASPLB(this,'whip')">WHIP</th>
+        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTASPLB(this,'k')">K</th>
         <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtTASPLB(this,'xera')">xERA</th>
         <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtTASPLB(this,'siera')">SIERA</th>
         <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtTASPLB(this,'stuff_plus')">Stf+</th>
         <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtTASPLB(this,'loc_plus')">Loc+</th>
-        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTASPLB(this,'k')">K</th>
+        <th class="sortable r" data-col="k_bb_pct" data-k="k_bb_pct"    onclick="srtTASPLB(this,'k_bb_pct')">K-BB%</th>
         <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtTASPLB(this,'k_pct')">K%</th>
         <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtTASPLB(this,'bb_pct')">BB%</th>
         <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtTASPLB(this,'chase_pct')">Chase%</th>
@@ -2468,11 +2470,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtTARPLB(this,'hld')">HLD</th>
         <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtTARPLB(this,'era')">ERA</th>
         <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtTARPLB(this,'whip')">WHIP</th>
+        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
         <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtTARPLB(this,'xera')">xERA</th>
         <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtTARPLB(this,'siera')">SIERA</th>
         <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtTARPLB(this,'stuff_plus')">Stf+</th>
         <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtTARPLB(this,'loc_plus')">Loc+</th>
-        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
+        <th class="sortable r" data-col="k_bb_pct" data-k="k_bb_pct"    onclick="srtTARPLB(this,'k_bb_pct')">K-BB%</th>
         <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtTARPLB(this,'k_pct')">K%</th>
         <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtTARPLB(this,'bb_pct')">BB%</th>
         <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtTARPLB(this,'chase_pct')">Chase%</th>
@@ -2581,11 +2584,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
           <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
           <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtLBSP(this,'whip')">WHIP</th>
+          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBSP(this,'k')">K</th>
           <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtLBSP(this,'xera')">xERA</th>
           <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtLBSP(this,'siera')">SIERA</th>
           <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtLBSP(this,'stuff_plus')">Stf+</th>
           <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtLBSP(this,'loc_plus')">Loc+</th>
-          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBSP(this,'k')">K</th>
+          <th class="sortable r" data-col="k_bb_pct" data-k="k_bb_pct"    onclick="srtLBSP(this,'k_bb_pct')">K-BB%</th>
           <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtLBSP(this,'k_pct')">K%</th>
           <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtLBSP(this,'bb_pct')">BB%</th>
           <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtLBSP(this,'chase_pct')">Chase%</th>
@@ -2632,11 +2636,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtLBRP(this,'hld')">HLD</th>
           <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBRP(this,'era')">ERA</th>
           <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtLBRP(this,'whip')">WHIP</th>
+          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
           <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtLBRP(this,'xera')">xERA</th>
           <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtLBRP(this,'siera')">SIERA</th>
           <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtLBRP(this,'stuff_plus')">Stf+</th>
           <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtLBRP(this,'loc_plus')">Loc+</th>
-          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
+          <th class="sortable r" data-col="k_bb_pct" data-k="k_bb_pct"    onclick="srtLBRP(this,'k_bb_pct')">K-BB%</th>
           <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtLBRP(this,'k_pct')">K%</th>
           <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtLBRP(this,'bb_pct')">BB%</th>
           <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtLBRP(this,'chase_pct')">Chase%</th>
@@ -2722,11 +2727,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="r" data-col="hld">HLD</th>
           <th class="r" data-col="era">ERA</th>
           <th class="r" data-col="whip">WHIP</th>
+          <th class="r" data-col="k">K</th>
           <th class="r" data-col="xera">xERA</th>
           <th class="r" data-col="siera">SIERA</th>
           <th class="r" data-col="stuff_plus">Stf+</th>
           <th class="r" data-col="loc_plus">Loc+</th>
-          <th class="r" data-col="k">K</th>
+          <th class="r" data-col="k_bb_pct">K-BB%</th>
           <th class="r" data-col="k_pct">K%</th>
           <th class="r" data-col="bb_pct">BB%</th>
           <th class="r" data-col="chase_pct">Chase%</th>
@@ -3062,11 +3068,12 @@ function renderTASPLB(){
     <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
     <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
     <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
     <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
     <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
     <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+    <td class="r" data-col="k_bb_pct">${p.k_bb_pct!=null?D('k_bb_pct',p.k_bb_pct,p.k_bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
@@ -3101,11 +3108,12 @@ function renderTARPLB(){
     <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
     <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
     <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
     <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
     <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
     <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+    <td class="r" data-col="k_bb_pct">${p.k_bb_pct!=null?D('k_bb_pct',p.k_bb_pct,p.k_bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
@@ -3317,18 +3325,18 @@ function lbRankColor(col, val){ return mkRankColor(LB_COL_CFG, col, val); }
 // Note: Chase% and Whiff% NOT inverted for pitchers (higher = better for pitcher)
 const PL_SP_COL_CFG = {
   ip_f:{inv:false}, w:{inv:false},
-  era:{inv:true},  whip:{inv:true},  xera:{inv:true},  siera:{inv:true},
+  era:{inv:true},  whip:{inv:true},  k:{inv:false}, xera:{inv:true},  siera:{inv:true},
   stuff_plus:{inv:false}, loc_plus:{inv:false},
-  k:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
+  k_bb_pct:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
   chase_pct:{inv:false}, whiff_pct:{inv:false},
   barrel_pct:{inv:true}, hard_hit_pct:{inv:true}, gb_pct:{inv:false},
   woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
 };
 const PL_RP_COL_CFG = {
   ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false},
-  era:{inv:true},  whip:{inv:true},  xera:{inv:true},  siera:{inv:true},
+  era:{inv:true},  whip:{inv:true},  k:{inv:false}, xera:{inv:true},  siera:{inv:true},
   stuff_plus:{inv:false}, loc_plus:{inv:false},
-  k:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
+  k_bb_pct:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
   chase_pct:{inv:false}, whiff_pct:{inv:false},
   barrel_pct:{inv:true}, hard_hit_pct:{inv:true}, gb_pct:{inv:false},
   woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
@@ -3477,11 +3485,12 @@ function renderLBSP(){
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
     <td class="r" data-col="xera">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
     <td class="r" data-col="siera">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
     <td class="r" data-col="stuff_plus">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
     <td class="r" data-col="loc_plus">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
-    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
+    <td class="r" data-col="k_bb_pct">${p.k_bb_pct!=null?D('k_bb_pct',p.k_bb_pct,p.k_bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
@@ -3534,13 +3543,14 @@ function renderLBRP(){
     <td class="r" data-col="hld">${D('hld',         p.hld,         p.hld)}</td>
     <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
     <td class="r" data-col="xera">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
     <td class="r" data-col="siera">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
     <td class="r" data-col="stuff_plus">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
     <td class="r" data-col="loc_plus">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
-    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
+    <td class="r" data-col="k_bb_pct">${p.k_bb_pct!=null?D('k_bb_pct',p.k_bb_pct,p.k_bb_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+ '%'):D2()}</td>
     <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
     <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
@@ -3584,9 +3594,9 @@ const LB_P_QUAL_CMP=[...LB_SP_QUAL,...LB_RP_QUAL];
 // Combined pitcher col config for rank coloring across both roles
 const PL_CMP_COL_CFG={
   ip_f:{inv:false},w:{inv:false},sv:{inv:false},hld:{inv:false},
-  era:{inv:true},whip:{inv:true},xera:{inv:true},siera:{inv:true},
+  era:{inv:true},whip:{inv:true},k:{inv:false},xera:{inv:true},siera:{inv:true},
   stuff_plus:{inv:false},loc_plus:{inv:false},
-  k:{inv:false},k_pct:{inv:false},bb_pct:{inv:true},
+  k_bb_pct:{inv:false},k_pct:{inv:false},bb_pct:{inv:true},
   chase_pct:{inv:false},whiff_pct:{inv:false},
   barrel_pct:{inv:true},hard_hit_pct:{inv:true},gb_pct:{inv:false},
   woba:{inv:true},xwoba:{inv:true},avg_ev:{inv:true},fb_velo:{inv:false},
@@ -3722,11 +3732,12 @@ function renderCmp(){
         <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
         <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
         <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+        <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
         <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
         <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
         <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
         <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-        <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+        <td class="r" data-col="k_bb_pct">${p.k_bb_pct!=null?D('k_bb_pct',p.k_bb_pct,p.k_bb_pct.toFixed(1)+'%'):D2()}</td>
         <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
         <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
         <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
@@ -3779,9 +3790,9 @@ const COL_H_DEFS=[
 ];
 const COL_SP_DEFS=[
   {k:'ip_f',label:'IP'},{k:'w',label:'W'},
-  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
+  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'k',label:'K'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
   {k:'stuff_plus',label:'Stf+'},{k:'loc_plus',label:'Loc+'},
-  {k:'k',label:'K'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
+  {k:'k_bb_pct',label:'K-BB%'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
   {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
   {k:'barrel_pct',label:'Barrel%'},{k:'hard_hit_pct',label:'Hard Hit%'},
   {k:'gb_pct',label:'GB%'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
@@ -3789,9 +3800,9 @@ const COL_SP_DEFS=[
 ];
 const COL_RP_DEFS=[
   {k:'ip_f',label:'IP'},{k:'w',label:'W'},{k:'sv',label:'SV/SVO'},{k:'hld',label:'HLD'},
-  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
+  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'k',label:'K'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
   {k:'stuff_plus',label:'Stf+'},{k:'loc_plus',label:'Loc+'},
-  {k:'k',label:'K'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
+  {k:'k_bb_pct',label:'K-BB%'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
   {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
   {k:'barrel_pct',label:'Barrel%'},{k:'hard_hit_pct',label:'Hard Hit%'},
   {k:'gb_pct',label:'GB%'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
