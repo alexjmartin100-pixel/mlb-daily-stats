@@ -857,54 +857,61 @@ def fetch_fg_season_velo(year: int) -> tuple:
 # ── ESPN Fantasy Baseball: fetch all league rosters ───────────────────────
 def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> tuple:
     """
-    Fetch all teams' rosters from ESPN Fantasy Baseball API.
-    Returns (leagues_data, my_team_norms) where:
-      leagues_data: {league_id_str: {"league_name": str, "teams": {team_key: {"name", "is_my_team", "players"}}}}
-      my_team_norms: set of ta_norm'd player names for the authenticated user's team
+    Fetch all teams' rosters from ESPN Fantasy Baseball API using Playwright.
+    Plain HTTP requests (requests/urllib) get blocked by ESPN's CDN when run
+    from data-centre IPs (GitHub Actions).  Playwright's Chromium uses the
+    real Chrome TLS fingerprint so it passes ESPN's bot-detection.
+    Returns (leagues_data, my_team_norms).
     """
-    import urllib.parse
-    import requests as _req
+    from playwright.sync_api import sync_playwright
+    try:
+        from playwright_stealth import stealth_sync
+        _HAS_STEALTH = True
+    except ImportError:
+        _HAS_STEALTH = False
 
-    # ESPN s2 is stored URL-encoded in the browser; decode it so the cookie
-    # value is transmitted correctly (e.g. %2B → +, %2F → /).
-    espn_s2_decoded = urllib.parse.unquote(espn_s2)
-
-    # Strip braces for owner-ID comparison (ESPN stores owners as "{GUID}")
     swid_inner = swid.strip("{}").upper()
-
-    # Build a session with proper ESPN cookies + browser-like headers
-    session = _req.Session()
-    session.cookies.set("espn_s2", espn_s2_decoded, domain=".espn.com", path="/")
-    session.cookies.set("SWID",    swid,             domain=".espn.com", path="/")
-    session.headers.update({
-        "Accept":          "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent":      ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) "
-                            "Chrome/124.0.0.0 Safari/537.36"),
-        "Referer":         "https://fantasy.espn.com/",
-        "Origin":          "https://fantasy.espn.com",
-    })
-
     leagues_data: dict = {}
     my_team_norms: set = set()
 
-    for league_id in league_ids:
-        lid_str = str(league_id).strip()
-        url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
-               f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
-        try:
-            resp = session.get(url, timeout=20)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            print(f"  ESPN API error for league {lid_str}: {e}")
-            # Log first 200 chars of response to help diagnose
+    with sync_playwright() as _pw:
+        browser = _pw.chromium.launch(headless=True)
+        ctx = browser.new_context(
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36")
+        )
+        # Plant ESPN auth cookies into the browser context
+        ctx.add_cookies([
+            {"name": "espn_s2", "value": espn_s2,
+             "domain": ".espn.com", "path": "/", "secure": True},
+            {"name": "SWID",    "value": swid,
+             "domain": ".espn.com", "path": "/", "secure": True},
+        ])
+        page = ctx.new_page()
+        if _HAS_STEALTH:
+            stealth_sync(page)
+
+        for league_id in league_ids:
+            lid_str = str(league_id).strip()
+            url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
+                   f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
             try:
-                print(f"  ESPN response preview: {resp.text[:200]!r}")
-            except Exception:
-                pass
-            continue
+                # context.request.get uses Chromium's network stack + our cookies
+                api_resp = ctx.request.get(
+                    url,
+                    headers={"Accept": "application/json"},
+                    timeout=30_000,
+                )
+                raw = api_resp.text()
+                data = json.loads(raw)
+            except Exception as e:
+                print(f"  ESPN Playwright error for league {lid_str}: {e}")
+                try:
+                    print(f"  ESPN response preview: {raw[:300]!r}")
+                except Exception:
+                    pass
+                continue
 
         league_name = (data.get("settings", {}).get("name")
                        or f"League {lid_str}")
@@ -950,6 +957,7 @@ def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> 
         print(f"  ESPN '{league_name}' (id={lid_str}): "
               f"{len(teams_out)} teams, my team found={n_mine>0}")
 
+    browser.close()
     return leagues_data, my_team_norms
 
 
