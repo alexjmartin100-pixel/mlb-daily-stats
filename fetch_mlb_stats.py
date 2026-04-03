@@ -896,32 +896,16 @@ def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> 
             lid_str = str(league_id).strip()
             api_url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
                        f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
-            league_page_url = (f"https://fantasy.espn.com/baseball/league"
-                               f"?leagueId={lid_str}")
             try:
-                # Navigate to the league page so ESPN sets its own session cookies
-                # in the Chromium browser jar (bypasses CDN IP-block on raw HTTP).
-                page.goto(league_page_url, wait_until="domcontentloaded",
-                          timeout=45_000)
+                # Navigate Chromium directly to the API endpoint — this uses the
+                # full browser navigation stack (real TLS fingerprint + cookie jar)
+                # rather than a programmatic HTTP request that ESPN can intercept.
+                page.goto(api_url, wait_until="domcontentloaded", timeout=45_000)
 
-                # Run fetch() INSIDE the Chromium renderer — uses the real browser
-                # TLS fingerprint + the cookies Chromium just stored.
-                js = f"""
-async () => {{
-    const r = await fetch(
-        {json.dumps(api_url)},
-        {{
-            credentials: 'include',
-            headers: {{ 'Accept': 'application/json',
-                        'X-Fantasy-Source': 'kona',
-                        'X-Fantasy-Platform': 'kona-PROD-m.5533.fantasy.x.011478067.0' }}
-        }}
-    );
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
-}}
-"""
-                data = page.evaluate(js)
+                # The browser renders raw JSON as a text page; grab the body text.
+                raw = page.evaluate("document.body.innerText")
+                print(f"  ESPN response preview: {raw[:120]!r}")
+                data = json.loads(raw)
 
                 # ── data processing (all inside try so data is always defined) ──
                 league_name = (
