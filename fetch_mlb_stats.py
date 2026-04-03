@@ -2120,6 +2120,24 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 #lb-panel .qual-toggle{display:flex;align-items:center;gap:7px;font-size:.77rem;color:var(--muted);cursor:pointer;user-select:none;}
 #lb-panel .qual-toggle input{cursor:pointer;accent-color:var(--accent)}
 .lb-th-inv{} /* lower-is-better marker — no visual distinction */
+/* Compare Players tab */
+.tab-btn.cmp-btn{color:#2e7d32}
+.tab-btn.cmp-btn.active{color:#4caf50;border-bottom-color:#4caf50}
+.tab-btn.cmp-btn.active .tab-count{background:#4caf50;color:#0f1923}
+.cmp-search-wrap{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.cmp-input-wrap{position:relative;display:inline-block;width:300px}
+.cmp-input-wrap input{width:100%;box-sizing:border-box}
+.cmp-dropdown{position:absolute;top:100%;left:0;width:100%;background:var(--card);border:1px solid var(--border);
+  border-radius:0 0 var(--radius) var(--radius);max-height:240px;overflow-y:auto;z-index:200;
+  box-shadow:0 6px 18px rgba(0,0,0,.45)}
+.cmp-di{padding:8px 12px;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--border);
+  color:var(--text);display:flex;align-items:center;gap:8px}
+.cmp-di:hover,.cmp-di.active{background:var(--card2)}
+.cmp-di:last-child{border-bottom:none}
+.cmp-remove{background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.35);color:#e74c3c;
+  border-radius:4px;padding:2px 8px;font-size:.73rem;cursor:pointer;white-space:nowrap;line-height:1.7}
+.cmp-remove:hover{background:rgba(231,76,60,.3)}
+.cmp-empty{text-align:center;padding:48px 20px;color:var(--muted);font-size:.88rem}
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
@@ -2153,6 +2171,9 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
+  </button>
+  <button class="tab-btn cmp-btn" onclick="showTab('compare',this)">
+    🔍 Compare
   </button>
 </div>
 
@@ -2603,6 +2624,95 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-k="fb_velo"      onclick="srtLBRP(this,'fb_velo')">FB Velo</th>
         </tr></thead>
         <tbody id="lb-rp-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ COMPARE PLAYERS ══ -->
+<div id="compare-panel" class="tab-panel">
+  <div class="toggle-group" style="margin-bottom:14px">
+    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)">🏏 Hitters</button>
+    <button class="tgl-btn" id="cmp-p-btn" onclick="showCmpType(\'p\',this)">⚾ Pitchers</button>
+  </div>
+  <div class="cmp-search-wrap">
+    <div class="cmp-input-wrap">
+      <input id="cmp-search" type="text" placeholder="Search and add a player…" oninput="cmpSearch()" autocomplete="off">
+      <div id="cmp-dropdown" class="cmp-dropdown" style="display:none"></div>
+    </div>
+    <button class="tgl-btn" onclick="clearCmp()" style="font-size:.75rem;padding:6px 14px">Clear All</button>
+    <span class="row-count" id="cmp-cnt"></span>
+  </div>
+
+  <!-- Hitters comparison table -->
+  <div id="cmp-h-wrap">
+    <div class="table-wrap">
+      <table id="cmp-h-tbl">
+        <thead><tr>
+          <th>Player</th>
+          <th class="r">R</th>
+          <th class="r">HR</th>
+          <th class="r">RBI</th>
+          <th class="r">SB</th>
+          <th class="r">OBP</th>
+          <th class="r">wOBA</th>
+          <th class="r">xwOBA</th>
+          <th class="r">Chase%</th>
+          <th class="r">Whiff%</th>
+          <th class="r">K%</th>
+          <th class="r">SO</th>
+          <th class="r">BB%</th>
+          <th class="r">Hard Hit%</th>
+          <th class="r">Barrel%</th>
+          <th class="r">Barrels</th>
+          <th class="r">Swt Spot%</th>
+          <th class="r">Avg EV</th>
+          <th class="r">Max EV</th>
+          <th class="r">Bat Spd</th>
+          <th class="r">Sprt Spd</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="cmp-h-body">
+          <tr><td colspan="22"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pitchers comparison table -->
+  <div id="cmp-p-wrap" style="display:none">
+    <div class="table-wrap">
+      <table id="cmp-p-tbl">
+        <thead><tr>
+          <th>Pitcher</th>
+          <th class="r">Role</th>
+          <th class="r">IP</th>
+          <th class="r">W</th>
+          <th class="r">SV/SVO</th>
+          <th class="r">HLD</th>
+          <th class="r">ERA</th>
+          <th class="r">WHIP</th>
+          <th class="r">xERA</th>
+          <th class="r">SIERA</th>
+          <th class="r">Stf+</th>
+          <th class="r">Loc+</th>
+          <th class="r">K</th>
+          <th class="r">K%</th>
+          <th class="r">BB%</th>
+          <th class="r">Chase%</th>
+          <th class="r">Whiff%</th>
+          <th class="r">Barrel%</th>
+          <th class="r">Hard Hit%</th>
+          <th class="r">GB%</th>
+          <th class="r">wOBA</th>
+          <th class="r">xwOBA</th>
+          <th class="r">Avg EV</th>
+          <th class="r">FB Velo</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="cmp-p-body">
+          <tr><td colspan="25"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
+        </tbody>
       </table>
     </div>
   </div>
@@ -3424,6 +3534,205 @@ function srtLBRP(th,col){
   clrSort('lb-rp-tbl');th.classList.add(lbRpSD===1?'sort-asc':'sort-desc');
   lbRpD.sort((a,b)=>cmp(a,b,col,lbRpSD));renderLBRP();
 }
+
+// ── Compare Players ────────────────────────────────────────────────────────
+let cmpType='h';
+const cmpHSet=new Set();
+const cmpPSet=new Set();
+let cmpDdIdx=-1;
+
+// Combined pitcher pool (SP + RP) for compare search
+const LB_P_ALL=[...LB_SP_ALL,...LB_RP_ALL];
+const LB_P_QUAL_CMP=[...LB_SP_QUAL,...LB_RP_QUAL];
+
+// Combined pitcher col config for rank coloring across both roles
+const PL_CMP_COL_CFG={
+  ip_f:{inv:false},w:{inv:false},sv:{inv:false},hld:{inv:false},
+  era:{inv:true},whip:{inv:true},xera:{inv:true},siera:{inv:true},
+  stuff_plus:{inv:false},loc_plus:{inv:false},
+  k:{inv:false},k_pct:{inv:false},bb_pct:{inv:true},
+  chase_pct:{inv:false},whiff_pct:{inv:false},
+  barrel_pct:{inv:true},hard_hit_pct:{inv:true},gb_pct:{inv:false},
+  woba:{inv:true},xwoba:{inv:true},avg_ev:{inv:true},fb_velo:{inv:false},
+};
+buildCfg(PL_CMP_COL_CFG, LB_P_QUAL_CMP);
+
+function showCmpType(type,btn){
+  cmpType=type;
+  document.querySelectorAll('#compare-panel .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('cmp-h-wrap').style.display=type==='h'?'':'none';
+  document.getElementById('cmp-p-wrap').style.display=type==='p'?'':'none';
+  document.getElementById('cmp-search').value='';
+  document.getElementById('cmp-dropdown').style.display='none';
+  cmpDdIdx=-1;
+  updateCmpCount();
+}
+
+function updateCmpCount(){
+  const n=cmpType==='h'?cmpHSet.size:cmpPSet.size;
+  document.getElementById('cmp-cnt').textContent=n?`${n} player${n===1?'':'s'} selected`:'';
+}
+
+function cmpSearch(){
+  const q=document.getElementById('cmp-search').value.toLowerCase().trim();
+  const dd=document.getElementById('cmp-dropdown');
+  if(!q){dd.style.display='none';cmpDdIdx=-1;return;}
+  const pool=cmpType==='h'?LB_ALL:LB_P_ALL;
+  const already=cmpType==='h'?cmpHSet:cmpPSet;
+  const matches=pool.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q)).slice(0,20);
+  if(!matches.length){dd.style.display='none';cmpDdIdx=-1;return;}
+  dd.innerHTML=matches.map(p=>{
+    const added=already.has(p.id);
+    const role=cmpType==='p'?(p.is_sp?'SP':'RP'):'';
+    return `<div class="cmp-di" data-id="${p.id}" onmousedown="cmpAdd(${p.id})">`
+      +(p.team?tm(p.team):'')+` <span>${p.name}</span>`
+      +(role?` <span style="color:var(--muted);font-size:.72rem">${role}</span>`:'')
+      +(!p.qualified?' <span style="color:var(--muted);font-size:.72rem">[NQ]</span>':'')
+      +(added?'<span style="color:var(--muted);font-size:.72rem;margin-left:auto">Added</span>':'')
+      +'</div>';
+  }).join('');
+  dd.style.display='';
+  cmpDdIdx=-1;
+}
+
+function cmpAdd(id){
+  const already=cmpType==='h'?cmpHSet:cmpPSet;
+  already.add(id);
+  document.getElementById('cmp-search').value='';
+  document.getElementById('cmp-dropdown').style.display='none';
+  cmpDdIdx=-1;
+  renderCmp();
+  updateCmpCount();
+}
+
+function cmpRemove(id){
+  (cmpType==='h'?cmpHSet:cmpPSet).delete(id);
+  renderCmp();
+  updateCmpCount();
+}
+
+function clearCmp(){
+  (cmpType==='h'?cmpHSet:cmpPSet).clear();
+  renderCmp();
+  updateCmpCount();
+}
+
+function plCmpCell(col,val,disp){
+  if(val===null||val===undefined) return D2();
+  const color=mkRankColor(PL_CMP_COL_CFG,col,val);
+  const fw=color?';font-weight:600':'';
+  const style=color?` style="color:${color}${fw}"`:'';
+  return `<span${style}>${disp!==undefined&&disp!==null?disp:val}</span>`;
+}
+
+function renderCmp(){
+  if(cmpType==='h'){
+    const tb=document.getElementById('cmp-h-body');
+    const ids=[...cmpHSet];
+    if(!ids.length){
+      tb.innerHTML='<tr><td colspan="22"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>';
+      return;
+    }
+    tb.innerHTML=ids.map(id=>{
+      const p=LB_ALL.find(x=>x.id===id);
+      if(!p) return '';
+      return `<tr>
+        <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="r">${fmtInt('r',p.r)}</td>
+        <td class="r">${fmtInt('hr',p.hr)}</td>
+        <td class="r">${fmtInt('rbi',p.rbi)}</td>
+        <td class="r">${fmtSB(p)}</td>
+        <td class="r">${fmtRate('obp',p.obp)}</td>
+        <td class="r">${fmtRate('woba',p.woba)}</td>
+        <td class="r">${fmtRate('xwoba',p.xwoba)}</td>
+        <td class="r">${fmtPct('chase_pct',p.chase_pct)}</td>
+        <td class="r">${fmtPct('whiff_pct',p.whiff_pct)}</td>
+        <td class="r">${fmtPct('k_pct',p.k_pct)}</td>
+        <td class="r">${fmtInt('so',p.so)}</td>
+        <td class="r">${fmtPct('bb_pct',p.bb_pct)}</td>
+        <td class="r">${fmtPct('hard_hit_pct',p.hard_hit_pct)}</td>
+        <td class="r">${fmtPct('barrel_pct',p.barrel_pct)}</td>
+        <td class="r">${fmtInt('barrels',p.barrels)}</td>
+        <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+        <td class="r">${fmtEV('avg_ev',p.avg_ev)}</td>
+        <td class="r">${fmtEV('max_ev',p.max_ev)}</td>
+        <td class="r">${fmtSpd('bat_speed',p.bat_speed)}</td>
+        <td class="r">${fmtSpd('sprint_speed',p.sprint_speed)}</td>
+        <td class="r"><button class="cmp-remove" onclick="cmpRemove(${id})">✕ Remove</button></td>
+      </tr>`;
+    }).join('');
+  } else {
+    const tb=document.getElementById('cmp-p-body');
+    const ids=[...cmpPSet];
+    if(!ids.length){
+      tb.innerHTML='<tr><td colspan="25"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>';
+      return;
+    }
+    const D=plCmpCell;
+    tb.innerHTML=ids.map(id=>{
+      const p=LB_P_ALL.find(x=>x.id===id);
+      if(!p) return '';
+      const role=p.is_sp?'SP':'RP';
+      const roleColor=role==='SP'?'rgba(61,155,233,.25)':'rgba(232,131,42,.25)';
+      const roleTxt=role==='SP'?'#3d9be9':'#e8832a';
+      return `<tr>
+        <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="r"><span class="tm" style="background:${roleColor};color:${roleTxt};border-color:transparent;font-size:.7rem">${role}</span></td>
+        <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+        <td class="r">${D('w',p.w,p.w)}</td>
+        <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+        <td class="r">${D('hld',p.hld,p.hld)}</td>
+        <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+        <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+        <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+        <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+        <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+        <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+        <td class="r">${D('k',p.k,p.k)}</td>
+        <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+        <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+        <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+        <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+        <td class="r"><button class="cmp-remove" onclick="cmpRemove(${id})">✕ Remove</button></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// Keyboard nav for compare dropdown
+document.getElementById('cmp-search').addEventListener('keydown',function(e){
+  const dd=document.getElementById('cmp-dropdown');
+  const items=[...dd.querySelectorAll('.cmp-di')];
+  if(!items.length) return;
+  if(e.key==='ArrowDown'){
+    e.preventDefault();
+    cmpDdIdx=Math.min(cmpDdIdx+1,items.length-1);
+    items.forEach((el,i)=>el.classList.toggle('active',i===cmpDdIdx));
+  } else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    cmpDdIdx=Math.max(cmpDdIdx-1,0);
+    items.forEach((el,i)=>el.classList.toggle('active',i===cmpDdIdx));
+  } else if(e.key==='Enter'){
+    e.preventDefault();
+    if(cmpDdIdx>=0&&items[cmpDdIdx]) cmpAdd(+items[cmpDdIdx].dataset.id);
+  } else if(e.key==='Escape'){
+    dd.style.display='none'; cmpDdIdx=-1;
+  }
+});
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#cmp-search')&&!e.target.closest('#cmp-dropdown')){
+    const dd=document.getElementById('cmp-dropdown');
+    if(dd){dd.style.display='none';} cmpDdIdx=-1;
+  }
+});
 </script>
 </body>
 </html>
