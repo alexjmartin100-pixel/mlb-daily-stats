@@ -4057,3 +4057,49 @@ def main():
     print(f"  FanGraphs season leaderboard: {len(fg_name_to_fgid)} name→ID, {len(fg_mlbam_to_fgid)} MLBAM→ID mappings")
 
     # Patch p_info: fill in FG IDs 
+    for mlbam_k, fgid in fg_mlbam_to_fgid.items():
+        if mlbam_k in p_info and p_info[mlbam_k].get("fg_id") in (None, -1):
+            p_info[mlbam_k]["fg_id"] = fgid
+    for nm, fgid in fg_name_to_fgid.items():
+        for mlbam_k, info in p_info.items():
+            if norm_name(info.get("name", "")) == nm and info.get("fg_id") in (None, -1):
+                info["fg_id"] = fgid
+
+    print("\n[ 5b/6 ] FanGraphs game Stuff+/Loc+")
+    game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, fg_name_to_fgid)
+
+    print("\n  Attaching FG data to pitchers…")
+    attach_fg_data(all_pitchers, p_info, game_stuff, fg_velo_dict, savant_velo)
+
+    # ── Team Alex subsets ──────────────────────────────────────────────────
+    ta_hitters   = [h for h in hitters
+                    if ta_norm(h["name"]) in TEAM_ALEX_NAMES]
+    ta_starters  = [p for p in all_pitchers
+                    if p.get("ip_float", 0) >= 3
+                    and ta_norm(p["name"]) in TEAM_ALEX_NAMES]
+    ta_relievers = [p for p in all_pitchers
+                    if p.get("ip_float", 0) < 3
+                    and ta_norm(p["name"]) in TEAM_ALEX_NAMES]
+    print(f"  Team Alex: {len(ta_hitters)} hitter(s), "
+          f"{len(ta_starters)} SP, {len(ta_relievers)} RP")
+
+    print("\n[ 6/6 ] Season leaderboards")
+    lb_data       = fetch_season_batting_leaderboard(year)
+    lb_pitch_data = fetch_season_pitching_leaderboard(year)
+
+    n_games = int(df["game_pk"].nunique())
+
+    print("\nRendering HTML…")
+    html = render_html(date_display, ts, n_games, hitters, all_pitchers,
+                       ta_hitters, ta_starters, ta_relievers,
+                       lb_data=lb_data, lb_pitch_data=lb_pitch_data)
+
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "mlb_daily_stats.html")
+    with open(out_path, "w", encoding="utf-8") as fout:
+        fout.write(html)
+    print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
+
+
+if __name__ == "__main__":
+    main()
