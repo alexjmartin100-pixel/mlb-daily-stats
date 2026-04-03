@@ -2149,7 +2149,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .col-picker-actions button{flex:1;padding:4px 8px;font-size:.74rem;background:var(--card2);
   border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
 .col-picker-actions button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
-.col-picker-grid{display:flex;flex-direction:column;flex-wrap:wrap;max-height:260px;overflow-x:auto;gap:3px 14px;width:100%}
+.col-picker-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px}
 .col-picker-item{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text);
   cursor:pointer;padding:3px 0;white-space:nowrap}
 .col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
@@ -3449,6 +3449,7 @@ function renderLB(){
     <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
   </tr>`).join('');
   applyColVis('lb-tbl',colVisH);
+  _reorderTableCols('lb-tbl',colOrderH);
 }
 
 function filterLB(){
@@ -3509,6 +3510,7 @@ function renderLBSP(){
     <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
   applyColVis('lb-sp-tbl',colVisSP);
+  _reorderTableCols('lb-sp-tbl',colOrderSP);
 }
 
 function filterLBSP(){
@@ -3567,6 +3569,7 @@ function renderLBRP(){
     <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
   applyColVis('lb-rp-tbl',colVisRP);
+  _reorderTableCols('lb-rp-tbl',colOrderRP);
 }
 
 function filterLBRP(){
@@ -3819,6 +3822,29 @@ COL_H_DEFS.forEach(d=>{colVisH[d.k]=true;});
 COL_SP_DEFS.forEach(d=>{colVisSP[d.k]=true;});
 COL_RP_DEFS.forEach(d=>{colVisRP[d.k]=true;});
 
+// ── Column display order (tracks selection order for left→right positioning) ──
+// Initialized to COL_DEFS order; updated dynamically when user picks columns.
+var colOrderH  = COL_H_DEFS.map(d=>d.k);
+var colOrderSP = COL_SP_DEFS.map(d=>d.k);
+var colOrderRP = COL_RP_DEFS.map(d=>d.k);
+function _colOrder(type){ return type==='h'?colOrderH:type==='sp'?colOrderSP:colOrderRP; }
+
+// Physically reorder <th>/<td> cells in a table to match orderedKeys.
+// Cells without data-col (Name/Player) are untouched and stay first.
+function _reorderTableCols(tableId, orderedKeys){
+  const tbl=document.getElementById(tableId);
+  if(!tbl) return;
+  tbl.querySelectorAll('tr').forEach(row=>{
+    const movable={};
+    [...row.children].forEach(c=>{
+      const k=c.getAttribute('data-col');
+      if(k && orderedKeys.includes(k)) movable[k]=c;
+    });
+    Object.values(movable).forEach(c=>c.remove());
+    orderedKeys.forEach(k=>{ if(movable[k]) row.appendChild(movable[k]); });
+  });
+}
+
 function _colInfo(type){
   if(type==='h')  return {vis:colVisH,  defs:COL_H_DEFS,  tables:['lb-tbl','cmp-h-tbl']};
   if(type==='sp') return {vis:colVisSP, defs:COL_SP_DEFS, tables:['lb-sp-tbl']};
@@ -3858,22 +3884,37 @@ function toggleColPicker(type,btn){
 
 function toggleCol(type,key,checked){
   const {vis,tables}=_colInfo(type);
+  const order=_colOrder(type);
   vis[key]=checked;
-  tables.forEach(t=>applyColVis(t,vis));
+  // Move key within order so visible cols are in selection order
+  const idx=order.indexOf(key);
+  if(idx!==-1) order.splice(idx,1);
+  if(checked){
+    // Insert after the last currently-visible column (becomes rightmost visible)
+    let lastVis=-1;
+    order.forEach((k,i)=>{ if(vis[k]!==false) lastVis=i; });
+    order.splice(lastVis+1,0,key);
+  } else {
+    order.push(key); // hidden cols go to end
+  }
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
 }
 
 function selectAllCols(type){
   const {vis,defs,tables}=_colInfo(type);
+  const order=_colOrder(type);
   defs.forEach(d=>{vis[d.k]=true;});
-  tables.forEach(t=>applyColVis(t,vis));
+  order.length=0; defs.forEach(d=>order.push(d.k)); // reset to default order
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
   document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
 }
 
 function deselectAllCols(type){
   const {vis,defs,tables}=_colInfo(type);
-  // Keep name col visible always; deselect everything else
+  const order=_colOrder(type);
   defs.forEach(d=>{vis[d.k]=false;});
-  tables.forEach(t=>applyColVis(t,vis));
+  order.length=0; defs.forEach(d=>order.push(d.k)); // reset order (all hidden, default order)
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
   document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
 }
 
