@@ -3398,6 +3398,9 @@ function showLBType(type, btn){
   if(type==='rp') renderLBRP();
 }
 
+// ── Column visibility state (declared early so render fns can reference them) ──
+var colVisH={}, colVisSP={}, colVisRP={};
+
 // ── Hitter leaderboard ─────────────────────────────────────────────────────
 let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1;
 
@@ -3795,7 +3798,7 @@ const COL_RP_DEFS=[
   {k:'avg_ev',label:'Avg EV'},{k:'fb_velo',label:'FB Velo'},
   {k:'role',label:'Role'},
 ];
-const colVisH={}, colVisSP={}, colVisRP={};
+// (colVisH/colVisSP/colVisRP declared earlier as var — just populate them here)
 COL_H_DEFS.forEach(d=>{colVisH[d.k]=true;});
 COL_SP_DEFS.forEach(d=>{colVisSP[d.k]=true;});
 COL_RP_DEFS.forEach(d=>{colVisRP[d.k]=true;});
@@ -3807,6 +3810,7 @@ function _colInfo(type){
 }
 
 function applyColVis(tableId, vis){
+  if(!vis||typeof vis!=='object') return;
   const tbl=document.getElementById(tableId);
   if(!tbl) return;
   tbl.querySelectorAll('[data-col]').forEach(el=>{
