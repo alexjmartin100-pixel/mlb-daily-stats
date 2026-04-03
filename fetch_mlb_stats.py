@@ -894,70 +894,86 @@ def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> 
 
         for league_id in league_ids:
             lid_str = str(league_id).strip()
-            url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
-                   f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
+            api_url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
+                       f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
+            league_page_url = (f"https://fantasy.espn.com/baseball/league"
+                               f"?leagueId={lid_str}")
             try:
-                # context.request.get uses Chromium's network stack + our cookies
-                api_resp = ctx.request.get(
-                    url,
-                    headers={"Accept": "application/json"},
-                    timeout=30_000,
+                # Navigate to the league page so ESPN sets its own session cookies
+                # in the Chromium browser jar (bypasses CDN IP-block on raw HTTP).
+                page.goto(league_page_url, wait_until="domcontentloaded",
+                          timeout=45_000)
+
+                # Run fetch() INSIDE the Chromium renderer — uses the real browser
+                # TLS fingerprint + the cookies Chromium just stored.
+                js = f"""
+async () => {{
+    const r = await fetch(
+        {json.dumps(api_url)},
+        {{
+            credentials: 'include',
+            headers: {{ 'Accept': 'application/json',
+                        'X-Fantasy-Source': 'kona',
+                        'X-Fantasy-Platform': 'kona-PROD-m.5533.fantasy.x.011478067.0' }}
+        }}
+    );
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+}}
+"""
+                data = page.evaluate(js)
+
+                # ── data processing (all inside try so data is always defined) ──
+                league_name = (
+                    (data.get("settings") or {}).get("name")
+                    or f"League {lid_str}"
                 )
-                raw = api_resp.text()
-                data = json.loads(raw)
+                teams_out: dict = {}
+
+                for team in data.get("teams", []):
+                    team_id   = team.get("id", 0)
+                    loc       = (team.get("location") or "").strip()
+                    nick      = (team.get("nickname") or "").strip()
+                    abbrev    = (team.get("abbrev") or "").strip()
+                    team_name = f"{loc} {nick}".strip() or abbrev or f"Team {team_id}"
+
+                    # Identify "my team" by matching SWID against the owners list
+                    owners  = team.get("owners", [])
+                    is_mine = any(o.strip("{}").upper() == swid_inner for o in owners)
+
+                    # Extract player names from the roster
+                    players: list = []
+                    for entry in team.get("roster", {}).get("entries", []):
+                        try:
+                            ppe       = entry.get("playerPoolEntry", {})
+                            plyr      = ppe.get("player", {})
+                            full_name = plyr.get("fullName", "")
+                            if full_name:
+                                players.append(ta_norm(full_name))
+                        except Exception:
+                            pass
+
+                    team_key = f"{lid_str}_{team_id}"
+                    teams_out[team_key] = {
+                        "name":       team_name,
+                        "is_my_team": is_mine,
+                        "players":    players,
+                    }
+                    if is_mine and players:
+                        my_team_norms = set(players)
+
+                leagues_data[lid_str] = {
+                    "league_name": league_name,
+                    "teams":       teams_out,
+                }
+                n_mine = sum(1 for t in teams_out.values() if t["is_my_team"])
+                print(f"  ESPN '{league_name}' (id={lid_str}): "
+                      f"{len(teams_out)} teams, my team found={n_mine > 0}")
+
             except Exception as e:
-                print(f"  ESPN Playwright error for league {lid_str}: {e}")
-                try:
-                    print(f"  ESPN response preview: {raw[:300]!r}")
-                except Exception:
-                    pass
+                print(f"  ESPN error for league {lid_str}: {e}")
                 continue
 
-        league_name = (data.get("settings", {}).get("name")
-                       or f"League {lid_str}")
-        teams_out: dict = {}
-
-        for team in data.get("teams", []):
-            team_id   = team.get("id", 0)
-            loc       = (team.get("location") or "").strip()
-            nick      = (team.get("nickname") or "").strip()
-            abbrev    = (team.get("abbrev") or "").strip()
-            team_name = f"{loc} {nick}".strip() or abbrev or f"Team {team_id}"
-
-            # Identify "my team" by matching SWID against the owners list
-            owners    = team.get("owners", [])
-            is_mine   = any(o.strip("{}").upper() == swid_inner for o in owners)
-
-            # Extract player names from the roster
-            players: list = []
-            for entry in team.get("roster", {}).get("entries", []):
-                try:
-                    ppe  = entry.get("playerPoolEntry", {})
-                    plyr = ppe.get("player", {})
-                    full_name = plyr.get("fullName", "")
-                    if full_name:
-                        players.append(ta_norm(full_name))
-                except Exception:
-                    pass
-
-            team_key = f"{lid_str}_{team_id}"
-            teams_out[team_key] = {
-                "name":       team_name,
-                "is_my_team": is_mine,
-                "players":    players,
-            }
-            if is_mine and players:
-                my_team_norms = set(players)
-
-        leagues_data[lid_str] = {
-            "league_name": league_name,
-            "teams":       teams_out,
-        }
-        n_mine = sum(1 for t in teams_out.values() if t["is_my_team"])
-        print(f"  ESPN '{league_name}' (id={lid_str}): "
-              f"{len(teams_out)} teams, my team found={n_mine>0}")
-
-    browser.close()
     return leagues_data, my_team_norms
 
 
