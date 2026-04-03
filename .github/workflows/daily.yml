@@ -2,9 +2,9 @@ name: MLB Stats Daily Update
 
 on:
   schedule:
-    # 10:15 AM Eastern Daylight Time (UTC-4) = 14:15 UTC
-    # Runs Mon–Sun every day during MLB season
-    - cron: '15 14 * * *'
+    # Target: ready by ~noon EDT. GitHub delays scheduled runs 2-3 hrs on free repos.
+    # Scheduling at 7:00 AM EDT (11:00 UTC) so even a 3-hr delay fires by 10 AM EDT.
+    - cron: '0 11 * * *'
   workflow_dispatch:   # lets you trigger a manual run from GitHub UI
   push:
     branches:
@@ -51,6 +51,9 @@ jobs:
         run: xvfb-run -a python fetch_mlb_stats.py
         env:
           SKIP_AUTO_INSTALL: "1"   # skip the Windows pip/playwright block
+          ESPN_LEAGUE_IDS:  ${{ secrets.ESPN_LEAGUE_IDS }}
+          ESPN_SWID:        ${{ secrets.ESPN_SWID }}
+          ESPN_S2:          ${{ secrets.ESPN_S2 }}
 
       - name: Commit updated dashboard to repo
         run: |

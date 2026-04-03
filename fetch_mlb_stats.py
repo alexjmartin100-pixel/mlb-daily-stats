@@ -854,6 +854,89 @@ def fetch_fg_season_velo(year: int) -> tuple:
 
     return velo_dict, name_to_fgid, mlbam_to_fgid
 
+# ── ESPN Fantasy Baseball: fetch all league rosters ───────────────────────
+def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> tuple:
+    """
+    Fetch all teams' rosters from ESPN Fantasy Baseball API.
+    Returns (leagues_data, my_team_norms) where:
+      leagues_data: {league_id_str: {"league_name": str, "teams": {team_key: {"name", "is_my_team", "players"}}}}
+      my_team_norms: set of ta_norm'd player names for the authenticated user's team
+    """
+    import urllib.request
+    import urllib.error
+
+    # Strip braces for owner-ID comparison (ESPN stores owners as "{GUID}")
+    swid_inner = swid.strip("{}").upper()
+
+    leagues_data: dict = {}
+    my_team_norms: set = set()
+
+    for league_id in league_ids:
+        lid_str = str(league_id).strip()
+        url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
+               f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
+        try:
+            req = urllib.request.Request(url, headers={
+                "Cookie":     f"espn_s2={espn_s2}; SWID={swid}",
+                "Accept":     "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; mlb-stats-bot/1.0)",
+            })
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            print(f"  ESPN HTTP {e.code} for league {lid_str}: {e.reason}")
+            continue
+        except Exception as e:
+            print(f"  ESPN API error for league {lid_str}: {e}")
+            continue
+
+        league_name = (data.get("settings", {}).get("name")
+                       or f"League {lid_str}")
+        teams_out: dict = {}
+
+        for team in data.get("teams", []):
+            team_id   = team.get("id", 0)
+            loc       = (team.get("location") or "").strip()
+            nick      = (team.get("nickname") or "").strip()
+            abbrev    = (team.get("abbrev") or "").strip()
+            team_name = f"{loc} {nick}".strip() or abbrev or f"Team {team_id}"
+
+            # Identify "my team" by matching SWID against the owners list
+            owners    = team.get("owners", [])
+            is_mine   = any(o.strip("{}").upper() == swid_inner for o in owners)
+
+            # Extract player names from the roster
+            players: list = []
+            for entry in team.get("roster", {}).get("entries", []):
+                try:
+                    ppe  = entry.get("playerPoolEntry", {})
+                    plyr = ppe.get("player", {})
+                    full_name = plyr.get("fullName", "")
+                    if full_name:
+                        players.append(ta_norm(full_name))
+                except Exception:
+                    pass
+
+            team_key = f"{lid_str}_{team_id}"
+            teams_out[team_key] = {
+                "name":       team_name,
+                "is_my_team": is_mine,
+                "players":    players,
+            }
+            if is_mine and players:
+                my_team_norms = set(players)
+
+        leagues_data[lid_str] = {
+            "league_name": league_name,
+            "teams":       teams_out,
+        }
+        n_mine = sum(1 for t in teams_out.values() if t["is_my_team"])
+        print(f"  ESPN '{league_name}' (id={lid_str}): "
+              f"{len(teams_out)} teams, my team found={n_mine>0}")
+
+    return leagues_data, my_team_norms
+
+
 # ── MLB Stats API: stolen bases ───────────────────────────────────────────
 def fetch_mlb_sb(date_str: str) -> dict:
     """Returns {(mlbam_id, game_pk): [sb, cs]} from official MLB box scores."""
@@ -2309,11 +2392,15 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <!-- ══ TEAM ALEX ══ -->
 <div id="teamalex-panel" class="tab-panel">
-  <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px">
+  <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
     <div>
-      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
-      <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)" id="ta-team-title">Team Alex</div>
+      <div style="font-size:.72rem;color:var(--muted)" id="ta-roster-count">24-player roster</div>
+    </div>
+    <div style="margin-left:auto">
+      <select id="ta-team-select" onchange="switchTeam(this.value)"
+        style="background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:.8rem;cursor:pointer;max-width:200px"></select>
     </div>
   </div>
 
@@ -2777,6 +2864,7 @@ const TA_HITTERS = __TA_H_JSON__;
 const TA_STARTERS= __TA_SP_JSON__;
 const TA_RELIEVERS=__TA_RP_JSON__;
 const TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
+const LEAGUES=__LEAGUES_JSON__;
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -3241,6 +3329,68 @@ taHD.sort((a,b)=>cmp(a,b,'barrels',-1));
 taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
 renderTAH();renderTASP();renderTARP();
+
+// ── Fantasy team switcher ─────────────────────────────────────────────────
+function switchTeam(teamKey){
+  let roster=null, teamName='', rosterSize=0;
+  for(const [,league] of Object.entries(LEAGUES)){
+    if(league.teams[teamKey]){
+      const t=league.teams[teamKey];
+      roster=new Set(t.players);
+      teamName=t.name;
+      rosterSize=t.players.length;
+      break;
+    }
+  }
+  if(!roster) return;
+  // Update header labels
+  document.getElementById('ta-team-title').textContent=teamName;
+  document.getElementById('ta-roster-count').textContent=rosterSize+'-player roster';
+  // Rebuild yesterday game log data
+  taHD =HITTERS.filter(h=>roster.has(taNorm(h.name)));
+  taSPD=ALL_PITCHERS.filter(p=>(p.ip_float>=3||p.is_starter)&&roster.has(taNorm(p.name)));
+  taRPD=ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter&&roster.has(taNorm(p.name)));
+  // Rebuild season LB data
+  taLBD   =[...LB_ALL.filter(p=>roster.has(taNorm(p.name)))];
+  taSPLBD =[...LB_SP_ALL.filter(p=>roster.has(taNorm(p.name)))];
+  taRPLBD =[...LB_RP_ALL.filter(p=>roster.has(taNorm(p.name)))];
+  // Re-sort using current sort state
+  taHD.sort((a,b)=>cmp(a,b,taHSC,taHSD));
+  taSPD.sort((a,b)=>cmp(a,b,taSPSC,taSPSD));
+  taRPD.sort((a,b)=>cmp(a,b,taRPSC,taRPSD));
+  taLBD.sort((a,b)=>cmp(a,b,taLBSC,taLBSD));
+  taSPLBD.sort((a,b)=>cmp(a,b,taSPLBSC,taSPLBSD));
+  taRPLBD.sort((a,b)=>cmp(a,b,taRPLBSC,taRPLBSD));
+  // Re-render all sections
+  renderTAH(); renderTASP(); renderTARP();
+  renderTALB(); renderTASPLB(); renderTARPLB();
+  document.getElementById('ta-tc').textContent=taHD.length+taSPD.length+taRPD.length;
+}
+
+// Populate team dropdown from LEAGUES data
+(function(){
+  const sel=document.getElementById('ta-team-select');
+  if(!sel||!LEAGUES||!Object.keys(LEAGUES).length){
+    // No ESPN data — hide the dropdown
+    if(sel) sel.style.display='none';
+    return;
+  }
+  let hasTeams=false;
+  for(const [,league] of Object.entries(LEAGUES)){
+    const grp=document.createElement('optgroup');
+    grp.label=league.league_name;
+    for(const [tkey,team] of Object.entries(league.teams)){
+      const opt=document.createElement('option');
+      opt.value=tkey;
+      opt.textContent=team.name;
+      if(team.is_my_team) opt.selected=true;
+      grp.appendChild(opt);
+      hasTeams=true;
+    }
+    sel.appendChild(grp);
+  }
+  if(!hasTeams) sel.style.display='none';
+})();
 
 function showTASPView(view,btn){
   document.querySelectorAll('#ta-sp-yday-btn,#ta-sp-season-btn').forEach(b=>b.classList.remove('active'));
@@ -3963,7 +4113,7 @@ document.addEventListener('click',function(e){
 
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
                 ta_hitters, ta_starters, ta_relievers,
-                lb_data=None, lb_pitch_data=None):
+                lb_data=None, lb_pitch_data=None, leagues_data=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -3990,7 +4140,8 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
         .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
         .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
-        .replace("__TA_NAMES_JSON__", json.dumps(sorted(TEAM_ALEX_NAMES)))
+        .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
+        .replace("__LEAGUES_JSON__",   json.dumps(leagues_data or {}, default=str))
     )
 
 
@@ -4014,6 +4165,27 @@ def main():
     print(f"\n{'='*55}")
     print(f"  MLB Daily Stats · {date_display}")
     print(f"{'='*55}\n")
+
+    # ── ESPN Fantasy: auto-sync rosters ───────────────────────────────────────
+    global TEAM_ALEX_NAMES
+    espn_swid      = os.environ.get("ESPN_SWID", "").strip()
+    espn_s2        = os.environ.get("ESPN_S2", "").strip()
+    espn_ids_raw   = os.environ.get("ESPN_LEAGUE_IDS", "").strip()
+    espn_league_ids = [s.strip() for s in espn_ids_raw.split(",") if s.strip()]
+
+    leagues_data: dict = {}
+    if espn_swid and espn_s2 and espn_league_ids:
+        print("[ 0/6 ] ESPN Fantasy Rosters")
+        leagues_data, my_team_norms = fetch_espn_rosters(
+            espn_league_ids, year, espn_swid, espn_s2
+        )
+        if my_team_norms:
+            TEAM_ALEX_NAMES = my_team_norms
+            print(f"  ✓ My team roster synced: {len(TEAM_ALEX_NAMES)} players")
+        else:
+            print("  ⚠ Could not identify my team — using hardcoded TEAM_ALEX_NAMES")
+    else:
+        print("[ 0/6 ] ESPN env vars not set — using hardcoded TEAM_ALEX_NAMES")
 
     print("[ 1/6 ] Statcast")
     df = fetch_statcast(yesterday)
@@ -4098,7 +4270,8 @@ def main():
     print("\nRendering HTML…")
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
-                       lb_data=lb_data, lb_pitch_data=lb_pitch_data)
+                       lb_data=lb_data, lb_pitch_data=lb_pitch_data,
+                       leagues_data=leagues_data)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
