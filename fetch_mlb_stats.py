@@ -12,6 +12,7 @@ Run once each morning; mlb_daily_stats.html is updated in the same folder.
 """
 
 import subprocess, sys, os, json, unicodedata, time
+from pathlib import Path
 from datetime import date, timedelta, datetime
 
 # Fix Unicode output on Windows (cp1252 can't handle checkmarks etc.)
@@ -4190,26 +4191,30 @@ def main():
     print(f"  MLB Daily Stats · {date_display}")
     print(f"{'='*55}\n")
 
-    # ── ESPN Fantasy: auto-sync rosters ───────────────────────────────────────
+    # ── ESPN Fantasy: load rosters from local cache ───────────────────────────
+    # update_espn_cache.py runs on the user's home machine (where ESPN isn't
+    # blocked) and writes espn_rosters_cache.json, which is committed to the
+    # repo so GitHub Actions can read it here without touching ESPN's API.
     global TEAM_ALEX_NAMES
-    espn_swid      = os.environ.get("ESPN_SWID", "").strip()
-    espn_s2        = os.environ.get("ESPN_S2", "").strip()
-    espn_ids_raw   = os.environ.get("ESPN_LEAGUE_IDS", "").strip()
-    espn_league_ids = [s.strip() for s in espn_ids_raw.split(",") if s.strip()]
-
     leagues_data: dict = {}
-    if espn_swid and espn_s2 and espn_league_ids:
-        print("[ 0/6 ] ESPN Fantasy Rosters")
-        leagues_data, my_team_norms = fetch_espn_rosters(
-            espn_league_ids, year, espn_swid, espn_s2
-        )
-        if my_team_norms:
-            TEAM_ALEX_NAMES = my_team_norms
-            print(f"  ✓ My team roster synced: {len(TEAM_ALEX_NAMES)} players")
-        else:
-            print("  ⚠ Could not identify my team — using hardcoded TEAM_ALEX_NAMES")
+    print("[ 0/6 ] ESPN Fantasy Rosters")
+    _cache_path = Path(__file__).parent / "espn_rosters_cache.json"
+    if _cache_path.exists():
+        try:
+            _cache = json.loads(_cache_path.read_text(encoding="utf-8"))
+            leagues_data     = _cache.get("leagues", {})
+            _my_norms_list   = _cache.get("my_team_norms", [])
+            if _my_norms_list:
+                TEAM_ALEX_NAMES = set(_my_norms_list)
+                print(f"  ✓ Cache loaded: {len(leagues_data)} league(s), "
+                      f"{len(TEAM_ALEX_NAMES)} players on my team")
+            else:
+                print("  ⚠ Cache exists but my_team_norms is empty — "
+                      "using hardcoded TEAM_ALEX_NAMES")
+        except Exception as _e:
+            print(f"  ⚠ Cache read error ({_e}) — using hardcoded TEAM_ALEX_NAMES")
     else:
-        print("[ 0/6 ] ESPN env vars not set — using hardcoded TEAM_ALEX_NAMES")
+        print("  ⚠ No cache yet — run update_espn_cache.py locally to sync rosters")
 
     print("[ 1/6 ] Statcast")
     df = fetch_statcast(yesterday)

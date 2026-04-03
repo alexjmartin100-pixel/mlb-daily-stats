@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.pybaseball/
+pybaseball_cache/
+.env
+*.log
+.DS_Store
+Thumbs.db
+espn_cache_last_run.txt
