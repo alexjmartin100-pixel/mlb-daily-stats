@@ -3423,6 +3423,7 @@ function showLBType(type, btn){
 
 // ── Column visibility state (declared early so render fns can reference them) ──
 var colVisH={}, colVisSP={}, colVisRP={};
+var pickH=[], pickSP=[], pickRP=[];  // selection order (leftmost = index 0)
 
 // ── Hitter leaderboard ─────────────────────────────────────────────────────
 let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1;
@@ -3459,7 +3460,7 @@ function renderLB(){
     <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
   </tr>`).join('');
   applyColVis('lb-tbl',colVisH);
-  _reorderTableCols('lb-tbl',colOrderH);
+  _reorderTableCols('lb-tbl',_buildOrder('h'));
 }
 
 function filterLB(){
@@ -3520,7 +3521,7 @@ function renderLBSP(){
     <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
   applyColVis('lb-sp-tbl',colVisSP);
-  _reorderTableCols('lb-sp-tbl',colOrderSP);
+  _reorderTableCols('lb-sp-tbl',_buildOrder('sp'));
 }
 
 function filterLBSP(){
@@ -3579,7 +3580,7 @@ function renderLBRP(){
     <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
   applyColVis('lb-rp-tbl',colVisRP);
-  _reorderTableCols('lb-rp-tbl',colOrderRP);
+  _reorderTableCols('lb-rp-tbl',_buildOrder('rp'));
 }
 
 function filterLBRP(){
@@ -3831,13 +3832,22 @@ const COL_RP_DEFS=[
 COL_H_DEFS.forEach(d=>{colVisH[d.k]=true;});
 COL_SP_DEFS.forEach(d=>{colVisSP[d.k]=true;});
 COL_RP_DEFS.forEach(d=>{colVisRP[d.k]=true;});
+// Init pick arrays to default order (all selected)
+COL_H_DEFS.forEach(d=>pickH.push(d.k));
+COL_SP_DEFS.forEach(d=>pickSP.push(d.k));
+COL_RP_DEFS.forEach(d=>pickRP.push(d.k));
 
-// ── Column display order (tracks selection order for left→right positioning) ──
-// Initialized to COL_DEFS order; updated dynamically when user picks columns.
-var colOrderH  = COL_H_DEFS.map(d=>d.k);
-var colOrderSP = COL_SP_DEFS.map(d=>d.k);
-var colOrderRP = COL_RP_DEFS.map(d=>d.k);
-function _colOrder(type){ return type==='h'?colOrderH:type==='sp'?colOrderSP:colOrderRP; }
+// ── Column display order helpers ─────────────────────────────────────────────
+function _pick(type){ return type==='h'?pickH:type==='sp'?pickSP:pickRP; }
+// Derive full physical column order: selected columns (pick order) first,
+// then all unselected columns in default definition order.
+function _buildOrder(type){
+  const {defs}=_colInfo(type);
+  const p=_pick(type);
+  const result=[...p];
+  defs.forEach(d=>{ if(!p.includes(d.k)) result.push(d.k); });
+  return result;
+}
 
 // Physically reorder <th>/<td> cells in a table to match orderedKeys.
 // Cells without data-col (Name/Player) are untouched and stay first.
@@ -3895,36 +3905,34 @@ function toggleColPicker(type,btn){
 
 function toggleCol(type,key,checked){
   const {vis,tables}=_colInfo(type);
-  const order=_colOrder(type);
+  const pick=_pick(type);
   vis[key]=checked;
-  // Move key within order so visible cols are in selection order
-  const idx=order.indexOf(key);
-  if(idx!==-1) order.splice(idx,1);
   if(checked){
-    // Insert after the last currently-visible column (becomes rightmost visible)
-    let lastVis=-1;
-    order.forEach((k,i)=>{ if(vis[k]!==false) lastVis=i; });
-    order.splice(lastVis+1,0,key);
+    if(!pick.includes(key)) pick.push(key);  // add to END → becomes rightmost selected
   } else {
-    order.push(key); // hidden cols go to end
+    const i=pick.indexOf(key);
+    if(i!==-1) pick.splice(i,1);            // remove from selection order
   }
+  const order=_buildOrder(type);
   tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
 }
 
 function selectAllCols(type){
   const {vis,defs,tables}=_colInfo(type);
-  const order=_colOrder(type);
+  const pick=_pick(type);
   defs.forEach(d=>{vis[d.k]=true;});
-  order.length=0; defs.forEach(d=>order.push(d.k)); // reset to default order
+  pick.length=0; defs.forEach(d=>pick.push(d.k)); // reset pick to default order
+  const order=_buildOrder(type);
   tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
   document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
 }
 
 function deselectAllCols(type){
   const {vis,defs,tables}=_colInfo(type);
-  const order=_colOrder(type);
+  const pick=_pick(type);
   defs.forEach(d=>{vis[d.k]=false;});
-  order.length=0; defs.forEach(d=>order.push(d.k)); // reset order (all hidden, default order)
+  pick.length=0;  // clear selection order — first clicked will be leftmost
+  const order=_buildOrder(type); // = all defs keys in default order (all hidden)
   tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
   document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
 }
