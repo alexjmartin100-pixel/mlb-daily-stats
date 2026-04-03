@@ -883,8 +883,9 @@ def fetch_mlb_sb(date_str: str) -> dict:
                     bat = pd_.get("stats", {}).get("batting", {})
                     sb  = int(bat.get("stolenBases", 0))
                     cs  = int(bat.get("caughtStealing", 0))
-                    if sb or cs:
-                        sb_map[(mid, int(gpk))] = [sb, cs]
+                    r   = int(bat.get("runs", 0))
+                    rbi = int(bat.get("rbi", 0))
+                    sb_map[(mid, int(gpk))] = [sb, cs, r, rbi]
         total = sum(v[0] + v[1] for v in sb_map.values())
         print(f"    {total} steal attempt(s) for {len(sb_map)} player(s)")
         return sb_map
@@ -1049,7 +1050,7 @@ def build_hitter_stats(df: pd.DataFrame, sb_map: dict) -> list:
         evts         = last_events(gdf)
         batted       = gdf[gdf["type"] == "X"]
         bev          = batted[batted["launch_speed"].notna()]
-        sb_data      = sb_map.get((int(bid), int(gpk)), [0, 0])
+        sb_data      = sb_map.get((int(bid), int(gpk)), [0, 0, 0, 0])
         # Detect grand slams: HR where on_1b, on_2b, on_3b all occupied
         last_rows  = gdf.sort_values("pitch_number").groupby("at_bat_number").last()
         hr_rows    = last_rows[last_rows["events"] == "home_run"]
@@ -1064,7 +1065,9 @@ def build_hitter_stats(df: pd.DataFrame, sb_map: dict) -> list:
             "game_pk":    int(gpk),
             "team":       bat_t,
             "opp":        opp_t,
+            "r":          sb_data[2] if len(sb_data) > 2 else 0,
             "hr":         int((evts == "home_run").sum()),
+            "rbi":        sb_data[3] if len(sb_data) > 3 else 0,
             "grand_slam": grand_slam,
             "k":          int((evts == "strikeout").sum()),
             "bb":         int(evts.isin(["walk", "intent_walk"]).sum()),
@@ -1247,9 +1250,11 @@ def attach_fg_data(pitchers: list, p_info: dict,
             pt["season_velo"] = svelo
             pt["game_stuff"]  = gs
             if code in FASTBALL_TYPES and pt["velo"] and svelo:
-                pt["velo_alert"] = abs(pt["velo"] - svelo) > 1.0
+                pt["velo_above"] = (pt["velo"] - svelo) > 1.0   # red: game velo > season avg + 1
+                pt["velo_below"] = (svelo - pt["velo"]) > 1.0   # blue: game velo < season avg - 1
             else:
-                pt["velo_alert"] = False
+                pt["velo_above"] = False
+                pt["velo_below"] = False
 
 # ── Season Batting Leaderboard ─────────────────────────────────────────────
 def fetch_season_batting_leaderboard(year: int) -> list:
@@ -2091,6 +2096,7 @@ thead th:first-child{position:sticky;left:0;z-index:3;background:var(--card2);}
 .pt-velo{white-space:nowrap;display:flex;align-items:center;gap:2px}
 .pt-stuff{color:var(--muted);font-size:.68rem;text-align:right;white-space:nowrap}
 .va{color:var(--red) !important;font-weight:700}
+.vb{color:var(--blue) !important;font-weight:700}
 .vn{color:var(--text)}
 .c-gold{color:var(--gold);font-weight:700}
 .vd{color:var(--muted)}
@@ -2211,9 +2217,11 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
         <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
         <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
+        <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
         <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
+        <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
+        <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
         <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
-        <th class="sortable r" data-col="k" data-k="k"         onclick="srtH(this,'k')">K</th>
         <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
         <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
         <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
@@ -2230,7 +2238,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div class="note">
     ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
     Arsenal: game velocity <span class="vd">(season avg)</span> —
-    fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph below season avg.
+    fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
     <span class="gs">S+</span> = game Stuff+ for that pitch type.
     <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
   </div>
@@ -2263,7 +2271,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
         <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
-        <th class="sortable r"    data-col="k_bb_pct" data-k="k_bb_pct"      onclick="srtSP(this,'k_bb_pct')">K-BB%</th>
         <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
         <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
         <th>Arsenal</th>
@@ -2324,9 +2331,11 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable"   data-k="name"      onclick="srtTA(this,'h','name')">Player</th>
         <th class="sortable"   data-col="team" data-k="team"      onclick="srtTA(this,'h','team')">Team</th>
         <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtTA(this,'h','opp')">Opp</th>
+        <th class="sortable r" data-col="r" data-k="r"          onclick="srtTA(this,'h','r')">R</th>
         <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtTA(this,'h','hr')">HR</th>
+        <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtTA(this,'h','rbi')">RBI</th>
+        <th class="sortable r" data-col="k" data-k="k"          onclick="srtTA(this,'h','k')">K</th>
         <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtTA(this,'h','bb')">BB</th>
-        <th class="sortable r" data-col="k" data-k="k"         onclick="srtTA(this,'h','k')">K</th>
         <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtTA(this,'h','sb')">SB</th>
         <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtTA(this,'h','sba')">SBA</th>
         <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtTA(this,'h','hard_hits')">Hard Hits</th>
@@ -2388,7 +2397,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtTA(this,'sp','whiffs')">Whiffs</th>
         <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtTA(this,'sp','hard_hits')">Hard Hits</th>
         <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtTA(this,'sp','barrels')">Barrels</th>
-        <th class="sortable r"    data-col="k_bb_pct" data-k="k_bb_pct"      onclick="srtTA(this,'sp','k_bb_pct')">K-BB%</th>
         <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+</th>
         <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+</th>
         <th>Arsenal</th>
@@ -2771,8 +2779,8 @@ const TA_RELIEVERS=__TA_RP_JSON__;
 const TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
-const H_LEAD_COLS=['hr','bb','k','sb','sba','hard_hits','barrels','max_ev'];
-const SP_LEAD_COLS=['ip_float','k','w','whiffs','hard_hits','barrels','k_bb_pct','stuff_plus','location_plus'];
+const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
+const SP_LEAD_COLS=['ip_float','k','w','whiffs','hard_hits','barrels','stuff_plus','location_plus'];
 const RP_LEAD_COLS=['ip_float','k','sv','hld','bs','w','whiffs','hard_hits','barrels','stuff_plus','location_plus'];
 function maxOf(arr,col){
   let m=-Infinity;
@@ -2886,7 +2894,7 @@ function pitchArsenal(types){
     const c=pt.color||'#888';
     let veloHtml='<span class="vd">—</span>';
     if(pt.velo!=null){
-      const gvCls=pt.velo_alert?'va':'vn';
+      const gvCls=pt.velo_above?'va':pt.velo_below?'vb':'vn';
       const gv=`<span class="${gvCls}">${pt.velo}</span>`;
       const sv=pt.season_velo!=null?`<span class="vd sv"> (${pt.season_velo})</span>`:'';
       veloHtml=`${gv}${sv}<span class="vd" style="font-size:.65rem"> mph</span>`;
@@ -2905,15 +2913,17 @@ function renderH(){
   const tb=document.getElementById('h-body');
   const ct=document.getElementById('h-cnt');
   document.getElementById('h-tc').textContent=hD.length;
-  if(!hD.length){tb.innerHTML='<tr><td colspan="11"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
+  if(!hD.length){tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
   ct.textContent=`${hD.length} player${hD.length===1?'':'s'}`;
   tb.innerHTML=hD.map(h=>`<tr>
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
+    <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
     <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
-    <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
+    <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
+    <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
     <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
     <td class="r">${gl(h.sba,hL.sba)||(h.sba>0?`${h.sba}`:'0')}</td>
     <td class="r">${gl(h.hard_hits,hL.hard_hits)||fHrd(h.hard_hits)}</td>
@@ -2924,7 +2934,7 @@ function renderH(){
 
 function renderSP(){
   const tb=document.getElementById('sp-body');
-  if(!spD.length){tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';return;}
+  if(!spD.length){tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';return;}
   tb.innerHTML=spD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
@@ -2938,7 +2948,6 @@ function renderSP(){
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
     <td class="r">${glMin(p.hard_hits,spMin.hard_hits)||fHrd(p.hard_hits)}</td>
     <td class="r">${glMin(p.barrels,spMin.barrels)||fBar(p.barrels)}</td>
-    <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
     <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
@@ -3137,16 +3146,18 @@ function renderTAH(){
   const tb=document.getElementById('ta-h-body');
   document.getElementById('ta-h-tc').textContent=taHD.length;
   if(!taHD.length){
-    tb.innerHTML='<tr><td colspan="11"><div class="empty"><div class="ico">😴</div><p>No Team Alex hitters appeared yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No Team Alex hitters appeared yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taHD.map(h=>`<tr>
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
+    <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
     <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
-    <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
+    <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
+    <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
     <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
     <td class="r">${gl(h.sba,hL.sba)||(h.sba>0?`${h.sba}`:'0')}</td>
     <td class="r">${gl(h.hard_hits,hL.hard_hits)||fHrd(h.hard_hits)}</td>
@@ -3159,7 +3170,7 @@ function renderTASP(){
   const tb=document.getElementById('ta-sp-body');
   document.getElementById('ta-sp-tc').textContent=taSPD.length;
   if(!taSPD.length){
-    tb.innerHTML='<tr><td colspan="16"><div class="empty"><div class="ico">😴</div><p>No Team Alex starters pitched yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No Team Alex starters pitched yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taSPD.map(p=>`<tr>
@@ -3175,7 +3186,6 @@ function renderTASP(){
     <td class="r">${gl(p.whiffs,spL.whiffs)||fWh(p.whiffs)}</td>
     <td class="r">${glMin(p.hard_hits,spMin.hard_hits)||fHrd(p.hard_hits)}</td>
     <td class="r">${glMin(p.barrels,spMin.barrels)||fBar(p.barrels)}</td>
-    <td class="r">${gl(p.k_bb_pct,spL.k_bb_pct)||fKBB(p.k_bb_pct)}</td>
     <td class="r">${gl(p.stuff_plus,spL.stuff_plus)||fSP(p.stuff_plus)}</td>
     <td class="r">${gl(p.location_plus,spL.location_plus)||fLP(p.location_plus)}</td>
     <td>${pitchArsenal(p.pitch_types)}</td>
