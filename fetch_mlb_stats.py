@@ -3836,6 +3836,10 @@ COL_RP_DEFS.forEach(d=>{colVisRP[d.k]=true;});
 COL_H_DEFS.forEach(d=>pickH.push(d.k));
 COL_SP_DEFS.forEach(d=>pickSP.push(d.k));
 COL_RP_DEFS.forEach(d=>pickRP.push(d.k));
+// Apply correct column order/visibility now that defs are fully initialized
+applyColVis('lb-tbl',colVisH);    _reorderTableCols('lb-tbl',_buildOrder('h'));
+applyColVis('lb-sp-tbl',colVisSP); _reorderTableCols('lb-sp-tbl',_buildOrder('sp'));
+applyColVis('lb-rp-tbl',colVisRP); _reorderTableCols('lb-rp-tbl',_buildOrder('rp'));
 
 // ── Column display order helpers ─────────────────────────────────────────────
 function _pick(type){ return type==='h'?pickH:type==='sp'?pickSP:pickRP; }
@@ -3867,9 +3871,11 @@ function _reorderTableCols(tableId, orderedKeys){
 }
 
 function _colInfo(type){
-  if(type==='h')  return {vis:colVisH,  defs:COL_H_DEFS,  tables:['lb-tbl','cmp-h-tbl']};
-  if(type==='sp') return {vis:colVisSP, defs:COL_SP_DEFS, tables:['lb-sp-tbl']};
-  if(type==='rp') return {vis:colVisRP, defs:COL_RP_DEFS, tables:['lb-rp-tbl','cmp-p-tbl']};
+  try{
+    if(type==='h')  return {vis:colVisH,  defs:COL_H_DEFS,  tables:['lb-tbl','cmp-h-tbl']};
+    if(type==='sp') return {vis:colVisSP, defs:COL_SP_DEFS, tables:['lb-sp-tbl']};
+    if(type==='rp') return {vis:colVisRP, defs:COL_RP_DEFS, tables:['lb-rp-tbl','cmp-p-tbl']};
+  }catch(e){return {vis:{},defs:[],tables:[]};} // guard: COL_*_DEFS not yet initialized
 }
 
 function applyColVis(tableId, vis){
