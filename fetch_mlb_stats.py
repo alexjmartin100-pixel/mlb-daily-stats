@@ -2176,7 +2176,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="showTab('hitters',this)">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
   <button class="tab-btn" onclick="showTab('pitchers',this)">
     ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
@@ -2311,7 +2311,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 
   <!-- Hitters section with Yesterday / Season toggle -->
-  <div class="ta-section-hdr"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters <span class="tab-count" id="ta-h-tc">—</span></div>
+  <div class="ta-section-hdr"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="ta-h-tc">—</span></div>
   <div class="toggle-group" style="margin-bottom:10px">
     <button class="tgl-btn active" id="ta-h-yday-btn" onclick="showTAHView('yday',this)">Yesterday</button>
     <button class="tgl-btn" id="ta-h-season-btn" onclick="showTAHView('season',this)">Season</button>
@@ -2498,7 +2498,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ SEASON LEADERBOARD ══ -->
 <div id="leaderboard-panel" class="tab-panel">
   <div class="toggle-group" style="margin-bottom:14px">
-    <button class="tgl-btn active" onclick="showLBType('h',this)"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters</button>
+    <button class="tgl-btn active" onclick="showLBType('h',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
     <button class="tgl-btn" onclick="showLBType('sp',this)">⚾ SP</button>
     <button class="tgl-btn" onclick="showLBType('rp',this)">🔥 RP</button>
   </div>
@@ -2662,7 +2662,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ COMPARE PLAYERS ══ -->
 <div id="compare-panel" class="tab-panel">
   <div class="toggle-group" style="margin-bottom:14px">
-    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters</button>
+    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
     <button class="tgl-btn" id="cmp-p-btn" onclick="showCmpType(\'p\',this)">⚾ Pitchers</button>
   </div>
   <div class="cmp-search-wrap">
@@ -3832,6 +3832,7 @@ function _colOrder(type){ return type==='h'?colOrderH:type==='sp'?colOrderSP:col
 // Physically reorder <th>/<td> cells in a table to match orderedKeys.
 // Cells without data-col (Name/Player) are untouched and stay first.
 function _reorderTableCols(tableId, orderedKeys){
+  if(!orderedKeys) return;  // guard: called before colOrder arrays init
   const tbl=document.getElementById(tableId);
   if(!tbl) return;
   tbl.querySelectorAll('tr').forEach(row=>{
