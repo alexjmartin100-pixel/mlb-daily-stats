@@ -185,6 +185,20 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   border-radius:4px;padding:2px 8px;font-size:.73rem;cursor:pointer;white-space:nowrap;line-height:1.7}
 .cmp-remove:hover{background:rgba(231,76,60,.3)}
 .cmp-empty{text-align:center;padding:48px 20px;color:var(--muted);font-size:.88rem}
+/* Column visibility picker */
+.col-vis-hidden{display:none!important}
+.col-picker-wrap{position:relative;display:inline-block}
+.col-picker-panel{position:absolute;top:calc(100% + 4px);right:0;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;
+  min-width:230px;z-index:400;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.col-picker-actions{display:flex;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.col-picker-actions button{flex:1;padding:4px 8px;font-size:.74rem;background:var(--card2);
+  border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
+.col-picker-actions button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.col-picker-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px;max-height:260px;overflow-y:auto}
+.col-picker-item{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text);
+  cursor:pointer;padding:3px 0;white-space:nowrap}
+.col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
@@ -200,7 +214,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 2, 2026</strong>
       &nbsp;·&nbsp; 3 game(s)
-      &nbsp;·&nbsp; Updated Apr 3, 2026 2:30 PM
+      &nbsp;·&nbsp; Updated Apr 3, 2026 2:49 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -242,16 +256,16 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="h-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
-        <th class="sortable"   data-k="team"      onclick="srtH(this,'team')">Team</th>
-        <th class="sortable"   data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
-        <th class="sortable r" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
-        <th class="sortable r" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
-        <th class="sortable r" data-k="k"         onclick="srtH(this,'k')">K</th>
-        <th class="sortable r" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
-        <th class="sortable r" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
-        <th class="sortable r" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
-        <th class="sortable r" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
+        <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
+        <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
+        <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
+        <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
+        <th class="sortable r" data-col="k" data-k="k"         onclick="srtH(this,'k')">K</th>
+        <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
+        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
+        <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
+        <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
       </tr></thead>
       <tbody id="h-body"></tbody>
     </table>
@@ -285,20 +299,20 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="sp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtSP(this,'team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtSP(this,'hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtSP(this,'r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtSP(this,'k')">K</th>
-        <th class="sortable r"    data-k="w"             onclick="srtSP(this,'w')">W</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
-        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtSP(this,'k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtSP(this,'team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtSP(this,'hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtSP(this,'r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtSP(this,'k')">K</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtSP(this,'w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
+        <th class="sortable r"    data-col="k_bb_pct" data-k="k_bb_pct"      onclick="srtSP(this,'k_bb_pct')">K-BB%</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="sp-body"></tbody>
@@ -310,22 +324,22 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="rp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtRP(this,'team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtRP(this,'hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtRP(this,'r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtRP(this,'k')">K</th>
-        <th class="sortable r"    data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
-        <th class="sortable r"    data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
-        <th class="sortable r"    data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
-        <th class="sortable r"    data-k="w"             onclick="srtRP(this,'w')">W</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtRP(this,'team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtRP(this,'hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtRP(this,'r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
+        <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
+        <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
+        <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="rp-body"></tbody>
@@ -355,16 +369,16 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-h-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"      onclick="srtTA(this,'h','name')">Player</th>
-        <th class="sortable"   data-k="team"      onclick="srtTA(this,'h','team')">Team</th>
-        <th class="sortable"   data-k="opp"       onclick="srtTA(this,'h','opp')">Opp</th>
-        <th class="sortable r" data-k="hr"        onclick="srtTA(this,'h','hr')">HR</th>
-        <th class="sortable r" data-k="bb"        onclick="srtTA(this,'h','bb')">BB</th>
-        <th class="sortable r" data-k="k"         onclick="srtTA(this,'h','k')">K</th>
-        <th class="sortable r" data-k="sb"        onclick="srtTA(this,'h','sb')">SB</th>
-        <th class="sortable r" data-k="sba"       onclick="srtTA(this,'h','sba')">SBA</th>
-        <th class="sortable r" data-k="hard_hits" onclick="srtTA(this,'h','hard_hits')">Hard Hits</th>
-        <th class="sortable r" data-k="barrels"   onclick="srtTA(this,'h','barrels')">Barrels</th>
-        <th class="sortable r" data-k="max_ev"    onclick="srtTA(this,'h','max_ev')">Max EV</th>
+        <th class="sortable"   data-col="team" data-k="team"      onclick="srtTA(this,'h','team')">Team</th>
+        <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtTA(this,'h','opp')">Opp</th>
+        <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtTA(this,'h','hr')">HR</th>
+        <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtTA(this,'h','bb')">BB</th>
+        <th class="sortable r" data-col="k" data-k="k"         onclick="srtTA(this,'h','k')">K</th>
+        <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtTA(this,'h','sb')">SB</th>
+        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtTA(this,'h','sba')">SBA</th>
+        <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtTA(this,'h','hard_hits')">Hard Hits</th>
+        <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtTA(this,'h','barrels')">Barrels</th>
+        <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtTA(this,'h','max_ev')">Max EV</th>
       </tr></thead>
       <tbody id="ta-h-body"></tbody>
     </table>
@@ -375,26 +389,26 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-lb-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"           onclick="srtTALB(this,'name')">Player</th>
-        <th class="sortable r" data-k="r"              onclick="srtTALB(this,'r')">R</th>
-        <th class="sortable r" data-k="hr"             onclick="srtTALB(this,'hr')">HR</th>
-        <th class="sortable r" data-k="rbi"            onclick="srtTALB(this,'rbi')">RBI</th>
-        <th class="sortable r" data-k="sb"             onclick="srtTALB(this,'sb')">SB</th>
-        <th class="sortable r" data-k="obp"            onclick="srtTALB(this,'obp')">OBP</th>
-        <th class="sortable r" data-k="woba"           onclick="srtTALB(this,'woba')">wOBA</th>
-        <th class="sortable r" data-k="xwoba"          onclick="srtTALB(this,'xwoba')">xwOBA</th>
-        <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtTALB(this,'chase_pct')">Chase%</th>
-        <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtTALB(this,'whiff_pct')">Whiff%</th>
-        <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtTALB(this,'k_pct')">K%</th>
-        <th class="sortable r lb-th-inv" data-k="so"           onclick="srtTALB(this,'so')">SO</th>
-        <th class="sortable r" data-k="bb_pct"         onclick="srtTALB(this,'bb_pct')">BB%</th>
-        <th class="sortable r" data-k="hard_hit_pct"   onclick="srtTALB(this,'hard_hit_pct')">Hard Hit%</th>
-        <th class="sortable r" data-k="barrel_pct"     onclick="srtTALB(this,'barrel_pct')">Barrel%</th>
-        <th class="sortable r" data-k="barrels"        onclick="srtTALB(this,'barrels')">Barrels</th>
-        <th class="sortable r" data-k="sweet_spot_pct" onclick="srtTALB(this,'sweet_spot_pct')">Swt Spot%</th>
-        <th class="sortable r" data-k="avg_ev"         onclick="srtTALB(this,'avg_ev')">Avg EV</th>
-        <th class="sortable r" data-k="max_ev"         onclick="srtTALB(this,'max_ev')">Max EV</th>
-        <th class="sortable r" data-k="bat_speed"      onclick="srtTALB(this,'bat_speed')">Bat Spd</th>
-        <th class="sortable r" data-k="sprint_speed"   onclick="srtTALB(this,'sprint_speed')">Sprt Spd</th>
+        <th class="sortable r" data-col="r" data-k="r"              onclick="srtTALB(this,'r')">R</th>
+        <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtTALB(this,'hr')">HR</th>
+        <th class="sortable r" data-col="rbi" data-k="rbi"            onclick="srtTALB(this,'rbi')">RBI</th>
+        <th class="sortable r" data-col="sb" data-k="sb"             onclick="srtTALB(this,'sb')">SB</th>
+        <th class="sortable r" data-col="obp" data-k="obp"            onclick="srtTALB(this,'obp')">OBP</th>
+        <th class="sortable r" data-col="woba" data-k="woba"           onclick="srtTALB(this,'woba')">wOBA</th>
+        <th class="sortable r" data-col="xwoba" data-k="xwoba"          onclick="srtTALB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-col="chase_pct" data-k="chase_pct"    onclick="srtTALB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r lb-th-inv" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtTALB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-col="k_pct" data-k="k_pct"        onclick="srtTALB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-col="so" data-k="so"           onclick="srtTALB(this,'so')">SO</th>
+        <th class="sortable r" data-col="bb_pct" data-k="bb_pct"         onclick="srtTALB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-col="hard_hit_pct" data-k="hard_hit_pct"   onclick="srtTALB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-col="barrel_pct" data-k="barrel_pct"     onclick="srtTALB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r" data-col="barrels" data-k="barrels"        onclick="srtTALB(this,'barrels')">Barrels</th>
+        <th class="sortable r" data-col="sweet_spot_pct" data-k="sweet_spot_pct" onclick="srtTALB(this,'sweet_spot_pct')">Swt Spot%</th>
+        <th class="sortable r" data-col="avg_ev" data-k="avg_ev"         onclick="srtTALB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-col="max_ev" data-k="max_ev"         onclick="srtTALB(this,'max_ev')">Max EV</th>
+        <th class="sortable r" data-col="bat_speed" data-k="bat_speed"      onclick="srtTALB(this,'bat_speed')">Bat Spd</th>
+        <th class="sortable r" data-col="sprint_speed" data-k="sprint_speed"   onclick="srtTALB(this,'sprint_speed')">Sprt Spd</th>
       </tr></thead>
       <tbody id="ta-lb-body"></tbody>
     </table>
@@ -410,20 +424,20 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-sp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtTA(this,'sp','name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtTA(this,'sp','team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtTA(this,'sp','opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtTA(this,'sp','ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtTA(this,'sp','hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtTA(this,'sp','r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtTA(this,'sp','bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtTA(this,'sp','k')">K</th>
-        <th class="sortable r"    data-k="w"             onclick="srtTA(this,'sp','w')">W</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'sp','whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'sp','hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'sp','barrels')">Barrels</th>
-        <th class="sortable r"    data-k="k_bb_pct"      onclick="srtTA(this,'sp','k_bb_pct')">K-BB%</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtTA(this,'sp','team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtTA(this,'sp','opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtTA(this,'sp','ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtTA(this,'sp','hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtTA(this,'sp','r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtTA(this,'sp','bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtTA(this,'sp','k')">K</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtTA(this,'sp','w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtTA(this,'sp','whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtTA(this,'sp','hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtTA(this,'sp','barrels')">Barrels</th>
+        <th class="sortable r"    data-col="k_bb_pct" data-k="k_bb_pct"      onclick="srtTA(this,'sp','k_bb_pct')">K-BB%</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtTA(this,'sp','stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtTA(this,'sp','location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="ta-sp-body"></tbody>
@@ -434,26 +448,26 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-sp-lb-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"         onclick="srtTASPLB(this,'name')">Pitcher</th>
-        <th class="sortable r" data-k="ip_f"         onclick="srtTASPLB(this,'ip_f')">IP</th>
-        <th class="sortable r" data-k="w"            onclick="srtTASPLB(this,'w')">W</th>
-        <th class="sortable r lb-th-inv" data-k="era"  onclick="srtTASPLB(this,'era')">ERA</th>
-        <th class="sortable r lb-th-inv" data-k="whip" onclick="srtTASPLB(this,'whip')">WHIP</th>
-        <th class="sortable r lb-th-inv" data-k="xera" onclick="srtTASPLB(this,'xera')">xERA</th>
-        <th class="sortable r lb-th-inv" data-k="siera" onclick="srtTASPLB(this,'siera')">SIERA</th>
-        <th class="sortable r" data-k="stuff_plus"   onclick="srtTASPLB(this,'stuff_plus')">Stf+</th>
-        <th class="sortable r" data-k="loc_plus"     onclick="srtTASPLB(this,'loc_plus')">Loc+</th>
-        <th class="sortable r" data-k="k"            onclick="srtTASPLB(this,'k')">K</th>
-        <th class="sortable r" data-k="k_pct"        onclick="srtTASPLB(this,'k_pct')">K%</th>
-        <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtTASPLB(this,'bb_pct')">BB%</th>
-        <th class="sortable r" data-k="chase_pct"    onclick="srtTASPLB(this,'chase_pct')">Chase%</th>
-        <th class="sortable r" data-k="whiff_pct"    onclick="srtTASPLB(this,'whiff_pct')">Whiff%</th>
-        <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtTASPLB(this,'barrel_pct')">Barrel%</th>
-        <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtTASPLB(this,'hard_hit_pct')">Hard Hit%</th>
-        <th class="sortable r" data-k="gb_pct"       onclick="srtTASPLB(this,'gb_pct')">GB%</th>
-        <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtTASPLB(this,'woba')">wOBA</th>
-        <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtTASPLB(this,'xwoba')">xwOBA</th>
-        <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtTASPLB(this,'avg_ev')">Avg EV</th>
-        <th class="sortable r" data-k="fb_velo"      onclick="srtTASPLB(this,'fb_velo')">FB Velo</th>
+        <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtTASPLB(this,'ip_f')">IP</th>
+        <th class="sortable r" data-col="w" data-k="w"            onclick="srtTASPLB(this,'w')">W</th>
+        <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtTASPLB(this,'era')">ERA</th>
+        <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtTASPLB(this,'whip')">WHIP</th>
+        <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtTASPLB(this,'xera')">xERA</th>
+        <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtTASPLB(this,'siera')">SIERA</th>
+        <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtTASPLB(this,'stuff_plus')">Stf+</th>
+        <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtTASPLB(this,'loc_plus')">Loc+</th>
+        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTASPLB(this,'k')">K</th>
+        <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtTASPLB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtTASPLB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtTASPLB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtTASPLB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-col="barrel_pct" data-k="barrel_pct"   onclick="srtTASPLB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r lb-th-inv" data-col="hard_hit_pct" data-k="hard_hit_pct" onclick="srtTASPLB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-col="gb_pct" data-k="gb_pct"       onclick="srtTASPLB(this,'gb_pct')">GB%</th>
+        <th class="sortable r lb-th-inv" data-col="woba" data-k="woba"  onclick="srtTASPLB(this,'woba')">wOBA</th>
+        <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtTASPLB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtTASPLB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtTASPLB(this,'fb_velo')">FB Velo</th>
       </tr></thead>
       <tbody id="ta-sp-lb-body"></tbody>
     </table>
@@ -469,22 +483,22 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-rp-tbl">
       <thead><tr>
         <th class="sortable"      data-k="name"          onclick="srtTA(this,'rp','name')">Pitcher</th>
-        <th class="sortable"      data-k="team"          onclick="srtTA(this,'rp','team')">Team</th>
-        <th class="sortable"      data-k="opp"           onclick="srtTA(this,'rp','opp')">Opp</th>
-        <th class="sortable r"    data-k="ip_float"      onclick="srtTA(this,'rp','ip_float')">IP</th>
-        <th class="sortable r"    data-k="hits"          onclick="srtTA(this,'rp','hits')">H</th>
-        <th class="sortable r"    data-k="r"             onclick="srtTA(this,'rp','r')">R</th>
-        <th class="sortable r"    data-k="bb"            onclick="srtTA(this,'rp','bb')">BB</th>
-        <th class="sortable r"    data-k="k"             onclick="srtTA(this,'rp','k')">K</th>
-        <th class="sortable r"    data-k="sv"            onclick="srtTA(this,'rp','sv')">SV</th>
-        <th class="sortable r"    data-k="hld"           onclick="srtTA(this,'rp','hld')">HLD</th>
-        <th class="sortable r"    data-k="bs"            onclick="srtTA(this,'rp','bs')">BS</th>
-        <th class="sortable r"    data-k="w"             onclick="srtTA(this,'rp','w')">W</th>
-        <th class="sortable r"    data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
-        <th class="sortable r"    data-k="hard_hits"     onclick="srtTA(this,'rp','hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-k="barrels"       onclick="srtTA(this,'rp','barrels')">Barrels</th>
-        <th class="sortable r sc" data-k="stuff_plus"    onclick="srtTA(this,'rp','stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-k="location_plus" onclick="srtTA(this,'rp','location_plus')">Loc+</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtTA(this,'rp','team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtTA(this,'rp','opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtTA(this,'rp','ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtTA(this,'rp','hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtTA(this,'rp','r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtTA(this,'rp','bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtTA(this,'rp','k')">K</th>
+        <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtTA(this,'rp','sv')">SV</th>
+        <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtTA(this,'rp','hld')">HLD</th>
+        <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtTA(this,'rp','bs')">BS</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtTA(this,'rp','w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtTA(this,'rp','hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtTA(this,'rp','barrels')">Barrels</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtTA(this,'rp','stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtTA(this,'rp','location_plus')">Loc+</th>
         <th>Arsenal</th>
       </tr></thead>
       <tbody id="ta-rp-body"></tbody>
@@ -495,28 +509,28 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-rp-lb-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"         onclick="srtTARPLB(this,'name')">Pitcher</th>
-        <th class="sortable r" data-k="ip_f"         onclick="srtTARPLB(this,'ip_f')">IP</th>
-        <th class="sortable r" data-k="w"            onclick="srtTARPLB(this,'w')">W</th>
-        <th class="sortable r" data-k="sv"           onclick="srtTARPLB(this,'sv')">SV/SVO</th>
-        <th class="sortable r" data-k="hld"          onclick="srtTARPLB(this,'hld')">HLD</th>
-        <th class="sortable r lb-th-inv" data-k="era"  onclick="srtTARPLB(this,'era')">ERA</th>
-        <th class="sortable r lb-th-inv" data-k="whip" onclick="srtTARPLB(this,'whip')">WHIP</th>
-        <th class="sortable r lb-th-inv" data-k="xera" onclick="srtTARPLB(this,'xera')">xERA</th>
-        <th class="sortable r lb-th-inv" data-k="siera" onclick="srtTARPLB(this,'siera')">SIERA</th>
-        <th class="sortable r" data-k="stuff_plus"   onclick="srtTARPLB(this,'stuff_plus')">Stf+</th>
-        <th class="sortable r" data-k="loc_plus"     onclick="srtTARPLB(this,'loc_plus')">Loc+</th>
-        <th class="sortable r" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
-        <th class="sortable r" data-k="k_pct"        onclick="srtTARPLB(this,'k_pct')">K%</th>
-        <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtTARPLB(this,'bb_pct')">BB%</th>
-        <th class="sortable r" data-k="chase_pct"    onclick="srtTARPLB(this,'chase_pct')">Chase%</th>
-        <th class="sortable r" data-k="whiff_pct"    onclick="srtTARPLB(this,'whiff_pct')">Whiff%</th>
-        <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtTARPLB(this,'barrel_pct')">Barrel%</th>
-        <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtTARPLB(this,'hard_hit_pct')">Hard Hit%</th>
-        <th class="sortable r" data-k="gb_pct"       onclick="srtTARPLB(this,'gb_pct')">GB%</th>
-        <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtTARPLB(this,'woba')">wOBA</th>
-        <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtTARPLB(this,'xwoba')">xwOBA</th>
-        <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtTARPLB(this,'avg_ev')">Avg EV</th>
-        <th class="sortable r" data-k="fb_velo"      onclick="srtTARPLB(this,'fb_velo')">FB Velo</th>
+        <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtTARPLB(this,'ip_f')">IP</th>
+        <th class="sortable r" data-col="w" data-k="w"            onclick="srtTARPLB(this,'w')">W</th>
+        <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtTARPLB(this,'sv')">SV/SVO</th>
+        <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtTARPLB(this,'hld')">HLD</th>
+        <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtTARPLB(this,'era')">ERA</th>
+        <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtTARPLB(this,'whip')">WHIP</th>
+        <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtTARPLB(this,'xera')">xERA</th>
+        <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtTARPLB(this,'siera')">SIERA</th>
+        <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtTARPLB(this,'stuff_plus')">Stf+</th>
+        <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtTARPLB(this,'loc_plus')">Loc+</th>
+        <th class="sortable r" data-col="k" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
+        <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtTARPLB(this,'k_pct')">K%</th>
+        <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtTARPLB(this,'bb_pct')">BB%</th>
+        <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtTARPLB(this,'chase_pct')">Chase%</th>
+        <th class="sortable r" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtTARPLB(this,'whiff_pct')">Whiff%</th>
+        <th class="sortable r lb-th-inv" data-col="barrel_pct" data-k="barrel_pct"   onclick="srtTARPLB(this,'barrel_pct')">Barrel%</th>
+        <th class="sortable r lb-th-inv" data-col="hard_hit_pct" data-k="hard_hit_pct" onclick="srtTARPLB(this,'hard_hit_pct')">Hard Hit%</th>
+        <th class="sortable r" data-col="gb_pct" data-k="gb_pct"       onclick="srtTARPLB(this,'gb_pct')">GB%</th>
+        <th class="sortable r lb-th-inv" data-col="woba" data-k="woba"  onclick="srtTARPLB(this,'woba')">wOBA</th>
+        <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtTARPLB(this,'xwoba')">xwOBA</th>
+        <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtTARPLB(this,'avg_ev')">Avg EV</th>
+        <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtTARPLB(this,'fb_velo')">FB Velo</th>
       </tr></thead>
       <tbody id="ta-rp-lb-body"></tbody>
     </table>
@@ -552,31 +566,35 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       </label>
       <span class="row-count" id="lb-cnt"></span>
       <span class="sort-hint">Click headers to sort</span>
+      <div class="col-picker-wrap">
+        <button class="tgl-btn col-picker-btn" onclick="toggleColPicker('h',this)" style="font-size:.74rem;padding:5px 10px;margin-left:auto">⚙ Columns ▾</button>
+        <div id="col-picker-h" class="col-picker-panel" style="display:none"></div>
+      </div>
     </div>
     <div class="table-wrap">
       <table id="lb-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"           onclick="srtLB(this,'name')">Player</th>
-          <th class="sortable r" data-k="r"              onclick="srtLB(this,'r')">R</th>
-          <th class="sortable r" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
-          <th class="sortable r" data-k="rbi"            onclick="srtLB(this,'rbi')">RBI</th>
-          <th class="sortable r" data-k="sb"             onclick="srtLB(this,'sb')">SB</th>
-          <th class="sortable r" data-k="obp"            onclick="srtLB(this,'obp')">OBP</th>
-          <th class="sortable r" data-k="woba"           onclick="srtLB(this,'woba')">wOBA</th>
-          <th class="sortable r" data-k="xwoba"          onclick="srtLB(this,'xwoba')">xwOBA</th>
-          <th class="sortable r lb-th-inv" data-k="chase_pct"    onclick="srtLB(this,'chase_pct')">Chase%</th>
-          <th class="sortable r lb-th-inv" data-k="whiff_pct"    onclick="srtLB(this,'whiff_pct')">Whiff%</th>
-          <th class="sortable r lb-th-inv" data-k="k_pct"        onclick="srtLB(this,'k_pct')">K%</th>
-          <th class="sortable r lb-th-inv" data-k="so"           onclick="srtLB(this,'so')">SO</th>
-          <th class="sortable r" data-k="bb_pct"         onclick="srtLB(this,'bb_pct')">BB%</th>
-          <th class="sortable r" data-k="hard_hit_pct"   onclick="srtLB(this,'hard_hit_pct')">Hard Hit%</th>
-          <th class="sortable r" data-k="barrel_pct"     onclick="srtLB(this,'barrel_pct')">Barrel%</th>
-          <th class="sortable r" data-k="barrels"        onclick="srtLB(this,'barrels')">Barrels</th>
-          <th class="sortable r" data-k="sweet_spot_pct" onclick="srtLB(this,'sweet_spot_pct')">Swt Spot%</th>
-          <th class="sortable r" data-k="avg_ev"         onclick="srtLB(this,'avg_ev')">Avg EV</th>
-          <th class="sortable r" data-k="max_ev"         onclick="srtLB(this,'max_ev')">Max EV</th>
-          <th class="sortable r" data-k="bat_speed"      onclick="srtLB(this,'bat_speed')">Bat Spd</th>
-          <th class="sortable r" data-k="sprint_speed"   onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
+          <th class="sortable r" data-col="r" data-k="r"              onclick="srtLB(this,'r')">R</th>
+          <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
+          <th class="sortable r" data-col="rbi" data-k="rbi"            onclick="srtLB(this,'rbi')">RBI</th>
+          <th class="sortable r" data-col="sb" data-k="sb"             onclick="srtLB(this,'sb')">SB</th>
+          <th class="sortable r" data-col="obp" data-k="obp"            onclick="srtLB(this,'obp')">OBP</th>
+          <th class="sortable r" data-col="woba" data-k="woba"           onclick="srtLB(this,'woba')">wOBA</th>
+          <th class="sortable r" data-col="xwoba" data-k="xwoba"          onclick="srtLB(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-col="chase_pct" data-k="chase_pct"    onclick="srtLB(this,'chase_pct')">Chase%</th>
+          <th class="sortable r lb-th-inv" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtLB(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-col="k_pct" data-k="k_pct"        onclick="srtLB(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-col="so" data-k="so"           onclick="srtLB(this,'so')">SO</th>
+          <th class="sortable r" data-col="bb_pct" data-k="bb_pct"         onclick="srtLB(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-col="hard_hit_pct" data-k="hard_hit_pct"   onclick="srtLB(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-col="barrel_pct" data-k="barrel_pct"     onclick="srtLB(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r" data-col="barrels" data-k="barrels"        onclick="srtLB(this,'barrels')">Barrels</th>
+          <th class="sortable r" data-col="sweet_spot_pct" data-k="sweet_spot_pct" onclick="srtLB(this,'sweet_spot_pct')">Swt Spot%</th>
+          <th class="sortable r" data-col="avg_ev" data-k="avg_ev"         onclick="srtLB(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-col="max_ev" data-k="max_ev"         onclick="srtLB(this,'max_ev')">Max EV</th>
+          <th class="sortable r" data-col="bat_speed" data-k="bat_speed"      onclick="srtLB(this,'bat_speed')">Bat Spd</th>
+          <th class="sortable r" data-col="sprint_speed" data-k="sprint_speed"   onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
         </tr></thead>
         <tbody id="lb-body"></tbody>
       </table>
@@ -597,31 +615,35 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       </label>
       <span class="row-count" id="lb-sp-cnt"></span>
       <span class="sort-hint">Click headers to sort</span>
+      <div class="col-picker-wrap">
+        <button class="tgl-btn col-picker-btn" onclick="toggleColPicker('sp',this)" style="font-size:.74rem;padding:5px 10px;margin-left:auto">⚙ Columns ▾</button>
+        <div id="col-picker-sp" class="col-picker-panel" style="display:none"></div>
+      </div>
     </div>
     <div class="table-wrap">
       <table id="lb-sp-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBSP(this,'name')">Pitcher</th>
-          <th class="sortable r" data-k="ip_f"         onclick="srtLBSP(this,'ip_f')">IP</th>
-          <th class="sortable r" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
-          <th class="sortable r lb-th-inv" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
-          <th class="sortable r lb-th-inv" data-k="whip" onclick="srtLBSP(this,'whip')">WHIP</th>
-          <th class="sortable r lb-th-inv" data-k="xera" onclick="srtLBSP(this,'xera')">xERA</th>
-          <th class="sortable r lb-th-inv" data-k="siera" onclick="srtLBSP(this,'siera')">SIERA</th>
-          <th class="sortable r" data-k="stuff_plus"   onclick="srtLBSP(this,'stuff_plus')">Stf+</th>
-          <th class="sortable r" data-k="loc_plus"     onclick="srtLBSP(this,'loc_plus')">Loc+</th>
-          <th class="sortable r" data-k="k"            onclick="srtLBSP(this,'k')">K</th>
-          <th class="sortable r" data-k="k_pct"        onclick="srtLBSP(this,'k_pct')">K%</th>
-          <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtLBSP(this,'bb_pct')">BB%</th>
-          <th class="sortable r" data-k="chase_pct"    onclick="srtLBSP(this,'chase_pct')">Chase%</th>
-          <th class="sortable r" data-k="whiff_pct"    onclick="srtLBSP(this,'whiff_pct')">Whiff%</th>
-          <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtLBSP(this,'barrel_pct')">Barrel%</th>
-          <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtLBSP(this,'hard_hit_pct')">Hard Hit%</th>
-          <th class="sortable r" data-k="gb_pct"       onclick="srtLBSP(this,'gb_pct')">GB%</th>
-          <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtLBSP(this,'woba')">wOBA</th>
-          <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtLBSP(this,'xwoba')">xwOBA</th>
-          <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtLBSP(this,'avg_ev')">Avg EV</th>
-          <th class="sortable r" data-k="fb_velo"      onclick="srtLBSP(this,'fb_velo')">FB Velo</th>
+          <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBSP(this,'ip_f')">IP</th>
+          <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
+          <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
+          <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtLBSP(this,'whip')">WHIP</th>
+          <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtLBSP(this,'xera')">xERA</th>
+          <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtLBSP(this,'siera')">SIERA</th>
+          <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtLBSP(this,'stuff_plus')">Stf+</th>
+          <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtLBSP(this,'loc_plus')">Loc+</th>
+          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBSP(this,'k')">K</th>
+          <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtLBSP(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtLBSP(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtLBSP(this,'chase_pct')">Chase%</th>
+          <th class="sortable r" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtLBSP(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-col="barrel_pct" data-k="barrel_pct"   onclick="srtLBSP(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r lb-th-inv" data-col="hard_hit_pct" data-k="hard_hit_pct" onclick="srtLBSP(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-col="gb_pct" data-k="gb_pct"       onclick="srtLBSP(this,'gb_pct')">GB%</th>
+          <th class="sortable r lb-th-inv" data-col="woba" data-k="woba"  onclick="srtLBSP(this,'woba')">wOBA</th>
+          <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtLBSP(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtLBSP(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtLBSP(this,'fb_velo')">FB Velo</th>
         </tr></thead>
         <tbody id="lb-sp-body"></tbody>
       </table>
@@ -642,33 +664,37 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       </label>
       <span class="row-count" id="lb-rp-cnt"></span>
       <span class="sort-hint">Click headers to sort</span>
+      <div class="col-picker-wrap">
+        <button class="tgl-btn col-picker-btn" onclick="toggleColPicker('rp',this)" style="font-size:.74rem;padding:5px 10px;margin-left:auto">⚙ Columns ▾</button>
+        <div id="col-picker-rp" class="col-picker-panel" style="display:none"></div>
+      </div>
     </div>
     <div class="table-wrap">
       <table id="lb-rp-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBRP(this,'name')">Pitcher</th>
-          <th class="sortable r" data-k="ip_f"         onclick="srtLBRP(this,'ip_f')">IP</th>
-          <th class="sortable r" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
-          <th class="sortable r" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
-          <th class="sortable r" data-k="hld"          onclick="srtLBRP(this,'hld')">HLD</th>
-          <th class="sortable r lb-th-inv" data-k="era"  onclick="srtLBRP(this,'era')">ERA</th>
-          <th class="sortable r lb-th-inv" data-k="whip" onclick="srtLBRP(this,'whip')">WHIP</th>
-          <th class="sortable r lb-th-inv" data-k="xera" onclick="srtLBRP(this,'xera')">xERA</th>
-          <th class="sortable r lb-th-inv" data-k="siera" onclick="srtLBRP(this,'siera')">SIERA</th>
-          <th class="sortable r" data-k="stuff_plus"   onclick="srtLBRP(this,'stuff_plus')">Stf+</th>
-          <th class="sortable r" data-k="loc_plus"     onclick="srtLBRP(this,'loc_plus')">Loc+</th>
-          <th class="sortable r" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
-          <th class="sortable r" data-k="k_pct"        onclick="srtLBRP(this,'k_pct')">K%</th>
-          <th class="sortable r lb-th-inv" data-k="bb_pct" onclick="srtLBRP(this,'bb_pct')">BB%</th>
-          <th class="sortable r" data-k="chase_pct"    onclick="srtLBRP(this,'chase_pct')">Chase%</th>
-          <th class="sortable r" data-k="whiff_pct"    onclick="srtLBRP(this,'whiff_pct')">Whiff%</th>
-          <th class="sortable r lb-th-inv" data-k="barrel_pct"   onclick="srtLBRP(this,'barrel_pct')">Barrel%</th>
-          <th class="sortable r lb-th-inv" data-k="hard_hit_pct" onclick="srtLBRP(this,'hard_hit_pct')">Hard Hit%</th>
-          <th class="sortable r" data-k="gb_pct"       onclick="srtLBRP(this,'gb_pct')">GB%</th>
-          <th class="sortable r lb-th-inv" data-k="woba"  onclick="srtLBRP(this,'woba')">wOBA</th>
-          <th class="sortable r lb-th-inv" data-k="xwoba" onclick="srtLBRP(this,'xwoba')">xwOBA</th>
-          <th class="sortable r lb-th-inv" data-k="avg_ev" onclick="srtLBRP(this,'avg_ev')">Avg EV</th>
-          <th class="sortable r" data-k="fb_velo"      onclick="srtLBRP(this,'fb_velo')">FB Velo</th>
+          <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBRP(this,'ip_f')">IP</th>
+          <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
+          <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
+          <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtLBRP(this,'hld')">HLD</th>
+          <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBRP(this,'era')">ERA</th>
+          <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtLBRP(this,'whip')">WHIP</th>
+          <th class="sortable r lb-th-inv" data-col="xera" data-k="xera" onclick="srtLBRP(this,'xera')">xERA</th>
+          <th class="sortable r lb-th-inv" data-col="siera" data-k="siera" onclick="srtLBRP(this,'siera')">SIERA</th>
+          <th class="sortable r" data-col="stuff_plus" data-k="stuff_plus"   onclick="srtLBRP(this,'stuff_plus')">Stf+</th>
+          <th class="sortable r" data-col="loc_plus" data-k="loc_plus"     onclick="srtLBRP(this,'loc_plus')">Loc+</th>
+          <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
+          <th class="sortable r" data-col="k_pct" data-k="k_pct"        onclick="srtLBRP(this,'k_pct')">K%</th>
+          <th class="sortable r lb-th-inv" data-col="bb_pct" data-k="bb_pct" onclick="srtLBRP(this,'bb_pct')">BB%</th>
+          <th class="sortable r" data-col="chase_pct" data-k="chase_pct"    onclick="srtLBRP(this,'chase_pct')">Chase%</th>
+          <th class="sortable r" data-col="whiff_pct" data-k="whiff_pct"    onclick="srtLBRP(this,'whiff_pct')">Whiff%</th>
+          <th class="sortable r lb-th-inv" data-col="barrel_pct" data-k="barrel_pct"   onclick="srtLBRP(this,'barrel_pct')">Barrel%</th>
+          <th class="sortable r lb-th-inv" data-col="hard_hit_pct" data-k="hard_hit_pct" onclick="srtLBRP(this,'hard_hit_pct')">Hard Hit%</th>
+          <th class="sortable r" data-col="gb_pct" data-k="gb_pct"       onclick="srtLBRP(this,'gb_pct')">GB%</th>
+          <th class="sortable r lb-th-inv" data-col="woba" data-k="woba"  onclick="srtLBRP(this,'woba')">wOBA</th>
+          <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtLBRP(this,'xwoba')">xwOBA</th>
+          <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtLBRP(this,'avg_ev')">Avg EV</th>
+          <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtLBRP(this,'fb_velo')">FB Velo</th>
         </tr></thead>
         <tbody id="lb-rp-body"></tbody>
       </table>
@@ -688,6 +714,10 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <div id="cmp-dropdown" class="cmp-dropdown" style="display:none"></div>
     </div>
     <button class="tgl-btn" onclick="clearCmp()" style="font-size:.75rem;padding:6px 14px">Clear All</button>
+    <div class="col-picker-wrap">
+      <button class="tgl-btn col-picker-btn" id="cmp-col-btn" onclick="toggleColPicker(cmpType==='h'?'h':'rp',this)" style="font-size:.74rem;padding:5px 10px">⚙ Columns ▾</button>
+      <div id="col-picker-cmp" class="col-picker-panel" style="display:none"></div>
+    </div>
     <span class="row-count" id="cmp-cnt"></span>
   </div>
 
@@ -697,26 +727,26 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="cmp-h-tbl">
         <thead><tr>
           <th>Player</th>
-          <th class="r">R</th>
-          <th class="r">HR</th>
-          <th class="r">RBI</th>
-          <th class="r">SB</th>
-          <th class="r">OBP</th>
-          <th class="r">wOBA</th>
-          <th class="r">xwOBA</th>
-          <th class="r">Chase%</th>
-          <th class="r">Whiff%</th>
-          <th class="r">K%</th>
-          <th class="r">SO</th>
-          <th class="r">BB%</th>
-          <th class="r">Hard Hit%</th>
-          <th class="r">Barrel%</th>
-          <th class="r">Barrels</th>
-          <th class="r">Swt Spot%</th>
-          <th class="r">Avg EV</th>
-          <th class="r">Max EV</th>
-          <th class="r">Bat Spd</th>
-          <th class="r">Sprt Spd</th>
+          <th class="r" data-col="r">R</th>
+          <th class="r" data-col="hr">HR</th>
+          <th class="r" data-col="rbi">RBI</th>
+          <th class="r" data-col="sb">SB</th>
+          <th class="r" data-col="obp">OBP</th>
+          <th class="r" data-col="woba">wOBA</th>
+          <th class="r" data-col="xwoba">xwOBA</th>
+          <th class="r" data-col="chase_pct">Chase%</th>
+          <th class="r" data-col="whiff_pct">Whiff%</th>
+          <th class="r" data-col="k_pct">K%</th>
+          <th class="r" data-col="so">SO</th>
+          <th class="r" data-col="bb_pct">BB%</th>
+          <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
+          <th class="r" data-col="barrel_pct">Barrel%</th>
+          <th class="r" data-col="barrels">Barrels</th>
+          <th class="r" data-col="sweet_spot_pct">Swt Spot%</th>
+          <th class="r" data-col="avg_ev">Avg EV</th>
+          <th class="r" data-col="max_ev">Max EV</th>
+          <th class="r" data-col="bat_speed">Bat Spd</th>
+          <th class="r" data-col="sprint_speed">Sprt Spd</th>
           <th></th>
         </tr></thead>
         <tbody id="cmp-h-body">
@@ -732,29 +762,29 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="cmp-p-tbl">
         <thead><tr>
           <th>Pitcher</th>
-          <th class="r">Role</th>
-          <th class="r">IP</th>
-          <th class="r">W</th>
-          <th class="r">SV/SVO</th>
-          <th class="r">HLD</th>
-          <th class="r">ERA</th>
-          <th class="r">WHIP</th>
-          <th class="r">xERA</th>
-          <th class="r">SIERA</th>
-          <th class="r">Stf+</th>
-          <th class="r">Loc+</th>
-          <th class="r">K</th>
-          <th class="r">K%</th>
-          <th class="r">BB%</th>
-          <th class="r">Chase%</th>
-          <th class="r">Whiff%</th>
-          <th class="r">Barrel%</th>
-          <th class="r">Hard Hit%</th>
-          <th class="r">GB%</th>
-          <th class="r">wOBA</th>
-          <th class="r">xwOBA</th>
-          <th class="r">Avg EV</th>
-          <th class="r">FB Velo</th>
+          <th class="r" data-col="role">Role</th>
+          <th class="r" data-col="ip_f">IP</th>
+          <th class="r" data-col="w">W</th>
+          <th class="r" data-col="sv">SV/SVO</th>
+          <th class="r" data-col="hld">HLD</th>
+          <th class="r" data-col="era">ERA</th>
+          <th class="r" data-col="whip">WHIP</th>
+          <th class="r" data-col="xera">xERA</th>
+          <th class="r" data-col="siera">SIERA</th>
+          <th class="r" data-col="stuff_plus">Stf+</th>
+          <th class="r" data-col="loc_plus">Loc+</th>
+          <th class="r" data-col="k">K</th>
+          <th class="r" data-col="k_pct">K%</th>
+          <th class="r" data-col="bb_pct">BB%</th>
+          <th class="r" data-col="chase_pct">Chase%</th>
+          <th class="r" data-col="whiff_pct">Whiff%</th>
+          <th class="r" data-col="barrel_pct">Barrel%</th>
+          <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
+          <th class="r" data-col="gb_pct">GB%</th>
+          <th class="r" data-col="woba">wOBA</th>
+          <th class="r" data-col="xwoba">xwOBA</th>
+          <th class="r" data-col="avg_ev">Avg EV</th>
+          <th class="r" data-col="fb_velo">FB Velo</th>
           <th></th>
         </tr></thead>
         <tbody id="cmp-p-body">
@@ -769,7 +799,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 2:30 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 2:49 PM
 </footer>
 
 <script>
@@ -1003,9 +1033,9 @@ function filterRP(){filterP();}
 hD.sort((a,b)=>cmp(a,b,'barrels',-1));
 spD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 rpD.sort((a,b)=>cmp(a,b,'sv',-1));
-document.querySelector('#h-tbl th[data-k="barrels"]')?.classList.add('sort-desc');
-document.querySelector('#sp-tbl th[data-k="ip_float"]')?.classList.add('sort-desc');
-document.querySelector('#rp-tbl th[data-k="sv"]')?.classList.add('sort-desc');
+document.querySelector('#h-tbl th[data-col="barrels" data-k="barrels"]')?.classList.add('sort-desc');
+document.querySelector('#sp-tbl th[data-col="ip_float" data-k="ip_float"]')?.classList.add('sort-desc');
+document.querySelector('#rp-tbl th[data-col="sv" data-k="sv"]')?.classList.add('sort-desc');
 renderH();renderSP();renderRP();
 
 // ── Team Alex ─────────────────────────────────────────────────────────────
@@ -1038,26 +1068,26 @@ function renderTALB(){
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${fmtInt('r',   p.r)}</td>
-    <td class="r">${fmtInt('hr',  p.hr)}</td>
-    <td class="r">${fmtInt('rbi', p.rbi)}</td>
-    <td class="r">${fmtSB(p)}</td>
-    <td class="r">${fmtRate('obp',   p.obp)}</td>
-    <td class="r">${fmtRate('woba',  p.woba)}</td>
-    <td class="r">${fmtRate('xwoba', p.xwoba)}</td>
-    <td class="r">${fmtPct('chase_pct',    p.chase_pct)}</td>
-    <td class="r">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
-    <td class="r">${fmtPct('k_pct',        p.k_pct)}</td>
-    <td class="r">${fmtInt('so',           p.so)}</td>
-    <td class="r">${fmtPct('bb_pct',       p.bb_pct)}</td>
-    <td class="r">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
-    <td class="r">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
-    <td class="r">${fmtInt('barrels',      p.barrels)}</td>
-    <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
-    <td class="r">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
-    <td class="r">${fmtEV( 'max_ev',       p.max_ev)}</td>
-    <td class="r">${fmtSpd('bat_speed',    p.bat_speed)}</td>
-    <td class="r">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+    <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
+    <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
+    <td class="r" data-col="rbi">${fmtInt('rbi', p.rbi)}</td>
+    <td class="r" data-col="sb">${fmtSB(p)}</td>
+    <td class="r" data-col="obp">${fmtRate('obp',   p.obp)}</td>
+    <td class="r" data-col="woba">${fmtRate('woba',  p.woba)}</td>
+    <td class="r" data-col="xwoba">${fmtRate('xwoba', p.xwoba)}</td>
+    <td class="r" data-col="chase_pct">${fmtPct('chase_pct',    p.chase_pct)}</td>
+    <td class="r" data-col="whiff_pct">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
+    <td class="r" data-col="k_pct">${fmtPct('k_pct',        p.k_pct)}</td>
+    <td class="r" data-col="so">${fmtInt('so',           p.so)}</td>
+    <td class="r" data-col="bb_pct">${fmtPct('bb_pct',       p.bb_pct)}</td>
+    <td class="r" data-col="hard_hit_pct">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
+    <td class="r" data-col="barrel_pct">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
+    <td class="r" data-col="barrels">${fmtInt('barrels',      p.barrels)}</td>
+    <td class="r" data-col="sweet_spot_pct">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+    <td class="r" data-col="avg_ev">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
+    <td class="r" data-col="max_ev">${fmtEV( 'max_ev',       p.max_ev)}</td>
+    <td class="r" data-col="bat_speed">${fmtSpd('bat_speed',    p.bat_speed)}</td>
+    <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
   </tr>`).join('');
 }
 
@@ -1075,26 +1105,26 @@ function renderTASPLB(){
   const D=plCellSP;
   tb.innerHTML=taSPLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
-    <td class="r">${D('w',p.w,p.w)}</td>
-    <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
-    <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
-    <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
-    <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
-    <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
-    <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-    <td class="r">${D('k',p.k,p.k)}</td>
-    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
-    <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
+    <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+    <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+    <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="hard_hit_pct">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="gb_pct">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="woba">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="avg_ev">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r" data-col="fb_velo">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
 }
 
@@ -1112,28 +1142,28 @@ function renderTARPLB(){
   const D=plCellRP;
   tb.innerHTML=taRPLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
-    <td class="r">${D('w',p.w,p.w)}</td>
-    <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
-    <td class="r">${D('hld',p.hld,p.hld)}</td>
-    <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
-    <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
-    <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
-    <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
-    <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
-    <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-    <td class="r">${D('k',p.k,p.k)}</td>
-    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
-    <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
+    <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+    <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
+    <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+    <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+    <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+    <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="hard_hit_pct">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="gb_pct">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="woba">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="avg_ev">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r" data-col="fb_velo">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
 }
 
@@ -1428,27 +1458,28 @@ function renderLB(){
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${fmtInt('r',   p.r)}</td>
-    <td class="r">${fmtInt('hr',  p.hr)}</td>
-    <td class="r">${fmtInt('rbi', p.rbi)}</td>
-    <td class="r">${fmtSB(p)}</td>
-    <td class="r">${fmtRate('obp',   p.obp)}</td>
-    <td class="r">${fmtRate('woba',  p.woba)}</td>
-    <td class="r">${fmtRate('xwoba', p.xwoba)}</td>
-    <td class="r">${fmtPct('chase_pct',    p.chase_pct)}</td>
-    <td class="r">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
-    <td class="r">${fmtPct('k_pct',        p.k_pct)}</td>
-    <td class="r">${fmtInt('so',           p.so)}</td>
-    <td class="r">${fmtPct('bb_pct',       p.bb_pct)}</td>
-    <td class="r">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
-    <td class="r">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
-    <td class="r">${fmtInt('barrels',      p.barrels)}</td>
-    <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
-    <td class="r">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
-    <td class="r">${fmtEV( 'max_ev',       p.max_ev)}</td>
-    <td class="r">${fmtSpd('bat_speed',    p.bat_speed)}</td>
-    <td class="r">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+    <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
+    <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
+    <td class="r" data-col="rbi">${fmtInt('rbi', p.rbi)}</td>
+    <td class="r" data-col="sb">${fmtSB(p)}</td>
+    <td class="r" data-col="obp">${fmtRate('obp',   p.obp)}</td>
+    <td class="r" data-col="woba">${fmtRate('woba',  p.woba)}</td>
+    <td class="r" data-col="xwoba">${fmtRate('xwoba', p.xwoba)}</td>
+    <td class="r" data-col="chase_pct">${fmtPct('chase_pct',    p.chase_pct)}</td>
+    <td class="r" data-col="whiff_pct">${fmtPct('whiff_pct',    p.whiff_pct)}</td>
+    <td class="r" data-col="k_pct">${fmtPct('k_pct',        p.k_pct)}</td>
+    <td class="r" data-col="so">${fmtInt('so',           p.so)}</td>
+    <td class="r" data-col="bb_pct">${fmtPct('bb_pct',       p.bb_pct)}</td>
+    <td class="r" data-col="hard_hit_pct">${fmtPct('hard_hit_pct', p.hard_hit_pct)}</td>
+    <td class="r" data-col="barrel_pct">${fmtPct('barrel_pct',   p.barrel_pct)}</td>
+    <td class="r" data-col="barrels">${fmtInt('barrels',      p.barrels)}</td>
+    <td class="r" data-col="sweet_spot_pct">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+    <td class="r" data-col="avg_ev">${fmtEV( 'avg_ev',       p.avg_ev)}</td>
+    <td class="r" data-col="max_ev">${fmtEV( 'max_ev',       p.max_ev)}</td>
+    <td class="r" data-col="bat_speed">${fmtSpd('bat_speed',    p.bat_speed)}</td>
+    <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
   </tr>`).join('');
+  applyColVis('lb-tbl',colVisH);
 }
 
 function filterLB(){
@@ -1469,7 +1500,7 @@ function srtLB(th,col){
 }
 
 lbD.sort((a,b)=>cmp(a,b,'hr',-1));
-document.querySelector('#lb-tbl th[data-k="hr"]')?.classList.add('sort-desc');
+document.querySelector('#lb-tbl th[data-col="hr" data-k="hr"]')?.classList.add('sort-desc');
 renderLB();
 
 // ── SP Leaderboard ─────────────────────────────────────────────────────────
@@ -1486,27 +1517,28 @@ function renderLBSP(){
   const D=plCellSP;
   tb.innerHTML=lbSpD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
-    <td class="r">${D('w',           p.w,           p.w)}</td>
-    <td class="r">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
-    <td class="r">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
-    <td class="r">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
-    <td class="r">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
-    <td class="r">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
-    <td class="r">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
-    <td class="r">${D('k',           p.k,           p.k)}</td>
-    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
-    <td class="r">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
+    <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r" data-col="whip">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="xera">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r" data-col="siera">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r" data-col="stuff_plus">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
+    <td class="r" data-col="loc_plus">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
+    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
+    <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="hard_hit_pct">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="gb_pct">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="woba">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="avg_ev">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
+  applyColVis('lb-sp-tbl',colVisSP);
 }
 
 function filterLBSP(){
@@ -1540,29 +1572,30 @@ function renderLBRP(){
   const D=plCellRP;
   tb.innerHTML=lbRpD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
-    <td class="r">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
-    <td class="r">${D('w',           p.w,           p.w)}</td>
-    <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
-    <td class="r">${D('hld',         p.hld,         p.hld)}</td>
-    <td class="r">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
-    <td class="r">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
-    <td class="r">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
-    <td class="r">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
-    <td class="r">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
-    <td class="r">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
-    <td class="r">${D('k',           p.k,           p.k)}</td>
-    <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
-    <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
-    <td class="r">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
-    <td class="r">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+    <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
+    <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+    <td class="r" data-col="hld">${D('hld',         p.hld,         p.hld)}</td>
+    <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
+    <td class="r" data-col="whip">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
+    <td class="r" data-col="xera">${D('xera',        p.xera,        p.xera!=null?p.xera.toFixed(2):null)}</td>
+    <td class="r" data-col="siera">${D('siera',       p.siera,       p.siera!=null?p.siera.toFixed(2):null)}</td>
+    <td class="r" data-col="stuff_plus">${D('stuff_plus',  p.stuff_plus,  p.stuff_plus)}</td>
+    <td class="r" data-col="loc_plus">${D('loc_plus',    p.loc_plus,    p.loc_plus)}</td>
+    <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
+    <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="hard_hit_pct">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="gb_pct">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+    <td class="r" data-col="woba">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+    <td class="r" data-col="avg_ev">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+    <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
   </tr>`).join('');
+  applyColVis('lb-rp-tbl',colVisRP);
 }
 
 function filterLBRP(){
@@ -1686,29 +1719,30 @@ function renderCmp(){
       if(!p) return '';
       return `<tr>
         <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
-        <td class="r">${fmtInt('r',p.r)}</td>
-        <td class="r">${fmtInt('hr',p.hr)}</td>
-        <td class="r">${fmtInt('rbi',p.rbi)}</td>
-        <td class="r">${fmtSB(p)}</td>
-        <td class="r">${fmtRate('obp',p.obp)}</td>
-        <td class="r">${fmtRate('woba',p.woba)}</td>
-        <td class="r">${fmtRate('xwoba',p.xwoba)}</td>
-        <td class="r">${fmtPct('chase_pct',p.chase_pct)}</td>
-        <td class="r">${fmtPct('whiff_pct',p.whiff_pct)}</td>
-        <td class="r">${fmtPct('k_pct',p.k_pct)}</td>
-        <td class="r">${fmtInt('so',p.so)}</td>
-        <td class="r">${fmtPct('bb_pct',p.bb_pct)}</td>
-        <td class="r">${fmtPct('hard_hit_pct',p.hard_hit_pct)}</td>
-        <td class="r">${fmtPct('barrel_pct',p.barrel_pct)}</td>
-        <td class="r">${fmtInt('barrels',p.barrels)}</td>
-        <td class="r">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
-        <td class="r">${fmtEV('avg_ev',p.avg_ev)}</td>
-        <td class="r">${fmtEV('max_ev',p.max_ev)}</td>
-        <td class="r">${fmtSpd('bat_speed',p.bat_speed)}</td>
-        <td class="r">${fmtSpd('sprint_speed',p.sprint_speed)}</td>
+        <td class="r" data-col="r">${fmtInt('r',p.r)}</td>
+        <td class="r" data-col="hr">${fmtInt('hr',p.hr)}</td>
+        <td class="r" data-col="rbi">${fmtInt('rbi',p.rbi)}</td>
+        <td class="r" data-col="sb">${fmtSB(p)}</td>
+        <td class="r" data-col="obp">${fmtRate('obp',p.obp)}</td>
+        <td class="r" data-col="woba">${fmtRate('woba',p.woba)}</td>
+        <td class="r" data-col="xwoba">${fmtRate('xwoba',p.xwoba)}</td>
+        <td class="r" data-col="chase_pct">${fmtPct('chase_pct',p.chase_pct)}</td>
+        <td class="r" data-col="whiff_pct">${fmtPct('whiff_pct',p.whiff_pct)}</td>
+        <td class="r" data-col="k_pct">${fmtPct('k_pct',p.k_pct)}</td>
+        <td class="r" data-col="so">${fmtInt('so',p.so)}</td>
+        <td class="r" data-col="bb_pct">${fmtPct('bb_pct',p.bb_pct)}</td>
+        <td class="r" data-col="hard_hit_pct">${fmtPct('hard_hit_pct',p.hard_hit_pct)}</td>
+        <td class="r" data-col="barrel_pct">${fmtPct('barrel_pct',p.barrel_pct)}</td>
+        <td class="r" data-col="barrels">${fmtInt('barrels',p.barrels)}</td>
+        <td class="r" data-col="sweet_spot_pct">${fmtPct('sweet_spot_pct',p.sweet_spot_pct)}</td>
+        <td class="r" data-col="avg_ev">${fmtEV('avg_ev',p.avg_ev)}</td>
+        <td class="r" data-col="max_ev">${fmtEV('max_ev',p.max_ev)}</td>
+        <td class="r" data-col="bat_speed">${fmtSpd('bat_speed',p.bat_speed)}</td>
+        <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed',p.sprint_speed)}</td>
         <td class="r"><button class="cmp-remove" onclick="cmpRemove(${id})">✕ Remove</button></td>
       </tr>`;
     }).join('');
+    applyColVis('cmp-h-tbl',colVisH);
   } else {
     const tb=document.getElementById('cmp-p-body');
     const ids=[...cmpPSet];
@@ -1725,32 +1759,33 @@ function renderCmp(){
       const roleTxt=role==='SP'?'#3d9be9':'#e8832a';
       return `<tr>
         <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
-        <td class="r"><span class="tm" style="background:${roleColor};color:${roleTxt};border-color:transparent;font-size:.7rem">${role}</span></td>
-        <td class="r">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
-        <td class="r">${D('w',p.w,p.w)}</td>
-        <td class="r">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
-        <td class="r">${D('hld',p.hld,p.hld)}</td>
-        <td class="r">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
-        <td class="r">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
-        <td class="r">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
-        <td class="r">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
-        <td class="r">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
-        <td class="r">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
-        <td class="r">${D('k',p.k,p.k)}</td>
-        <td class="r">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
-        <td class="r">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
-        <td class="r">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
-        <td class="r">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
-        <td class="r">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+        <td class="r" data-col="role"><span class="tm" style="background:${roleColor};color:${roleTxt};border-color:transparent;font-size:.7rem">${role}</span></td>
+        <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
+        <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
+        <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
+        <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
+        <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
+        <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
+        <td class="r" data-col="xera">${D('xera',p.xera,p.xera!=null?p.xera.toFixed(2):null)}</td>
+        <td class="r" data-col="siera">${D('siera',p.siera,p.siera!=null?p.siera.toFixed(2):null)}</td>
+        <td class="r" data-col="stuff_plus">${D('stuff_plus',p.stuff_plus,p.stuff_plus)}</td>
+        <td class="r" data-col="loc_plus">${D('loc_plus',p.loc_plus,p.loc_plus)}</td>
+        <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
+        <td class="r" data-col="k_pct">${p.k_pct!=null?D('k_pct',p.k_pct,p.k_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="bb_pct">${p.bb_pct!=null?D('bb_pct',p.bb_pct,p.bb_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="chase_pct">${p.chase_pct!=null?D('chase_pct',p.chase_pct,p.chase_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="whiff_pct">${p.whiff_pct!=null?D('whiff_pct',p.whiff_pct,p.whiff_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="barrel_pct">${p.barrel_pct!=null?D('barrel_pct',p.barrel_pct,p.barrel_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="hard_hit_pct">${p.hard_hit_pct!=null?D('hard_hit_pct',p.hard_hit_pct,p.hard_hit_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="gb_pct">${p.gb_pct!=null?D('gb_pct',p.gb_pct,p.gb_pct.toFixed(1)+'%'):D2()}</td>
+        <td class="r" data-col="woba">${p.woba!=null?D('woba',p.woba,p.woba.toFixed(3).replace('0.','.')):D2()}</td>
+        <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
+        <td class="r" data-col="avg_ev">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
+        <td class="r" data-col="fb_velo">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
         <td class="r"><button class="cmp-remove" onclick="cmpRemove(${id})">✕ Remove</button></td>
       </tr>`;
     }).join('');
+    applyColVis('cmp-p-tbl',colVisRP);
   }
 }
 
@@ -1774,6 +1809,108 @@ document.getElementById('cmp-search').addEventListener('keydown',function(e){
     dd.style.display='none'; cmpDdIdx=-1;
   }
 });
+
+// ── Column Visibility ─────────────────────────────────────────────────────
+const COL_H_DEFS=[
+  {k:'r',label:'R'},{k:'hr',label:'HR'},{k:'rbi',label:'RBI'},{k:'sb',label:'SB'},
+  {k:'obp',label:'OBP'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
+  {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
+  {k:'k_pct',label:'K%'},{k:'so',label:'SO'},{k:'bb_pct',label:'BB%'},
+  {k:'hard_hit_pct',label:'Hard Hit%'},{k:'barrel_pct',label:'Barrel%'},
+  {k:'barrels',label:'Barrels'},{k:'sweet_spot_pct',label:'Swt Spot%'},
+  {k:'avg_ev',label:'Avg EV'},{k:'max_ev',label:'Max EV'},
+  {k:'bat_speed',label:'Bat Spd'},{k:'sprint_speed',label:'Sprt Spd'},
+];
+const COL_SP_DEFS=[
+  {k:'ip_f',label:'IP'},{k:'w',label:'W'},
+  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
+  {k:'stuff_plus',label:'Stf+'},{k:'loc_plus',label:'Loc+'},
+  {k:'k',label:'K'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
+  {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
+  {k:'barrel_pct',label:'Barrel%'},{k:'hard_hit_pct',label:'Hard Hit%'},
+  {k:'gb_pct',label:'GB%'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
+  {k:'avg_ev',label:'Avg EV'},{k:'fb_velo',label:'FB Velo'},
+];
+const COL_RP_DEFS=[
+  {k:'ip_f',label:'IP'},{k:'w',label:'W'},{k:'sv',label:'SV/SVO'},{k:'hld',label:'HLD'},
+  {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
+  {k:'stuff_plus',label:'Stf+'},{k:'loc_plus',label:'Loc+'},
+  {k:'k',label:'K'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
+  {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
+  {k:'barrel_pct',label:'Barrel%'},{k:'hard_hit_pct',label:'Hard Hit%'},
+  {k:'gb_pct',label:'GB%'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
+  {k:'avg_ev',label:'Avg EV'},{k:'fb_velo',label:'FB Velo'},
+  {k:'role',label:'Role'},
+];
+const colVisH={}, colVisSP={}, colVisRP={};
+COL_H_DEFS.forEach(d=>{colVisH[d.k]=true;});
+COL_SP_DEFS.forEach(d=>{colVisSP[d.k]=true;});
+COL_RP_DEFS.forEach(d=>{colVisRP[d.k]=true;});
+
+function _colInfo(type){
+  if(type==='h')  return {vis:colVisH,  defs:COL_H_DEFS,  tables:['lb-tbl','cmp-h-tbl']};
+  if(type==='sp') return {vis:colVisSP, defs:COL_SP_DEFS, tables:['lb-sp-tbl']};
+  if(type==='rp') return {vis:colVisRP, defs:COL_RP_DEFS, tables:['lb-rp-tbl','cmp-p-tbl']};
+}
+
+function applyColVis(tableId, vis){
+  const tbl=document.getElementById(tableId);
+  if(!tbl) return;
+  tbl.querySelectorAll('[data-col]').forEach(el=>{
+    const k=el.getAttribute('data-col');
+    if(k in vis) el.classList.toggle('col-vis-hidden', vis[k]===false);
+  });
+}
+
+function _pickerHTML(type){
+  const {vis,defs}=_colInfo(type);
+  const items=defs.filter(d=>d.k!=='role').map(d=>`<label class="col-picker-item"><input type="checkbox" data-ck="${type}:${d.k}" ${vis[d.k]!==false?'checked':''} onchange="toggleCol('${type}','${d.k}',this.checked)">${d.label}</label>`).join('');
+  // add Role checkbox for rp (compare only)
+  const roleItem=type==='rp'?`<label class="col-picker-item"><input type="checkbox" data-ck="${type}:role" ${colVisRP.role!==false?'checked':''} onchange="toggleCol('${type}','role',this.checked)">Role</label>`:'';
+  return `<div class="col-picker-actions"><button onclick="selectAllCols('${type}')">Select All</button><button onclick="deselectAllCols('${type}')">Deselect All</button></div><div class="col-picker-grid">${items}${roleItem}</div>`;
+}
+
+function toggleColPicker(type,btn){
+  const panel=btn.nextElementSibling;
+  if(!panel) return;
+  const isOpen=panel.style.display!=='none';
+  // close all pickers first
+  document.querySelectorAll('.col-picker-panel').forEach(p=>p.style.display='none');
+  if(!isOpen){
+    panel.innerHTML=_pickerHTML(type);
+    panel.dataset.pickerType=type;
+    panel.style.display='';
+  }
+}
+
+function toggleCol(type,key,checked){
+  const {vis,tables}=_colInfo(type);
+  vis[key]=checked;
+  tables.forEach(t=>applyColVis(t,vis));
+}
+
+function selectAllCols(type){
+  const {vis,defs,tables}=_colInfo(type);
+  defs.forEach(d=>{vis[d.k]=true;});
+  tables.forEach(t=>applyColVis(t,vis));
+  document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
+}
+
+function deselectAllCols(type){
+  const {vis,defs,tables}=_colInfo(type);
+  // Keep name col visible always; deselect everything else
+  defs.forEach(d=>{vis[d.k]=false;});
+  tables.forEach(t=>applyColVis(t,vis));
+  document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
+}
+
+// Close picker on outside click
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.col-picker-wrap')&&!e.target.closest('.col-picker-btn')){
+    document.querySelectorAll('.col-picker-panel').forEach(p=>p.style.display='none');
+  }
+},true);
+
 document.addEventListener('click',function(e){
   if(!e.target.closest('#cmp-search')&&!e.target.closest('#cmp-dropdown')){
     const dd=document.getElementById('cmp-dropdown');
