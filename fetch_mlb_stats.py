@@ -1283,6 +1283,42 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         except Exception as e2:
             print(f"  [LB] Chadwick register failed: {e2}")
 
+        # Supplement Chadwick with xMLBAMID from FanGraphs DataFrame directly
+        # (handles new/recently-promoted players not yet in the Chadwick register)
+        if "xMLBAMID" in fg.columns:
+            _pre = len(fg_to_mlbam)
+            for _, cr in fg.iterrows():
+                try:
+                    fgk = int(float(cr.get("playerid") or cr.get("IDfg") or 0))
+                    mid = int(float(cr.get("xMLBAMID") or 0))
+                    if fgk > 0 and mid > 0:
+                        fg_to_mlbam.setdefault(fgk, mid)
+                except (ValueError, TypeError):
+                    pass
+            print(f"  [LB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after xMLBAMID supplement)")
+        else:
+            # xMLBAMID not in pybaseball DataFrame — call FG API directly
+            try:
+                xmap_rows = fg_api({
+                    "pos": "all", "stats": "bat", "lg": "all", "qual": "0",
+                    "season": year, "season1": year,
+                    "month": "0", "team": "0",
+                    "pageitems": "2000", "pagenum": "1", "ind": "0",
+                    "type": "8",
+                }, "batter xMLBAMID map")
+                _pre = len(fg_to_mlbam)
+                for r2 in (xmap_rows or []):
+                    try:
+                        fgk = int(float(r2.get("playerid") or 0))
+                        mid = int(float(r2.get("xMLBAMID") or 0))
+                        if fgk > 0 and mid > 0:
+                            fg_to_mlbam.setdefault(fgk, mid)
+                    except (ValueError, TypeError):
+                        pass
+                print(f"  [LB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after FG API xMLBAMID)")
+            except Exception as e3:
+                print(f"  [LB] FG API xMLBAMID supplement failed: {e3}")
+
         max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
         qual_pa = max(5, round(max_g * 3.1))
 
@@ -1574,6 +1610,42 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                         pass
         except Exception as e2:
             print(f"  [PLB] Chadwick register failed: {e2}")
+
+        # Supplement Chadwick with xMLBAMID from FanGraphs DataFrame directly
+        # (handles new/recently-promoted pitchers not yet in the Chadwick register)
+        if "xMLBAMID" in fg.columns:
+            _pre = len(fg_to_mlbam)
+            for _, cr in fg.iterrows():
+                try:
+                    fgk = int(float(cr.get("playerid") or cr.get("IDfg") or 0))
+                    mid = int(float(cr.get("xMLBAMID") or 0))
+                    if fgk > 0 and mid > 0:
+                        fg_to_mlbam.setdefault(fgk, mid)
+                except (ValueError, TypeError):
+                    pass
+            print(f"  [PLB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after xMLBAMID supplement)")
+        else:
+            # xMLBAMID not in pybaseball DataFrame — call FG API directly (type=8 = Stuff+ leaderboard)
+            try:
+                xmap_rows = fg_api({
+                    "pos": "all", "stats": "pit", "lg": "all", "qual": "0",
+                    "season": year, "season1": year,
+                    "month": "0", "team": "0",
+                    "pageitems": "2000", "pagenum": "1", "ind": "0",
+                    "type": "8",
+                }, "pitcher xMLBAMID map")
+                _pre = len(fg_to_mlbam)
+                for r2 in (xmap_rows or []):
+                    try:
+                        fgk = int(float(r2.get("playerid") or 0))
+                        mid = int(float(r2.get("xMLBAMID") or 0))
+                        if fgk > 0 and mid > 0:
+                            fg_to_mlbam.setdefault(fgk, mid)
+                    except (ValueError, TypeError):
+                        pass
+                print(f"  [PLB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after FG API xMLBAMID)")
+            except Exception as e3:
+                print(f"  [PLB] FG API xMLBAMID supplement failed: {e3}")
 
         max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
         qual_sp_ip = max(3.0, round(max_g * 1.0, 1))
