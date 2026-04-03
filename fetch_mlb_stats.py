@@ -862,11 +862,29 @@ def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> 
       leagues_data: {league_id_str: {"league_name": str, "teams": {team_key: {"name", "is_my_team", "players"}}}}
       my_team_norms: set of ta_norm'd player names for the authenticated user's team
     """
-    import urllib.request
-    import urllib.error
+    import urllib.parse
+    import requests as _req
+
+    # ESPN s2 is stored URL-encoded in the browser; decode it so the cookie
+    # value is transmitted correctly (e.g. %2B → +, %2F → /).
+    espn_s2_decoded = urllib.parse.unquote(espn_s2)
 
     # Strip braces for owner-ID comparison (ESPN stores owners as "{GUID}")
     swid_inner = swid.strip("{}").upper()
+
+    # Build a session with proper ESPN cookies + browser-like headers
+    session = _req.Session()
+    session.cookies.set("espn_s2", espn_s2_decoded, domain=".espn.com", path="/")
+    session.cookies.set("SWID",    swid,             domain=".espn.com", path="/")
+    session.headers.update({
+        "Accept":          "application/json",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent":      ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/124.0.0.0 Safari/537.36"),
+        "Referer":         "https://fantasy.espn.com/",
+        "Origin":          "https://fantasy.espn.com",
+    })
 
     leagues_data: dict = {}
     my_team_norms: set = set()
@@ -876,18 +894,16 @@ def fetch_espn_rosters(league_ids: list, year: int, swid: str, espn_s2: str) -> 
         url = (f"https://fantasy.espn.com/apis/v3/games/flb/seasons/{year}"
                f"/segments/0/leagues/{lid_str}?view=mRoster&view=mTeam")
         try:
-            req = urllib.request.Request(url, headers={
-                "Cookie":     f"espn_s2={espn_s2}; SWID={swid}",
-                "Accept":     "application/json",
-                "User-Agent": "Mozilla/5.0 (compatible; mlb-stats-bot/1.0)",
-            })
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            print(f"  ESPN HTTP {e.code} for league {lid_str}: {e.reason}")
-            continue
+            resp = session.get(url, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
         except Exception as e:
             print(f"  ESPN API error for league {lid_str}: {e}")
+            # Log first 200 chars of response to help diagnose
+            try:
+                print(f"  ESPN response preview: {resp.text[:200]!r}")
+            except Exception:
+                pass
             continue
 
         league_name = (data.get("settings", {}).get("name")
