@@ -2986,9 +2986,9 @@ function filterRP(){filterP();}
 hD.sort((a,b)=>cmp(a,b,'barrels',-1));
 spD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 rpD.sort((a,b)=>cmp(a,b,'sv',-1));
-document.querySelector('#h-tbl th[data-col="barrels" data-k="barrels"]')?.classList.add('sort-desc');
-document.querySelector('#sp-tbl th[data-col="ip_float" data-k="ip_float"]')?.classList.add('sort-desc');
-document.querySelector('#rp-tbl th[data-col="sv" data-k="sv"]')?.classList.add('sort-desc');
+document.querySelector('#h-tbl th[data-k="barrels"]')?.classList.add('sort-desc');
+document.querySelector('#sp-tbl th[data-k="ip_float"]')?.classList.add('sort-desc');
+document.querySelector('#rp-tbl th[data-k="sv"]')?.classList.add('sort-desc');
 renderH();renderSP();renderRP();
 
 // ── Team Alex ─────────────────────────────────────────────────────────────
@@ -3453,7 +3453,7 @@ function srtLB(th,col){
 }
 
 lbD.sort((a,b)=>cmp(a,b,'hr',-1));
-document.querySelector('#lb-tbl th[data-col="hr" data-k="hr"]')?.classList.add('sort-desc');
+document.querySelector('#lb-tbl th[data-k="hr"]')?.classList.add('sort-desc');
 renderLB();
 
 // ── SP Leaderboard ─────────────────────────────────────────────────────────
@@ -3976,81 +3976,4 @@ def main():
     fg_velo_dict, fg_name_to_fgid, fg_mlbam_to_fgid = fetch_fg_season_velo(year)
     print(f"  FanGraphs season leaderboard: {len(fg_name_to_fgid)} name→ID, {len(fg_mlbam_to_fgid)} MLBAM→ID mappings")
 
-    # Patch p_info: fill in FG IDs for players whose Chadwick key_fangraphs is blank,
-    # using the xMLBAMID→playerid mapping extracted from the FanGraphs leaderboard.
-    # This promotes those pitchers from priority-3 (CF-blocked name search) to
-    # priority-1 (known FG ID), so they're processed before Cloudflare rate-limits kick in.
-    leaderboard_patched = 0
-    for mlbam, fg_id in fg_mlbam_to_fgid.items():
-        if mlbam in p_info and p_info[mlbam].get("fg_id") is None:
-            p_info[mlbam]["fg_id"] = fg_id
-            leaderboard_patched += 1
-    if leaderboard_patched:
-        print(f"  Patched {leaderboard_patched} missing FG ID(s) via leaderboard xMLBAMID column")
-
-    game_stuff = fetch_fg_game_stuff(yesterday, year, all_pitchers, p_info, fg_name_to_fgid)
-    attach_fg_data(all_pitchers, p_info, game_stuff, fg_velo_dict, savant_velo)
-    attached_fg = sum(1 for p in all_pitchers if p["stuff_plus"] is not None)
-    print(f"  Stuff+ attached: {attached_fg}/{len(all_pitchers)} pitcher(s)")
-
-    print("\n[ 5b/6 ] Team Alex roster filter")
-    ta_hitters  = [h for h in hitters if ta_norm(h["name"]) in TEAM_ALEX_NAMES]
-    ta_all_pitchers = [p for p in all_pitchers if ta_norm(p["name"]) in TEAM_ALEX_NAMES]
-    ta_starters = [p for p in ta_all_pitchers if p.get("ip_float", 0) >= 3]
-    ta_relievers = [p for p in ta_all_pitchers if p.get("ip_float", 0) < 3]
-    print(f"  Team Alex: {len(ta_hitters)} hitter(s), {len(ta_starters)} starter(s), {len(ta_relievers)} reliever(s) played yesterday")
-
-    print("\n[ 5c/6 ] Season batting leaderboard")
-    lb_data = fetch_season_batting_leaderboard(year)
-
-    print("\n[ 5d/6 ] Season pitching leaderboard")
-    lb_pitch_data = fetch_season_pitching_leaderboard(year)
-
-    print("\n[ 6/6 ] Rendering HTML")
-    hitters.sort(key=lambda x: (x["barrels"], x["hard_hits"]), reverse=True)
-    all_pitchers.sort(key=lambda x: x["ip_float"], reverse=True)
-
-    n_games = df["game_pk"].nunique()
-    html    = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                          ta_hitters, ta_starters, ta_relievers,
-                          lb_data, lb_pitch_data)
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlb_daily_stats.html")
-    with open(out_path, "w", encoding="utf-8") as fh:
-        fh.write(html)
-
-    print(f"\n✅  Dashboard saved → {out_path}")
-    starters = [p for p in all_pitchers if p.get("ip_float", 0) >= 3]
-    relievers = [p for p in all_pitchers if p.get("ip_float", 0) < 3]
-    print(f"    {n_games} game(s) · {len(hitters)} batters · {len(starters)} starters · {len(relievers)} relievers\n")
-
-    _close_pw()   # shut down Chromium
-
-    # ── Firebase deploy (runs automatically if Firebase CLI is installed) ──
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    firebase_rc = os.path.join(script_dir, ".firebaserc")
-    if os.path.exists(firebase_rc):
-        print("[ Firebase ] Deploying to Firebase Hosting…")
-        try:
-            result = subprocess.run(
-                ["firebase", "deploy", "--only", "hosting", "--non-interactive"],
-                cwd=script_dir, capture_output=True, text=True, timeout=120,
-            )
-            if result.returncode == 0:
-                # Extract hosting URL from output
-                for line in result.stdout.splitlines():
-                    if "web.app" in line or "firebaseapp.com" in line:
-                        print(f"  ✅ Live at: {line.strip()}")
-                        break
-                else:
-                    print("  ✅ Firebase deploy successful")
-            else:
-                print(f"  ⚠️  Firebase deploy failed: {result.stderr[:300]}")
-        except FileNotFoundError:
-            print("  Firebase CLI not found — skipping deploy")
-            print("  (Run 'npm install -g firebase-tools' to enable auto-deploy)")
-        except Exception as e:
-            print(f"  Firebase deploy error: {e}")
-
-
-if __name__ == "__main__":
-    main()
+    # Patch p_info: fill in FG IDs 
