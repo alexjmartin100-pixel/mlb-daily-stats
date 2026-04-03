@@ -2149,7 +2149,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .col-picker-actions button{flex:1;padding:4px 8px;font-size:.74rem;background:var(--card2);
   border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer}
 .col-picker-actions button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
-.col-picker-grid{display:grid;grid-template-columns:1fr 1fr;grid-auto-flow:row;gap:3px 14px;max-height:260px;overflow-y:auto}
+.col-picker-grid{display:flex;flex-direction:column;flex-wrap:wrap;max-height:260px;overflow-x:auto;gap:3px 14px;width:100%}
 .col-picker-item{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text);
   cursor:pointer;padding:3px 0;white-space:nowrap}
 .col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
@@ -2176,7 +2176,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <div class="tab-bar">
   <button class="tab-btn active" onclick="showTab('hitters',this)">
-    🏏 Hitters <span class="tab-count" id="h-tc">—</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
   <button class="tab-btn" onclick="showTab('pitchers',this)">
     ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
@@ -2198,7 +2198,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <div id="hitters-panel" class="tab-panel active">
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-    <div class="leg-item"><span class="leg-dot" style="background:#e74c3c"></span>Max EV: high (red) → low (blue)</div>
     <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
   </div>
   <div class="controls">
@@ -2312,7 +2311,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   </div>
 
   <!-- Hitters section with Yesterday / Season toggle -->
-  <div class="ta-section-hdr">🏏 Hitters <span class="tab-count" id="ta-h-tc">—</span></div>
+  <div class="ta-section-hdr"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters <span class="tab-count" id="ta-h-tc">—</span></div>
   <div class="toggle-group" style="margin-bottom:10px">
     <button class="tgl-btn active" id="ta-h-yday-btn" onclick="showTAHView('yday',this)">Yesterday</button>
     <button class="tgl-btn" id="ta-h-season-btn" onclick="showTAHView('season',this)">Season</button>
@@ -2499,7 +2498,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ SEASON LEADERBOARD ══ -->
 <div id="leaderboard-panel" class="tab-panel">
   <div class="toggle-group" style="margin-bottom:14px">
-    <button class="tgl-btn active" onclick="showLBType('h',this)">🏏 Hitters</button>
+    <button class="tgl-btn active" onclick="showLBType('h',this)"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters</button>
     <button class="tgl-btn" onclick="showLBType('sp',this)">⚾ SP</button>
     <button class="tgl-btn" onclick="showLBType('rp',this)">🔥 RP</button>
   </div>
@@ -2663,7 +2662,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <!-- ══ COMPARE PLAYERS ══ -->
 <div id="compare-panel" class="tab-panel">
   <div class="toggle-group" style="margin-bottom:14px">
-    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)">🏏 Hitters</button>
+    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><rect x="10.5" y="2" width="3" height="8" rx="1.5" fill="#8B5E3C"/><ellipse cx="12" cy="18" rx="5.5" ry="4" fill="#8B5E3C"/><rect x="11" y="9" width="2" height="6" fill="#8B5E3C"/></svg> Hitters</button>
     <button class="tgl-btn" id="cmp-p-btn" onclick="showCmpType(\'p\',this)">⚾ Pitchers</button>
   </div>
   <div class="cmp-search-wrap">
@@ -3255,6 +3254,12 @@ const LB_SP_ALL  = __LB_SP_JSON__;
 const LB_SP_QUAL = LB_SP_ALL.filter(p=>p.qualified);
 const LB_RP_ALL  = __LB_RP_JSON__;
 const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
+
+// Pre-compute k_bb_pct for any pitcher missing it (k% - bb%) — must run BEFORE buildCfg
+[...LB_SP_ALL,...LB_RP_ALL].forEach(p=>{
+  if(p.k_bb_pct==null&&p.k_pct!=null&&p.bb_pct!=null)
+    p.k_bb_pct=Math.round((p.k_pct-p.bb_pct)*10)/10;
+});
 
 // Now that LB_ALL/LB_SP_ALL/LB_RP_ALL are defined, initialize TA season data
 const TA_LB    = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
