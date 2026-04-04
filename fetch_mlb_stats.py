@@ -4586,18 +4586,31 @@ def _fant_stat(row: dict, cat: str) -> float:
 
 
 def _z_to_dollars(players: list, cats: list, neg_cats: set,
-                  n_roster: int, usable: float, is_pitcher: bool) -> list:
-    """Core z-score → dollar-value calculation."""
+                  n_roster: int, usable: float, is_pitcher: bool,
+                  min_ip: float = 0) -> list:
+    """Core z-score → dollar-value calculation.
+    min_ip: if >0, only pitchers meeting this IP threshold are used to define
+    the z-score baseline pool (e.g. league ERA/WHIP minimums). All pitchers
+    still receive a dollar value against that baseline.
+    """
     if not players:
         return []
 
-    # Rank by playing time to define the rostered pool
     pt_key = ((lambda p: float(p.get("IP") or p.get("ip") or 0))
               if is_pitcher
               else (lambda p: float(p.get("PA") or p.get("pa") or
                                     float(p.get("G") or 0) * 3.8)))
 
-    pool = sorted(players, key=pt_key, reverse=True)[:n_roster]
+    # Pool = players who set the z-score baseline.
+    # For pitchers, enforce the IP minimum so small-sample arms don't distort
+    # ERA/WHIP means (mirrors the league's innings-pitched qualifying rule).
+    if is_pitcher and min_ip > 0:
+        eligible = [p for p in players
+                    if float(p.get("IP") or p.get("ip") or
+                             p.get("ip_float") or 0) >= min_ip]
+    else:
+        eligible = players
+    pool = sorted(eligible, key=pt_key, reverse=True)[:n_roster]
 
     # Per-category mean / std within the pool
     cat_params: dict = {}
@@ -4649,15 +4662,12 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     all_pit_lb = ((list(lb_pitch_data.get("starters",  []))
                  + list(lb_pitch_data.get("relievers", [])))
                  if lb_pitch_data else [])
-    # Apply 35 IP minimum to YTD pitchers
     min_ip = cfg.get("min_ip", 35)
-    qual_pit_lb = [p for p in all_pit_lb
-                   if float(p.get("ip") or p.get("IP") or p.get("ip_float") or 0) >= min_ip]
 
-    ytd_h = _z_to_dollars(lb_data or [],  cfg["h_cats"], cfg["neg_cats"],
+    ytd_h = _z_to_dollars(lb_data or [], cfg["h_cats"], cfg["neg_cats"],
                            n_h, h_use, False)
-    ytd_p = _z_to_dollars(qual_pit_lb,    cfg["p_cats"], cfg["neg_cats"],
-                           n_p, p_use, True)
+    ytd_p = _z_to_dollars(all_pit_lb,   cfg["p_cats"], cfg["neg_cats"],
+                           n_p, p_use, True, min_ip=min_ip)
 
     # ── Future (OOPSY + Bat X projected average) ──────────────────────────
     print("  [FANTASY] Fetching OOPSY projections…")
@@ -4693,11 +4703,10 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
 
     proj_b = [_nb(r) for r in avg_b] if avg_b else []
     proj_p = [_np(r) for r in avg_p] if avg_p else []
-    # Apply 35 IP minimum to projected pitchers
-    proj_p = [p for p in proj_p if float(p.get("IP") or 0) >= min_ip]
 
     fut_h = _z_to_dollars(proj_b, cfg["h_cats"], cfg["neg_cats"], n_h, h_use, False)
-    fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["neg_cats"], n_p, p_use, True)
+    fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["neg_cats"], n_p, p_use, True,
+                          min_ip=min_ip)
 
     print(f"  [FANTASY] YTD  — {len(ytd_h)} hitters, {len(ytd_p)} pitchers")
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers")
