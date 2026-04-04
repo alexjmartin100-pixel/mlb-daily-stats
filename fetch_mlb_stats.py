@@ -2199,7 +2199,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <div class="tab-bar">
   <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
-    👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
+    👑 <span id="ta-team-name-tab">My Team</span> <span class="tab-count" id="ta-tc">—</span>
   </button>
   <button class="tab-btn" onclick="showTab('hitters',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
@@ -2310,7 +2310,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
         <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
         <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
-        <th class="sortable r"    data-col="gm_li" data-k="gm_li"       onclick="srtRP(this,'gm_li')">gmLI</th>
         <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
         <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
@@ -2330,7 +2329,10 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
     <div style="flex:1">
-      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold);display:flex;align-items:center;gap:6px">
+        <span id="ta-team-name-hdr">My Team</span>
+        <button id="ta-name-edit-btn" onclick="startTeamNameEdit()" title="Edit team name" style="display:none;background:none;border:none;color:var(--muted);cursor:pointer;padding:0;font-size:.85rem;opacity:.7;line-height:1">✏️</button>
+      </div>
       <div id="ta-roster-count" style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
     <div id="ta-auth-area" style="display:flex;gap:8px;align-items:center"></div>
@@ -2473,7 +2475,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="k" data-k="k"             onclick="srtTA(this,'rp','k')">K</th>
         <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtTA(this,'rp','sv')">SV</th>
         <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtTA(this,'rp','hld')">HLD</th>
-        <th class="sortable r"    data-col="gm_li" data-k="gm_li"       onclick="srtTA(this,'rp','gm_li')">gmLI</th>
         <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtTA(this,'rp','bs')">BS</th>
         <th class="sortable r"    data-col="w" data-k="w"             onclick="srtTA(this,'rp','w')">W</th>
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
@@ -2997,7 +2998,6 @@ function renderRP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
-    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:'<span class="c-dim">—</span>'}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -3065,7 +3065,7 @@ function showTAHView(view,btn){
 function renderTALB(){
   const tb=document.getElementById('ta-lb-body');
   if(!taLBD.length){
-    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season data for Team Alex yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
@@ -3101,7 +3101,7 @@ function srtTALB(th,col){
 function renderTASPLB(){
   const tb=document.getElementById('ta-sp-lb-body');
   if(!taSPLBD.length){
-    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season SP data for Team Alex yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season SP data for your team yet.</p></div></td></tr>';return;
   }
   const D=plCellSP;
   tb.innerHTML=taSPLBD.map(p=>`<tr>
@@ -3181,7 +3181,7 @@ function renderTAH(){
   const tb=document.getElementById('ta-h-body');
   document.getElementById('ta-h-tc').textContent=taHD.length;
   if(!taHD.length){
-    tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No Team Alex hitters appeared yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No roster hitters appeared yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taHD.map(h=>`<tr>
@@ -3205,7 +3205,7 @@ function renderTASP(){
   const tb=document.getElementById('ta-sp-body');
   document.getElementById('ta-sp-tc').textContent=taSPD.length;
   if(!taSPD.length){
-    tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No Team Alex starters pitched yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No roster starters pitched yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taSPD.map(p=>`<tr>
@@ -3231,7 +3231,7 @@ function renderTARP(){
   const tb=document.getElementById('ta-rp-body');
   document.getElementById('ta-rp-tc').textContent=taRPD.length;
   if(!taRPD.length){
-    tb.innerHTML='<tr><td colspan="19"><div class="empty"><div class="ico">😴</div><p>No Team Alex relievers pitched yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="19"><div class="empty"><div class="ico">😴</div><p>No roster relievers pitched yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taRPD.map(p=>`<tr>
@@ -3245,7 +3245,6 @@ function renderTARP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
-    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:'<span class="c-dim">—</span>'}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -4039,16 +4038,51 @@ function _updateAuthUI(){
     area.innerHTML = '<span style="font-size:.7rem;color:var(--muted);opacity:.7">⚙️ roster sync unavailable</span>';
     return;
   }
+  const editBtn=document.getElementById('ta-name-edit-btn');
   if (_fbUser) {
     const email = _fbUser.email || '';
-    const short = email.length > 22 ? email.slice(0,20)+'…' : email;
     area.innerHTML =
       `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`+
       `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
+    if(editBtn) editBtn.style.display='inline';
   } else {
     area.innerHTML =
       `<button onclick="openLoginOverlay()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.78rem;color:var(--muted);cursor:pointer">🔑 Login</button>`;
+    if(editBtn) editBtn.style.display='none';
   }
+}
+
+let _teamName = 'My Team';
+
+function _applyTeamName(name){
+  ['ta-team-name-tab','ta-team-name-hdr'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=name;
+  });
+  const btn=document.getElementById('ta-name-edit-btn');
+  if(btn) btn.style.display=_fbUser?'inline':'none';
+}
+
+function startTeamNameEdit(){
+  const hdr=document.getElementById('ta-team-name-hdr');
+  if(!hdr) return;
+  const cur=hdr.textContent;
+  hdr.outerHTML=`<input id="ta-name-input" value="${cur}" maxlength="30"
+    style="font-size:1.05rem;font-weight:800;color:var(--gold);background:transparent;border:none;border-bottom:2px solid var(--accent);outline:none;width:160px;padding:0"
+    onblur="saveTeamName(this.value)"
+    onkeydown="if(event.key==='Enter')this.blur();">`;
+  const inp=document.getElementById('ta-name-input');
+  if(inp){inp.focus();inp.select();}
+}
+
+async function saveTeamName(val){
+  const name=(val||'').trim()||'My Team';
+  _teamName=name;
+  const inp=document.getElementById('ta-name-input');
+  if(inp) inp.outerHTML=`<span id="ta-team-name-hdr">${name}</span>`;
+  const tab=document.getElementById('ta-team-name-tab');
+  if(tab) tab.textContent=name;
+  if(_fbUser) await _fbDb.collection('users').doc(_fbUser.uid).set({teamName:name},{merge:true});
 }
 
 async function _loadRoster(uid){
@@ -4061,6 +4095,11 @@ async function _loadRoster(uid){
       // First login — seed with current baked-in defaults
       names = DEFAULT_TA_NAMES;
       await _saveRoster(uid, names);
+    }
+    // Load saved team name
+    if (doc.exists && doc.data().teamName) {
+      _teamName = doc.data().teamName;
+      _applyTeamName(_teamName);
     }
     _rosterNames = names;
     _rebuildTA(names);
@@ -4248,7 +4287,7 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 <!-- ══ Login Overlay ══ -->
 <div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:min(92vw,380px);box-shadow:0 10px 40px rgba(0,0,0,.6)">
-    <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:var(--gold)">👑 Team Alex Login</div>
+    <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:var(--gold)">👑 My Team Login</div>
     <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px">Sign in to manage your roster across devices</div>
     <div id="login-error" style="display:none;color:#f55;font-size:.8rem;margin-bottom:10px;padding:8px 10px;background:rgba(255,80,80,.12);border-radius:6px"></div>
     <input id="login-email" type="email" placeholder="Email" autocomplete="email"
