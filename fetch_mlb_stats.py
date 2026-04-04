@@ -4298,18 +4298,23 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 });
 
 // ── Visual Viewport zoom fix ───────────────────────────────────────────────
-// When the user zooms OUT on mobile, the visual viewport width grows beyond
-// the CSS layout viewport (device-width). Without this fix, table-wraps stay
-// anchored to the narrower CSS pixel width and don't fill the visible screen.
-// Setting body.minWidth to the visual viewport width lets everything expand.
-if(window.visualViewport){
+// When zoomed OUT on mobile the visual viewport CSS-pixel width grows beyond
+// the layout viewport (device-width). We inject a <style> rule so html+body
+// expand to match, letting every table-wrap fill the visible screen.
+// Fallback via touchend covers iOS where visualViewport.resize fires late.
+(function(){
+  if(!window.visualViewport) return;
+  const _s=document.createElement('style');
+  document.head.appendChild(_s);
   function _vvFit(){
     const vw=Math.ceil(window.visualViewport.width);
-    document.body.style.minWidth=vw+'px';
+    _s.textContent='html,body{min-width:'+vw+'px!important}';
   }
   window.visualViewport.addEventListener('resize',_vvFit);
+  window.visualViewport.addEventListener('scroll',_vvFit);
+  document.addEventListener('touchend',function(){setTimeout(_vvFit,120);});
   _vvFit();
-}
+})();
 </script>
 
 <!-- ══ Login Overlay ══ -->
