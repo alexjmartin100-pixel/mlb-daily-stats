@@ -4,16 +4,14 @@ update_espn_cache.py  –  Run this on YOUR LOCAL MACHINE to sync ESPN rosters.
 
 FIRST RUN (one-time setup):
   A browser window opens. Log in to ESPN normally and complete any email
-  verification. Once you land on the ESPN home page the script takes over,
-  saves your cookies, fetches rosters, and pushes the cache to GitHub.
+  verification. Once you're on the ESPN home page hit Enter in this window
+  and the script takes over.
 
 EVERY RUN AFTER THAT (automated via Task Scheduler):
-  No browser window — loads the saved cookies silently and runs in the
-  background. Only re-runs the browser if ESPN has logged you out.
+  No browser window — loads your saved session silently in the background.
+  Only re-opens the browser if ESPN has logged you out.
 
-SETUP:
-  No environment variables needed beyond what's already in the CONFIG block.
-  Just run:  python update_espn_cache.py
+SETUP: just run  python update_espn_cache.py
 """
 
 import json
@@ -21,7 +19,6 @@ import os
 import subprocess
 import sys
 import unicodedata
-import urllib.parse
 from pathlib import Path
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
@@ -31,9 +28,9 @@ YEAR            = 2026
 AUTO_PUSH       = True
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO_DIR     = Path(__file__).parent.resolve()
-CACHE_FILE   = REPO_DIR / "espn_rosters_cache.json"
-COOKIES_FILE = REPO_DIR / "espn_cookies.json"   # gitignored — stays local
+REPO_DIR      = Path(__file__).parent.resolve()
+CACHE_FILE    = REPO_DIR / "espn_rosters_cache.json"
+SESSION_FILE  = REPO_DIR / "espn_session.json"   # gitignored — stays local
 
 
 def _norm(name: str) -> str:
@@ -43,19 +40,14 @@ def _norm(name: str) -> str:
     return name.lower().replace(".", "").strip()
 
 
-def do_browser_login() -> list:
-    """
-    Opens a headed Chromium browser, waits for the user to log in to ESPN
-    (including any email verification), navigates to the fantasy home page
-    to trigger all auth cookies, then returns the cookie list.
-    """
+def do_login_and_save_session() -> None:
+    """Opens a headed browser, waits for the user to log in, saves the session."""
     from playwright.sync_api import sync_playwright
 
     print("\n" + "=" * 60)
-    print("  FIRST-TIME SETUP")
-    print("  A browser window will open — log in to ESPN as normal.")
-    print("  Complete any email/2FA verification ESPN asks for.")
-    print("  Once you are on the ESPN home page the script continues.")
+    print("  A browser window will open.")
+    print("  Log in to ESPN and complete any email verification.")
+    print("  Then come back here and press Enter.")
     print("=" * 60 + "\n")
 
     with sync_playwright() as pw:
@@ -71,166 +63,182 @@ def do_browser_login() -> list:
         page.goto("https://www.espn.com/login",
                   wait_until="domcontentloaded", timeout=30_000)
 
-        print("Waiting for you to log in…\n")
-        page.wait_for_url(
-            lambda url: "login" not in url and "espn.com" in url,
-            timeout=300_000   # 5 minutes to log in + verify email
-        )
-        print("  ✓ Login detected — loading fantasy page to collect cookies…")
-        page.wait_for_timeout(2_000)
+        input("  Press Enter once you are logged in to ESPN… ")
 
-        # Navigate to fantasy home so ESPN sets the fantasy-specific cookies
+        # Navigate to fantasy home to pick up all fantasy cookies
+        print("  Loading fantasy page to collect session cookies…")
         page.goto("https://fantasy.espn.com/baseball/",
                   wait_until="domcontentloaded", timeout=30_000)
         page.wait_for_timeout(3_000)
 
-        cookies = ctx.cookies()
+        ctx.storage_state(path=str(SESSION_FILE))
         browser.close()
 
-    return cookies
+    print(f"  ✓ Session saved.\n")
 
 
-def get_cookies() -> list:
+def fetch_rosters(league_ids: list, year: int) -> tuple:
     """
-    Returns a fresh cookie list: loads from file if it exists,
-    otherwise triggers the browser login flow and saves the result.
+    Loads the saved session (headless), navigates to each league's teams page,
+    and INTERCEPTS the API responses that the ESPN app makes automatically.
+    No manual fetch/XHR — the real browser makes the real requests.
+    Returns (leagues_data, my_team_norms).
     """
-    if COOKIES_FILE.exists():
-        return json.loads(COOKIES_FILE.read_text(encoding="utf-8"))
-
-    cookies = do_browser_login()
-    COOKIES_FILE.write_text(json.dumps(cookies, indent=2), encoding="utf-8")
-    print(f"  ✓ Cookies saved to {COOKIES_FILE.name}")
-    return cookies
-
-
-def build_requests_session(cookies: list):
-    """Builds a requests.Session pre-loaded with the ESPN cookies."""
-    import requests
-
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept":             "application/json",
-        "X-Fantasy-Source":   "kona",
-        "X-Fantasy-Platform": "kona-PROD-m.5533.fantasy.x.011478067.0",
-        "Referer":            "https://fantasy.espn.com/",
-        "Origin":             "https://fantasy.espn.com",
-    })
-    for c in cookies:
-        # URL-decode the value in case it arrived encoded
-        value = urllib.parse.unquote(c["value"])
-        session.cookies.set(c["name"], value, domain=c.get("domain", ".espn.com"))
-    return session
-
-
-def fetch_leagues(session, league_ids: list, year: int, cookies: list) -> tuple:
-    """
-    Calls the ESPN API with a plain requests.Session (no JS, no CSP issues).
-    Returns (leagues_data, my_team_norms).  If cookies are expired, raises
-    ValueError so the caller can delete them and re-login.
-    """
-    swid_inner = ""
-    for c in cookies:
-        if c["name"] == "SWID":
-            swid_inner = c["value"].strip("{}").upper()
-            break
+    from playwright.sync_api import sync_playwright
 
     leagues_data: dict = {}
     my_team_norms: set = set()
 
-    for lid in league_ids:
-        url = (
-            f"https://fantasy.espn.com/apis/v3/games/flb"
-            f"/seasons/{year}/segments/0/leagues/{lid}"
-            f"?view=mRoster&view=mTeam"
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        ctx = browser.new_context(
+            storage_state=str(SESSION_FILE),
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
         )
-        try:
-            resp = session.get(url, timeout=30)
-            resp.raise_for_status()
+        page = ctx.new_page()
 
-            ct = resp.headers.get("Content-Type", "")
-            if "html" in ct or resp.text.lstrip().startswith("<!"):
-                raise ValueError("EXPIRED")
+        # Read SWID from session cookies
+        swid_inner = ""
+        for c in ctx.cookies():
+            if c["name"] == "SWID":
+                swid_inner = c["value"].strip("{}").upper()
+                break
 
-            data        = resp.json()
-            league_name = (data.get("settings") or {}).get("name") or f"League {lid}"
-            teams_out: dict = {}
+        for lid in league_ids:
+            captured: dict = {}
 
-            for team in data.get("teams", []):
-                team_id   = team.get("id", 0)
-                loc       = (team.get("location") or "").strip()
-                nick      = (team.get("nickname") or "").strip()
-                abbrev    = (team.get("abbrev") or "").strip()
-                team_name = f"{loc} {nick}".strip() or abbrev or f"Team {team_id}"
-
-                owners  = team.get("owners", [])
-                is_mine = (
-                    any(o.strip("{}").upper() == swid_inner for o in owners)
-                    or team_name.lower() == MY_TEAM_NAME.lower()
-                )
-
-                players: list = []
-                for entry in team.get("roster", {}).get("entries", []):
+            # ── Set up response interceptor BEFORE navigating ─────────────
+            def on_response(response, _lid=lid):
+                url = response.url
+                if (f"/leagues/{_lid}" in url and
+                        "flb" in url and
+                        response.status == 200):
                     try:
-                        full_name = (
-                            entry.get("playerPoolEntry", {})
-                            .get("player", {})
-                            .get("fullName", "")
+                        body = response.json()
+                        if not isinstance(body, dict):
+                            return
+                        if "teams" not in body:
+                            return
+                        # Prefer a response that includes roster entries
+                        has_roster = any(
+                            bool(t.get("roster", {}).get("entries"))
+                            for t in body.get("teams", [])
                         )
-                        if full_name:
-                            players.append(_norm(full_name))
+                        if has_roster or "data" not in captured:
+                            captured["data"] = body
                     except Exception:
                         pass
 
-                team_key = f"{lid}_{team_id}"
-                teams_out[team_key] = {
-                    "name":       team_name,
-                    "is_my_team": is_mine,
-                    "players":    players,
-                }
-                if is_mine and players:
-                    my_team_norms = set(players)
+            page.on("response", on_response)
 
-            leagues_data[lid] = {"league_name": league_name, "teams": teams_out}
-            n_mine = sum(1 for t in teams_out.values() if t["is_my_team"])
-            print(f"  ✓ '{league_name}' (id={lid}): "
-                  f"{len(teams_out)} teams, my team found={n_mine > 0}")
+            try:
+                # The "Teams" page loads all rosters — triggers mRoster API calls
+                teams_url = (f"https://fantasy.espn.com/baseball/teams"
+                             f"?leagueId={lid}")
+                page.goto(teams_url, wait_until="networkidle", timeout=60_000)
+                page.wait_for_timeout(3_000)
 
-        except ValueError as e:
-            if str(e) == "EXPIRED":
-                raise   # let main() catch this and re-login
-            print(f"  ✗ League {lid} failed: {e}")
-        except Exception as e:
-            print(f"  ✗ League {lid} failed: {e}")
+                # If teams page didn't give us roster data, try the league page
+                if "data" not in captured or not any(
+                    bool(t.get("roster", {}).get("entries"))
+                    for t in captured.get("data", {}).get("teams", [])
+                ):
+                    league_url = (f"https://fantasy.espn.com/baseball/league"
+                                  f"?leagueId={lid}")
+                    page.goto(league_url, wait_until="networkidle", timeout=60_000)
+                    page.wait_for_timeout(3_000)
+
+                if "data" not in captured:
+                    # Might be a session expiry — check if we got redirected to login
+                    if "login" in page.url:
+                        raise ValueError("SESSION_EXPIRED")
+                    raise ValueError(
+                        f"No API response captured for league {lid}. "
+                        "The ESPN app may not have loaded roster data on these pages."
+                    )
+
+                data        = captured["data"]
+                league_name = (data.get("settings") or {}).get("name") or f"League {lid}"
+                teams_out: dict = {}
+
+                for team in data.get("teams", []):
+                    team_id   = team.get("id", 0)
+                    loc       = (team.get("location") or "").strip()
+                    nick      = (team.get("nickname") or "").strip()
+                    abbrev    = (team.get("abbrev") or "").strip()
+                    team_name = f"{loc} {nick}".strip() or abbrev or f"Team {team_id}"
+
+                    owners  = team.get("owners", [])
+                    is_mine = (
+                        any(o.strip("{}").upper() == swid_inner for o in owners)
+                        or team_name.lower() == MY_TEAM_NAME.lower()
+                    )
+
+                    players: list = []
+                    for entry in team.get("roster", {}).get("entries", []):
+                        try:
+                            full_name = (
+                                entry.get("playerPoolEntry", {})
+                                .get("player", {})
+                                .get("fullName", "")
+                            )
+                            if full_name:
+                                players.append(_norm(full_name))
+                        except Exception:
+                            pass
+
+                    team_key = f"{lid}_{team_id}"
+                    teams_out[team_key] = {
+                        "name":       team_name,
+                        "is_my_team": is_mine,
+                        "players":    players,
+                    }
+                    if is_mine and players:
+                        my_team_norms = set(players)
+
+                leagues_data[lid] = {"league_name": league_name, "teams": teams_out}
+                n_mine = sum(1 for t in teams_out.values() if t["is_my_team"])
+                total_players = sum(len(t["players"]) for t in teams_out.values())
+                print(f"  ✓ '{league_name}' (id={lid}): "
+                      f"{len(teams_out)} teams, {total_players} players, "
+                      f"my team found={n_mine > 0}")
+
+            except ValueError as e:
+                if str(e) == "SESSION_EXPIRED":
+                    browser.close()
+                    raise   # bubble up so main() can re-login
+                print(f"  ✗ League {lid} failed: {e}")
+            except Exception as e:
+                print(f"  ✗ League {lid} failed: {e}")
+            finally:
+                page.remove_listener("response", on_response)
+
+        browser.close()
 
     return leagues_data, my_team_norms
 
 
 def main():
     league_ids = [s.strip() for s in ESPN_LEAGUE_IDS.split(",") if s.strip()]
-    print(f"ESPN roster sync — {len(league_ids)} league(s), year={YEAR}")
 
-    # Try with saved cookies first; if they've expired, re-login and try once more
     for attempt in range(2):
-        cookies = get_cookies()
-        session = build_requests_session(cookies)
+        if not SESSION_FILE.exists():
+            do_login_and_save_session()
+
+        print(f"Fetching rosters — {len(league_ids)} league(s), year={YEAR}…")
         try:
-            leagues_data, my_team_norms = fetch_leagues(
-                session, league_ids, YEAR, cookies
-            )
-            break   # success
+            leagues_data, my_team_norms = fetch_rosters(league_ids, YEAR)
+            break
         except ValueError:
-            # Cookies expired — delete them and loop to trigger browser login
-            COOKIES_FILE.unlink(missing_ok=True)
+            SESSION_FILE.unlink(missing_ok=True)
             if attempt == 0:
-                print("  Cookies expired — re-opening browser for fresh login…")
+                print("  Session expired — re-opening browser for fresh login…")
             else:
-                sys.exit("Login failed twice in a row. Please try again.")
+                sys.exit("Login failed twice. Please try again.")
     else:
         sys.exit("\nNo leagues fetched — cache NOT updated.")
 
