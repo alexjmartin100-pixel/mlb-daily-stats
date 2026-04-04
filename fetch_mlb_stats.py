@@ -1394,6 +1394,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "hard_hit_pct": None, "barrel_pct": None, "barrels": None,
                 "sweet_spot_pct": None, "avg_ev": None, "max_ev": None,
                 "bat_speed": None, "sprint_speed": None,
+                "war":       _flt(row.get("WAR"), 1),
             }
         print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
     except Exception as e:
@@ -1780,6 +1781,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "fb_velo":     fg_fbv,
                 # Savant-only (no FG equivalent)
                 "xwoba": None, "woba": None,
+                "war":   _flt(row.get("WAR"), 1),
             }
             if is_sp:
                 starters_d[mlbam] = rec
@@ -2392,6 +2394,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-col="max_ev" data-k="max_ev"         onclick="srtTALB(this,'max_ev')">Max EV</th>
         <th class="sortable r" data-col="bat_speed" data-k="bat_speed"      onclick="srtTALB(this,'bat_speed')">Bat Spd</th>
         <th class="sortable r" data-col="sprint_speed" data-k="sprint_speed"   onclick="srtTALB(this,'sprint_speed')">Sprt Spd</th>
+        <th class="sortable r" data-col="war" data-k="war"               onclick="srtTALB(this,'war')">fWAR</th>
       </tr></thead>
       <tbody id="ta-lb-body"></tbody>
     </table>
@@ -2451,6 +2454,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtTASPLB(this,'xwoba')">xwOBA</th>
         <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtTASPLB(this,'avg_ev')">Avg EV</th>
         <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtTASPLB(this,'fb_velo')">FB Velo</th>
+        <th class="sortable r" data-col="war" data-k="war"            onclick="srtTASPLB(this,'war')">fWAR</th>
       </tr></thead>
       <tbody id="ta-sp-lb-body"></tbody>
     </table>
@@ -2580,6 +2584,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-col="max_ev" data-k="max_ev"         onclick="srtLB(this,'max_ev')">Max EV</th>
           <th class="sortable r" data-col="bat_speed" data-k="bat_speed"      onclick="srtLB(this,'bat_speed')">Bat Spd</th>
           <th class="sortable r" data-col="sprint_speed" data-k="sprint_speed"   onclick="srtLB(this,'sprint_speed')">Sprt Spd</th>
+          <th class="sortable r" data-col="war" data-k="war"               onclick="srtLB(this,'war')">fWAR</th>
         </tr></thead>
         <tbody id="lb-body"></tbody>
       </table>
@@ -2630,6 +2635,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r lb-th-inv" data-col="xwoba" data-k="xwoba" onclick="srtLBSP(this,'xwoba')">xwOBA</th>
           <th class="sortable r lb-th-inv" data-col="avg_ev" data-k="avg_ev" onclick="srtLBSP(this,'avg_ev')">Avg EV</th>
           <th class="sortable r" data-col="fb_velo" data-k="fb_velo"      onclick="srtLBSP(this,'fb_velo')">FB Velo</th>
+          <th class="sortable r" data-col="war" data-k="war"            onclick="srtLBSP(this,'war')">fWAR</th>
         </tr></thead>
         <tbody id="lb-sp-body"></tbody>
       </table>
@@ -3065,7 +3071,7 @@ function showTAHView(view,btn){
 function renderTALB(){
   const tb=document.getElementById('ta-lb-body');
   if(!taLBD.length){
-    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
@@ -3089,6 +3095,7 @@ function renderTALB(){
     <td class="r" data-col="max_ev">${fmtEV( 'max_ev',       p.max_ev)}</td>
     <td class="r" data-col="bat_speed">${fmtSpd('bat_speed',    p.bat_speed)}</td>
     <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+    <td class="r" data-col="war">${p.war!=null?lbCell('war',p.war,p.war.toFixed(1)):D2()}</td>
   </tr>`).join('');
 }
 
@@ -3101,7 +3108,7 @@ function srtTALB(th,col){
 function renderTASPLB(){
   const tb=document.getElementById('ta-sp-lb-body');
   if(!taSPLBD.length){
-    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No season SP data for your team yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No season SP data for your team yet.</p></div></td></tr>';return;
   }
   const D=plCellSP;
   tb.innerHTML=taSPLBD.map(p=>`<tr>
@@ -3127,6 +3134,7 @@ function renderTASPLB(){
     <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
     <td class="r" data-col="avg_ev">${D('avg_ev',p.avg_ev,p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
     <td class="r" data-col="fb_velo">${D('fb_velo',p.fb_velo,p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="war">${D('war',p.war,p.war!=null?p.war.toFixed(1):null)}</td>
   </tr>`).join('');
 }
 
@@ -3372,6 +3380,7 @@ const LB_COL_CFG = {
   hard_hit_pct:  {inv:false}, barrel_pct:    {inv:false}, barrels:      {inv:false},
   sweet_spot_pct:{inv:false}, avg_ev:        {inv:false}, max_ev:       {inv:false},
   bat_speed:     {inv:false}, sprint_speed:  {inv:false},
+  war:           {inv:false},
 };
 buildCfg(LB_COL_CFG, LB_QUAL);
 
@@ -3387,6 +3396,7 @@ const PL_SP_COL_CFG = {
   chase_pct:{inv:false}, whiff_pct:{inv:false},
   barrel_pct:{inv:true}, hard_hit_pct:{inv:true}, gb_pct:{inv:false},
   woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
+  war:{inv:false},
 };
 const PL_RP_COL_CFG = {
   ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false}, gm_li:{inv:false},
@@ -3473,7 +3483,7 @@ function renderLB(){
   const tb=document.getElementById('lb-body');
   const ct=document.getElementById('lb-cnt');
   if(!lbD.length){
-    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
@@ -3499,6 +3509,7 @@ function renderLB(){
     <td class="r" data-col="max_ev">${fmtEV( 'max_ev',       p.max_ev)}</td>
     <td class="r" data-col="bat_speed">${fmtSpd('bat_speed',    p.bat_speed)}</td>
     <td class="r" data-col="sprint_speed">${fmtSpd('sprint_speed', p.sprint_speed)}</td>
+    <td class="r" data-col="war">${p.war!=null?lbCell('war',p.war,p.war.toFixed(1)):D2()}</td>
   </tr>`).join('');
   applyColVis('lb-tbl',colVisH);
   _reorderTableCols('lb-tbl',_buildOrder('h'));
@@ -3532,7 +3543,7 @@ function renderLBSP(){
   const tb=document.getElementById('lb-sp-body');
   const ct=document.getElementById('lb-sp-cnt');
   if(!lbSpD.length){
-    tb.innerHTML='<tr><td colspan="21"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
@@ -3560,6 +3571,7 @@ function renderLBSP(){
     <td class="r" data-col="xwoba">${p.xwoba!=null?D('xwoba',p.xwoba,p.xwoba.toFixed(3).replace('0.','.')):D2()}</td>
     <td class="r" data-col="avg_ev">${D('avg_ev',      p.avg_ev,      p.avg_ev!=null?p.avg_ev.toFixed(1):null)}</td>
     <td class="r" data-col="fb_velo">${D('fb_velo',     p.fb_velo,     p.fb_velo!=null?p.fb_velo.toFixed(1):null)}</td>
+    <td class="r" data-col="war">${D('war',          p.war,         p.war!=null?p.war.toFixed(1):null)}</td>
   </tr>`).join('');
   applyColVis('lb-sp-tbl',colVisSP);
   _reorderTableCols('lb-sp-tbl',_buildOrder('sp'));
@@ -3849,6 +3861,7 @@ const COL_H_DEFS=[
   {k:'barrels',label:'Barrels'},{k:'sweet_spot_pct',label:'Swt Spot%'},
   {k:'avg_ev',label:'Avg EV'},{k:'max_ev',label:'Max EV'},
   {k:'bat_speed',label:'Bat Spd'},{k:'sprint_speed',label:'Sprt Spd'},
+  {k:'war',label:'fWAR'},
 ];
 const COL_SP_DEFS=[
   {k:'ip_f',label:'IP'},{k:'w',label:'W'},
@@ -3859,6 +3872,7 @@ const COL_SP_DEFS=[
   {k:'barrel_pct',label:'Barrel%'},{k:'hard_hit_pct',label:'Hard Hit%'},
   {k:'gb_pct',label:'GB%'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
   {k:'avg_ev',label:'Avg EV'},{k:'fb_velo',label:'FB Velo'},
+  {k:'war',label:'fWAR'},
 ];
 const COL_RP_DEFS=[
   {k:'ip_f',label:'IP'},{k:'w',label:'W'},{k:'sv',label:'SV/SVO'},{k:'hld',label:'HLD'},{k:'gm_li',label:'gmLI'},
