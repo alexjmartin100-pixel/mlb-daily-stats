@@ -93,12 +93,13 @@ TEAM_ALEX_NAMES = {
 # ALSO: enable Email/Password auth in Firebase Console → Authentication → Sign-in method
 # AND: set Firestore rules to allow authenticated reads/writes to users/{uid} docs.
 FIREBASE_WEB_CONFIG = {
-    "apiKey":            "REPLACE_WITH_YOUR_API_KEY",
+    "apiKey":            "AIzaSyDnOOHGhc7qqVZn41kkKpe_XtwYfQyHHTw",
     "authDomain":        "mlb-stats-ae429.firebaseapp.com",
     "projectId":         "mlb-stats-ae429",
-    "storageBucket":     "mlb-stats-ae429.appspot.com",
-    "messagingSenderId": "REPLACE_WITH_MESSAGING_SENDER_ID",
-    "appId":             "REPLACE_WITH_APP_ID",
+    "storageBucket":     "mlb-stats-ae429.firebasestorage.app",
+    "messagingSenderId": "742969160514",
+    "appId":             "1:742969160514:web:a6c66d31ad9bc600714edb",
+    "measurementId":     "G-NV8103G0QZ",
 }
 
 # ── FanGraphs ID overrides ─────────────────────────────────────────────────
