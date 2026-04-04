@@ -2183,14 +2183,14 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </header>
 
 <div class="tab-bar">
-  <button class="tab-btn active" onclick="showTab('hitters',this)">
+  <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
+    👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('hitters',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
   <button class="tab-btn" onclick="showTab('pitchers',this)">
     ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
-  </button>
-  <button class="tab-btn ta-btn" onclick="showTab('teamalex',this)">
-    👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
@@ -2203,7 +2203,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <main>
 
 <!-- ══ HITTERS ══ -->
-<div id="hitters-panel" class="tab-panel active">
+<div id="hitters-panel" class="tab-panel">
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
     <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
@@ -2311,7 +2311,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </div>
 
 <!-- ══ TEAM ALEX ══ -->
-<div id="teamalex-panel" class="tab-panel">
+<div id="teamalex-panel" class="tab-panel active">
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
     <div>
