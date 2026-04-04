@@ -4215,11 +4215,11 @@ function _renderRosterList(){
   } else {
     el.innerHTML=players.map(p=>{
       const on=TA_ROSTER_NORMS.has(taNorm(p.name));
-      const safe=p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safe=encodeURIComponent(p.name);
       const badge=p.team?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${p.team}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
         <span>${p.name}${badge}</span>
-        <button onclick="_togglePlayer('${safe}',${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
+        <button onclick="_togglePlayer(decodeURIComponent('${safe}'),${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');
   }
