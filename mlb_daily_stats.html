@@ -215,7 +215,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 2, 2026</strong>
       &nbsp;·&nbsp; 3 game(s)
-      &nbsp;·&nbsp; Updated Apr 3, 2026 9:42 PM
+      &nbsp;·&nbsp; Updated Apr 3, 2026 9:50 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -812,7 +812,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 9:42 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 9:50 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2239,11 +2239,11 @@ function _renderRosterList(){
   } else {
     el.innerHTML=players.map(p=>{
       const on=TA_ROSTER_NORMS.has(taNorm(p.name));
-      const safe=p.name.replace(/\/g,'\\').replace(/'/g,"\'");
+      const safe=encodeURIComponent(p.name);
       const badge=p.team?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${p.team}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
         <span>${p.name}${badge}</span>
-        <button onclick="_togglePlayer('${safe}',${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
+        <button onclick="_togglePlayer(decodeURIComponent('${safe}'),${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');
   }
