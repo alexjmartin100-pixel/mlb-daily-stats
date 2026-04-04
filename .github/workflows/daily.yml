@@ -1,8 +1,5 @@
 name: MLB Stats Daily Update
 on:
-  schedule:
-    # 14:00 UTC = 10:00 AM EDT. Gives FanGraphs time to publish Stuff+ and other computed metrics.
-    - cron: '0 14 * * *'
   workflow_dispatch:
 permissions:
   contents: write
