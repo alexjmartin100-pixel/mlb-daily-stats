@@ -4507,14 +4507,17 @@ def main():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _FANT = {
-    "n_teams":      10,
-    "budget":       260,
-    "h_slots":      14,   # hitter roster spots per team
-    "p_slots":      9,    # pitcher roster spots per team
-    "h_split":      0.67, # fraction of total budget for hitters
-    "h_cats":       ["R", "HR", "RBI", "SB", "K", "OBP"],
-    "p_cats":       ["W", "ERA", "WHIP", "K", "SV", "HLD"],
-    "neg_cats":     {"ERA", "WHIP"},  # lower = better
+    "n_teams":  10,
+    "budget":   260,
+    # Roster: C(1)+1B(1)+2B(1)+3B(1)+SS(1)+CI(1)+MI(1)+OF(3)+UTIL(1)=11 active hitters
+    #         P(1)+SP(3)+RP(2)=6 active pitchers  |  6 bench (4H + 2P estimated split)
+    "h_slots":  15,   # 11 active + 4 bench hitters per team
+    "p_slots":  8,    # 6 active + 2 bench pitchers per team
+    "h_split":  0.67, # fraction of total budget allocated to hitters
+    "h_cats":   ["R", "HR", "RBI", "SB", "K", "OBP"],
+    "p_cats":   ["W", "ERA", "WHIP", "K", "SV", "HLD"],
+    "neg_cats": {"ERA", "WHIP"},  # lower = better
+    "min_ip":   35,   # minimum IP for a pitcher to qualify for the pool
 }
 
 
@@ -4646,10 +4649,14 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     all_pit_lb = ((list(lb_pitch_data.get("starters",  []))
                  + list(lb_pitch_data.get("relievers", [])))
                  if lb_pitch_data else [])
+    # Apply 35 IP minimum to YTD pitchers
+    min_ip = cfg.get("min_ip", 35)
+    qual_pit_lb = [p for p in all_pit_lb
+                   if float(p.get("ip") or p.get("IP") or p.get("ip_float") or 0) >= min_ip]
 
-    ytd_h = _z_to_dollars(lb_data or [], cfg["h_cats"], cfg["neg_cats"],
+    ytd_h = _z_to_dollars(lb_data or [],  cfg["h_cats"], cfg["neg_cats"],
                            n_h, h_use, False)
-    ytd_p = _z_to_dollars(all_pit_lb,   cfg["p_cats"], cfg["neg_cats"],
+    ytd_p = _z_to_dollars(qual_pit_lb,    cfg["p_cats"], cfg["neg_cats"],
                            n_p, p_use, True)
 
     # ── Future (OOPSY + Bat X projected average) ──────────────────────────
@@ -4686,6 +4693,8 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
 
     proj_b = [_nb(r) for r in avg_b] if avg_b else []
     proj_p = [_np(r) for r in avg_p] if avg_p else []
+    # Apply 35 IP minimum to projected pitchers
+    proj_p = [p for p in proj_p if float(p.get("IP") or 0) >= min_ip]
 
     fut_h = _z_to_dollars(proj_b, cfg["h_cats"], cfg["neg_cats"], n_h, h_use, False)
     fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["neg_cats"], n_p, p_use, True)
@@ -4751,6 +4760,15 @@ def _merge_players(ytd_list: list, fut_list: list, is_pitcher: bool) -> list:
         fr   = fut_by_fgid.get(fgid) or fut_by_name.get(nm)
         key  = fgid or nm
         seen.add(key)
+        # Also mark the matched future player as seen by both its fgid AND name
+        # so it isn't re-added in the fut_list pass below (fixes duplicate rows
+        # when YTD dicts lack fg_id and are matched only by name).
+        if fr:
+            fr_p    = fr["player"]
+            fr_fgid = str(fr_p.get("fg_id") or fr_p.get("playerid") or "")
+            fr_nm   = (fr_p.get("name") or fr_p.get("PlayerName") or "").strip().lower()
+            if fr_fgid: seen.add(fr_fgid)
+            if fr_nm:   seen.add(fr_nm)
         rows.append({
             "ytd": yr, "fut": fr,
             "name": p.get("name") or p.get("PlayerName") or "–",
@@ -4797,17 +4815,27 @@ def render_fantasy_tab(fdata: dict) -> str:
 
     # ── build one HTML table ───────────────────────────────────────────────
     def _build_table(merged: list, cats: list, is_pitcher: bool, table_id: str) -> str:
-        cat_hdrs = "".join(f'<th title="{c}">{c}</th>' for c in cats)
-        hdr = (
-            f'<thead><tr>'
-            f'<th class="rank-col">#</th>'
-            f'<th class="name-col">Name</th>'
-            f'<th>Team</th>'
-            f'<th>Proj&nbsp;$</th>'
-            f'<th>YTD&nbsp;$</th>'
-            f'{cat_hdrs}'
-            f'</tr></thead>'
-        )
+        sort_js = f"fantSort('{table_id}',this)"
+        def _th(label, col_idx, extra=""):
+            return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
+                    f'style="cursor:pointer;user-select:none" {extra}>'
+                    f'{label} <span style="opacity:.45;font-size:.7rem">&#9660;</span></th>')
+
+        col = 0
+        hdr_parts = [
+            '<thead><tr>',
+            _th('#', col := col),
+            _th('Name', col := col + 1),
+            _th('Team', col := col + 1),
+            _th('Proj&nbsp;$', col := col + 1),
+            _th('YTD&nbsp;$', col := col + 1),
+        ]
+        for c in cats:
+            col += 1
+            hdr_parts.append(_th(c, col))
+        hdr_parts.append('</tr></thead>')
+        hdr = "".join(hdr_parts)
+
         rows_html = []
         for rank, row in enumerate(merged[:200], 1):
             nm   = row["name"]
@@ -4816,7 +4844,6 @@ def render_fantasy_tab(fdata: dict) -> str:
             fr   = row["fut"]
             ydol = yr["dollar"] if yr else None
             fdol = fr["dollar"] if fr else None
-            # Use future stats for display if available, else YTD
             src  = (fr["player"] if fr else (yr["player"] if yr else {}))
             zc   = (fr["zc"] if fr else (yr["zc"] if yr else {}))
 
@@ -4824,24 +4851,28 @@ def render_fantasy_tab(fdata: dict) -> str:
             for cat in cats:
                 v    = _fant_stat(src, cat)
                 zval = zc.get(cat, 0)
+                zsign = "+" if zval >= 0 else ""
                 stat_cells += (
-                    f'<td title="{cat} z={zval:+.2f}" '
-                    f'style="color:{_z_color(zval)}">'
-                    f'{_stat_fmt(v, cat)}</td>'
+                    f'<td style="text-align:center" data-val="{v}">'
+                    f'<div style="color:{_z_color(zval)}">{_stat_fmt(v, cat)}</div>'
+                    f'<div style="font-size:.65rem;color:#777;line-height:1.1">'
+                    f'z{zsign}{zval:.1f}</div></td>'
                 )
 
             ydol_str = _fmt_dollar(ydol)
             fdol_str = _fmt_dollar(fdol)
             ydol_col = _dollar_color(ydol)
             fdol_col = _dollar_color(fdol)
+            fdol_val = fdol if fdol is not None else -99
+            ydol_val = ydol if ydol is not None else -99
 
             rows_html.append(
                 f'<tr>'
-                f'<td class="rank-col">{rank}</td>'
+                f'<td class="rank-col" data-val="{rank}">{rank}</td>'
                 f'<td class="name-col">{nm}</td>'
                 f'<td style="color:#aaa;font-size:.8rem">{tm}</td>'
-                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem">{fdol_str}</td>'
-                f'<td style="color:{ydol_col}">{ydol_str}</td>'
+                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem" data-val="{fdol_val}">{fdol_str}</td>'
+                f'<td style="color:{ydol_col}" data-val="{ydol_val}">{ydol_str}</td>'
                 f'{stat_cells}'
                 f'</tr>'
             )
@@ -4866,10 +4897,10 @@ def render_fantasy_tab(fdata: dict) -> str:
   <div style="padding:18px 20px 6px">
     <h2 style="color:var(--accent);margin:0 0 6px">💰 Fantasy Dollar Values</h2>
     <p style="color:var(--muted);font-size:.82rem;margin:0 0 14px">
-      10-team H2H &nbsp;•&nbsp; $260/team &nbsp;•&nbsp; 6×6
-      &nbsp;|&nbsp; <strong>Proj $</strong>: OOPSY + Bat X avg (full-season)
-      &nbsp;•&nbsp; <strong>YTD $</strong>: season-to-date
-      &nbsp;•&nbsp; Hover stats for z-score
+      10-team H2H &nbsp;•&nbsp; $260/team &nbsp;•&nbsp; 6×6 &nbsp;•&nbsp; 35 IP min
+      &nbsp;|&nbsp; <strong>Proj&nbsp;$</strong>: OOPSY + Bat X avg
+      &nbsp;•&nbsp; <strong>YTD&nbsp;$</strong>: season-to-date
+      &nbsp;•&nbsp; Click any column header to sort
     </p>
     <div style="display:flex;gap:10px;margin-bottom:14px">
       <button id="fant-h-btn" class="tab-btn active"
@@ -4899,6 +4930,35 @@ function fantSwitch(which) {{
   pb.style.borderBottom = which==='p' ? '3px solid var(--accent)' : '3px solid transparent';
   hb.style.color = which==='h' ? '#fff' : '';
   pb.style.color = which==='p' ? '#fff' : '';
+}}
+var _fantSortState = {{}};
+function fantSort(tblId, th) {{
+  var col = parseInt(th.getAttribute('data-col'));
+  var wrap = document.getElementById(tblId);
+  var tbody = wrap.querySelector('tbody');
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  var asc = !(_fantSortState[tblId+col]);
+  _fantSortState[tblId+col] = asc;
+  rows.sort(function(a, b) {{
+    var av = a.cells[col].getAttribute('data-val');
+    var bv = b.cells[col].getAttribute('data-val');
+    var an = parseFloat(av), bn = parseFloat(bv);
+    if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+    return asc ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
+  }});
+  rows.forEach(function(r) {{ tbody.appendChild(r); }});
+  // update rank column
+  rows.forEach(function(r, i) {{
+    var rc = r.querySelector('.rank-col');
+    if (rc) {{ rc.textContent = i+1; rc.setAttribute('data-val', i+1); }}
+  }});
+  // update sort arrow indicators
+  var allTh = wrap.querySelectorAll('th');
+  allTh.forEach(function(h) {{
+    var sp = h.querySelector('span');
+    if (sp) sp.innerHTML = parseInt(h.getAttribute('data-col'))===col
+      ? (asc ? '&#9650;' : '&#9660;') : '&#9660;';
+  }});
 }}
 </script>
 """
