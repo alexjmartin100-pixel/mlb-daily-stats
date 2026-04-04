@@ -1710,6 +1710,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 hld = int(float(row.get("HLD", 0) or 0))
             except (ValueError, TypeError):
                 hld = 0
+            gm_li = _flt(row.get("gmLI") or row.get("gmLi"), 2)
 
             # FanGraphs also carries O-Swing%, SwStr%, Swing%, xERA,
             # Barrel%, HardHit%, EV, FBv — use as baseline; Savant overwrites later
@@ -1741,6 +1742,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "sv":          sv,
                 "sv_opp":      sv + bs,
                 "hld":         hld,
+                "gm_li":       gm_li,
                 "era":         _flt(row.get("ERA"), 2),
                 "whip":        _flt(row.get("WHIP"), 2),
                 "siera":       _flt(row.get("SIERA") or row.get("Sierra"), 2),
@@ -2293,6 +2295,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
         <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
         <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
+        <th class="sortable r"    data-col="gm_li" data-k="gm_li"       onclick="srtRP(this,'gm_li')">gmLI</th>
         <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
         <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
@@ -2454,6 +2457,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r"    data-col="k" data-k="k"             onclick="srtTA(this,'rp','k')">K</th>
         <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtTA(this,'rp','sv')">SV</th>
         <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtTA(this,'rp','hld')">HLD</th>
+        <th class="sortable r"    data-col="gm_li" data-k="gm_li"       onclick="srtTA(this,'rp','gm_li')">gmLI</th>
         <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtTA(this,'rp','bs')">BS</th>
         <th class="sortable r"    data-col="w" data-k="w"             onclick="srtTA(this,'rp','w')">W</th>
         <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtTA(this,'rp','whiffs')">Whiffs</th>
@@ -2475,6 +2479,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-col="w" data-k="w"            onclick="srtTARPLB(this,'w')">W</th>
         <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtTARPLB(this,'sv')">SV/SVO</th>
         <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtTARPLB(this,'hld')">HLD</th>
+        <th class="sortable r" data-col="gm_li" data-k="gm_li"       onclick="srtTARPLB(this,'gm_li')">gmLI</th>
         <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtTARPLB(this,'era')">ERA</th>
         <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtTARPLB(this,'whip')">WHIP</th>
         <th class="sortable r" data-col="k" data-k="k"            onclick="srtTARPLB(this,'k')">K</th>
@@ -2641,6 +2646,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
           <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
           <th class="sortable r" data-col="hld" data-k="hld"          onclick="srtLBRP(this,'hld')">HLD</th>
+          <th class="sortable r" data-col="gm_li" data-k="gm_li"       onclick="srtLBRP(this,'gm_li')">gmLI</th>
           <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBRP(this,'era')">ERA</th>
           <th class="sortable r lb-th-inv" data-col="whip" data-k="whip" onclick="srtLBRP(this,'whip')">WHIP</th>
           <th class="sortable r" data-col="k" data-k="k"            onclick="srtLBRP(this,'k')">K</th>
@@ -2732,6 +2738,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="r" data-col="w">W</th>
           <th class="r" data-col="sv">SV/SVO</th>
           <th class="r" data-col="hld">HLD</th>
+          <th class="r" data-col="gm_li">gmLI</th>
           <th class="r" data-col="era">ERA</th>
           <th class="r" data-col="whip">WHIP</th>
           <th class="r" data-col="k">K</th>
@@ -2754,7 +2761,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th></th>
         </tr></thead>
         <tbody id="cmp-p-body">
-          <tr><td colspan="25"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
+          <tr><td colspan="26"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -2956,7 +2963,7 @@ function renderSP(){
 
 function renderRP(){
   const tb=document.getElementById('rp-body');
-  if(!rpD.length){tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';return;}
+  if(!rpD.length){tb.innerHTML='<tr><td colspan="19"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';return;}
   tb.innerHTML=rpD.map(p=>`<tr>
     <td class="nm">${p.name}</td>
     <td>${tm(p.team)}</td>
@@ -2968,6 +2975,7 @@ function renderRP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
+    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:D2()}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -3105,7 +3113,7 @@ function srtTASPLB(th,col){
 function renderTARPLB(){
   const tb=document.getElementById('ta-rp-lb-body');
   if(!taRPLBD.length){
-    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No season RP data for Team Alex yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="25"><div class="empty"><div class="ico">📊</div><p>No season RP data for Team Alex yet.</p></div></td></tr>';return;
   }
   const D=plCellRP;
   tb.innerHTML=taRPLBD.map(p=>`<tr>
@@ -3114,6 +3122,7 @@ function renderTARPLB(){
     <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
     <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
     <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
+    <td class="r" data-col="gm_li">${p.gm_li!=null?D('gm_li',p.gm_li,p.gm_li.toFixed(2)):D2()}</td>
     <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
     <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
@@ -3196,7 +3205,7 @@ function renderTARP(){
   const tb=document.getElementById('ta-rp-body');
   document.getElementById('ta-rp-tc').textContent=taRPD.length;
   if(!taRPD.length){
-    tb.innerHTML='<tr><td colspan="18"><div class="empty"><div class="ico">😴</div><p>No Team Alex relievers pitched yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="19"><div class="empty"><div class="ico">😴</div><p>No Team Alex relievers pitched yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taRPD.map(p=>`<tr>
@@ -3210,6 +3219,7 @@ function renderTARP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
+    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:D2()}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -3264,6 +3274,12 @@ const LB_SP_ALL  = __LB_SP_JSON__;
 const LB_SP_QUAL = LB_SP_ALL.filter(p=>p.qualified);
 const LB_RP_ALL  = __LB_RP_JSON__;
 const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
+// Build lookup map for season gmLI by MLBAM id — used to annotate yesterday game-log tables
+const rpLIMap = {}; LB_RP_ALL.forEach(p=>{ if(p.gm_li!=null) rpLIMap[p.id]=p.gm_li; });
+RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
+TA_RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
+// Re-render yesterday RP tables now that gmLI is populated (initial renders ran before LB data loaded)
+renderRP(); renderTARP();
 
 // Pre-compute k_bb_pct for any pitcher missing it (k% - bb%) — must run BEFORE buildCfg
 [...LB_SP_ALL,...LB_RP_ALL].forEach(p=>{
@@ -3348,7 +3364,7 @@ const PL_SP_COL_CFG = {
   woba:{inv:true}, xwoba:{inv:true}, avg_ev:{inv:true}, fb_velo:{inv:false},
 };
 const PL_RP_COL_CFG = {
-  ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false},
+  ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false}, gm_li:{inv:false},
   era:{inv:true},  whip:{inv:true},  k:{inv:false}, xera:{inv:true},  siera:{inv:true},
   stuff_plus:{inv:false}, loc_plus:{inv:false},
   k_bb_pct:{inv:false}, k_pct:{inv:false}, bb_pct:{inv:true},
@@ -3548,7 +3564,7 @@ function renderLBRP(){
   const tb=document.getElementById('lb-rp-body');
   const ct=document.getElementById('lb-rp-cnt');
   if(!lbRpD.length){
-    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="25"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
@@ -3559,6 +3575,7 @@ function renderLBRP(){
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
     <td class="r" data-col="hld">${D('hld',         p.hld,         p.hld)}</td>
+    <td class="r" data-col="gm_li">${p.gm_li!=null?D('gm_li',p.gm_li,p.gm_li.toFixed(2)):D2()}</td>
     <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
     <td class="r" data-col="whip">${D('whip',        p.whip,        p.whip!=null?p.whip.toFixed(2):null)}</td>
     <td class="r" data-col="k">${D('k',           p.k,           p.k)}</td>
@@ -3612,7 +3629,7 @@ const LB_P_QUAL_CMP=[...LB_SP_QUAL,...LB_RP_QUAL];
 
 // Combined pitcher col config for rank coloring across both roles
 const PL_CMP_COL_CFG={
-  ip_f:{inv:false},w:{inv:false},sv:{inv:false},hld:{inv:false},
+  ip_f:{inv:false},w:{inv:false},sv:{inv:false},hld:{inv:false},gm_li:{inv:false},
   era:{inv:true},whip:{inv:true},k:{inv:false},xera:{inv:true},siera:{inv:true},
   stuff_plus:{inv:false},loc_plus:{inv:false},
   k_bb_pct:{inv:false},k_pct:{inv:false},bb_pct:{inv:true},
@@ -3732,7 +3749,7 @@ function renderCmp(){
     const tb=document.getElementById('cmp-p-body');
     const ids=[...cmpPSet];
     if(!ids.length){
-      tb.innerHTML='<tr><td colspan="25"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>';
+      tb.innerHTML='<tr><td colspan="26"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>';
       return;
     }
     const D=plCmpCell;
@@ -3749,6 +3766,7 @@ function renderCmp(){
         <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
         <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
         <td class="r" data-col="hld">${D('hld',p.hld,p.hld)}</td>
+        <td class="r" data-col="gm_li">${p.gm_li!=null?D('gm_li',p.gm_li,p.gm_li.toFixed(2)):D2()}</td>
         <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
         <td class="r" data-col="whip">${D('whip',p.whip,p.whip!=null?p.whip.toFixed(2):null)}</td>
         <td class="r" data-col="k">${D('k',p.k,p.k)}</td>
@@ -3818,7 +3836,7 @@ const COL_SP_DEFS=[
   {k:'avg_ev',label:'Avg EV'},{k:'fb_velo',label:'FB Velo'},
 ];
 const COL_RP_DEFS=[
-  {k:'ip_f',label:'IP'},{k:'w',label:'W'},{k:'sv',label:'SV/SVO'},{k:'hld',label:'HLD'},
+  {k:'ip_f',label:'IP'},{k:'w',label:'W'},{k:'sv',label:'SV/SVO'},{k:'hld',label:'HLD'},{k:'gm_li',label:'gmLI'},
   {k:'era',label:'ERA'},{k:'whip',label:'WHIP'},{k:'k',label:'K'},{k:'xera',label:'xERA'},{k:'siera',label:'SIERA'},
   {k:'stuff_plus',label:'Stf+'},{k:'loc_plus',label:'Loc+'},
   {k:'k_bb_pct',label:'K-BB%'},{k:'k_pct',label:'K%'},{k:'bb_pct',label:'BB%'},
