@@ -87,6 +87,20 @@ TEAM_ALEX_NAMES = {
     "max meyer", "reid detmers", "matt brash",
 }
 
+# ── Firebase Web App Config ────────────────────────────────────────────────
+# Get these from Firebase Console → Project Settings → Your apps → Web app config.
+# projectId/authDomain are pre-filled. Fill in apiKey, messagingSenderId, appId.
+# ALSO: enable Email/Password auth in Firebase Console → Authentication → Sign-in method
+# AND: set Firestore rules to allow authenticated reads/writes to users/{uid} docs.
+FIREBASE_WEB_CONFIG = {
+    "apiKey":            "REPLACE_WITH_YOUR_API_KEY",
+    "authDomain":        "mlb-stats-ae429.firebaseapp.com",
+    "projectId":         "mlb-stats-ae429",
+    "storageBucket":     "mlb-stats-ae429.appspot.com",
+    "messagingSenderId": "REPLACE_WITH_MESSAGING_SENDER_ID",
+    "appId":             "REPLACE_WITH_APP_ID",
+}
+
 # ── FanGraphs ID overrides ─────────────────────────────────────────────────
 # Maps MLBAM player ID → FanGraphs player ID for pitchers whose fg_id is
 # missing or wrong in pybaseball's Chadwick register (stale for recent debuts).
@@ -2314,10 +2328,11 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <div id="teamalex-panel" class="tab-panel active">
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
-    <div>
+    <div style="flex:1">
       <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
-      <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
+      <div id="ta-roster-count" style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
+    <div id="ta-auth-area" style="display:flex;gap:8px;align-items:center"></div>
   </div>
 
   <!-- Hitters section with Yesterday / Season toggle -->
@@ -2775,15 +2790,21 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated __TS__
 </footer>
 
+<!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <script>
 const HITTERS    = __HITTERS_JSON__;
 const ALL_PITCHERS = __ALL_PITCHERS_JSON__;
 const STARTERS   = ALL_PITCHERS.filter(p=>p.ip_float>=3||p.is_starter);
 const RELIEVERS  = ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter);
-const TA_HITTERS = __TA_H_JSON__;
-const TA_STARTERS= __TA_SP_JSON__;
-const TA_RELIEVERS=__TA_RP_JSON__;
-const TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
+let TA_HITTERS = __TA_H_JSON__;
+let TA_STARTERS= __TA_SP_JSON__;
+let TA_RELIEVERS=__TA_RP_JSON__;
+let TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
+const DEFAULT_TA_NAMES=__TA_NAMES_JSON__; // baked-in defaults — seeds Firestore on first login
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -3019,6 +3040,10 @@ let taHSC='barrels', taHSD=-1, taSPSC='ip_float', taSPSD=-1, taRPSC='sv', taRPSD
 let taHView='yday';  // 'yday' or 'season'
 
 document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
+document.getElementById('ta-h-tc').textContent=TA_HITTERS.length;
+document.getElementById('ta-sp-tc').textContent=TA_STARTERS.length;
+document.getElementById('ta-rp-tc').textContent=TA_RELIEVERS.length;
+document.getElementById('ta-roster-count').textContent=DEFAULT_TA_NAMES.length+'-player roster';
 
 // taNorm defined here; TA_LB/taLBD initialized below after LB_ALL is defined
 function taNorm(s){
@@ -3974,7 +3999,294 @@ document.addEventListener('click',function(e){
     if(dd){dd.style.display='none';} cmpDdIdx=-1;
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Firebase Auth + Firestore — dynamic roster editing
+// ══════════════════════════════════════════════════════════════════════════
+const _fbCfg = __FIREBASE_CONFIG__;
+let _fbAuth = null, _fbDb = null, _fbUser = null;
+let _rosterNames = null; // current roster as array of raw display names
+
+(function _initFirebase(){
+  if (!_fbCfg.apiKey || _fbCfg.apiKey.startsWith('REPLACE')) {
+    // Config not filled in yet — show setup hint
+    _updateAuthUI();
+    return;
+  }
+  try {
+    firebase.initializeApp(_fbCfg);
+    _fbAuth = firebase.auth();
+    _fbDb   = firebase.firestore();
+    // Keep login persistent on this device forever
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+    // Fires immediately with cached user (if previously logged in)
+    _fbAuth.onAuthStateChanged(async user => {
+      _fbUser = user;
+      _updateAuthUI();
+      if (user) await _loadRoster(user.uid);
+    });
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    _updateAuthUI();
+  }
+})();
+
+function _updateAuthUI(){
+  const area = document.getElementById('ta-auth-area');
+  if (!area) return;
+  if (!_fbAuth) {
+    area.innerHTML = '<span style="font-size:.7rem;color:var(--muted);opacity:.7">⚙️ roster sync unavailable</span>';
+    return;
+  }
+  if (_fbUser) {
+    const email = _fbUser.email || '';
+    const short = email.length > 22 ? email.slice(0,20)+'…' : email;
+    area.innerHTML =
+      `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`+
+      `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
+  } else {
+    area.innerHTML =
+      `<button onclick="openLoginOverlay()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.78rem;color:var(--muted);cursor:pointer">🔑 Login</button>`;
+  }
+}
+
+async function _loadRoster(uid){
+  try {
+    const doc = await _fbDb.collection('users').doc(uid).get();
+    let names;
+    if (doc.exists && Array.isArray(doc.data().roster) && doc.data().roster.length > 0) {
+      names = doc.data().roster;
+    } else {
+      // First login — seed with current baked-in defaults
+      names = DEFAULT_TA_NAMES;
+      await _saveRoster(uid, names);
+    }
+    _rosterNames = names;
+    _rebuildTA(names);
+  } catch(e) {
+    console.error('Firestore load error:', e);
+  }
+}
+
+async function _saveRoster(uid, names){
+  try {
+    await _fbDb.collection('users').doc(uid).set({roster: names}, {merge: true});
+  } catch(e) {
+    console.error('Firestore save error:', e);
+  }
+}
+
+function _rebuildTA(rosterNames){
+  const norms = new Set(rosterNames.map(n => taNorm(n)));
+  TA_HITTERS      = HITTERS.filter(h => norms.has(taNorm(h.name)));
+  TA_STARTERS     = STARTERS.filter(p => norms.has(taNorm(p.name)));
+  TA_RELIEVERS    = RELIEVERS.filter(p => norms.has(taNorm(p.name)));
+  TA_ROSTER_NORMS = norms;
+
+  // Patch season gmLI onto new TA_RELIEVERS
+  TA_RELIEVERS.forEach(p => { p.gm_li = rpLIMap[p.id] ?? null; });
+
+  // Reset sorted display arrays
+  taHD  = [...TA_HITTERS].sort((a,b) => cmp(a,b,'barrels',-1));
+  taSPD = [...TA_STARTERS].sort((a,b) => cmp(a,b,'ip_float',-1));
+  taRPD = [...TA_RELIEVERS].sort((a,b) => cmp(a,b,'sv',-1));
+
+  // Rebuild season LB slices
+  taLBD   = LB_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)));
+  taSPLBD = [...LB_SP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
+  taRPLBD = [...LB_RP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
+
+  // Update counts
+  const total = TA_HITTERS.length + TA_STARTERS.length + TA_RELIEVERS.length;
+  document.getElementById('ta-tc').textContent  = total;
+  document.getElementById('ta-h-tc').textContent  = TA_HITTERS.length;
+  document.getElementById('ta-sp-tc').textContent = TA_STARTERS.length;
+  document.getElementById('ta-rp-tc').textContent = TA_RELIEVERS.length;
+  const cntEl = document.getElementById('ta-roster-count');
+  if (cntEl) cntEl.textContent = rosterNames.length + '-player roster';
+
+  // Re-render all visible Team Alex tables
+  renderTAH(); renderTASP(); renderTARP();
+  renderTALB(); renderTASPLB(); renderTARPLB();
+}
+
+// ── Login overlay ──────────────────────────────────────────────────────────
+function openLoginOverlay(){
+  const ov = document.getElementById('login-overlay');
+  ov.style.display = 'flex';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value  = '';
+  setTimeout(()=>document.getElementById('login-email').focus(), 50);
+}
+function closeLoginOverlay(){
+  document.getElementById('login-overlay').style.display = 'none';
+}
+async function doLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('login-btn');
+  btn.textContent = 'Signing in…'; btn.disabled = true; errEl.style.display='none';
+  try {
+    await _fbAuth.signInWithEmailAndPassword(email, pass);
+    closeLoginOverlay();
+  } catch(e) {
+    errEl.textContent = _fbErr(e.code); errEl.style.display='';
+  } finally {
+    btn.textContent = 'Sign In'; btn.disabled = false;
+  }
+}
+async function doSignup(){
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('signup-btn');
+  btn.textContent = 'Creating…'; btn.disabled = true; errEl.style.display='none';
+  try {
+    await _fbAuth.createUserWithEmailAndPassword(email, pass);
+    closeLoginOverlay();
+  } catch(e) {
+    errEl.textContent = _fbErr(e.code); errEl.style.display='';
+  } finally {
+    btn.textContent = 'Create Account'; btn.disabled = false;
+  }
+}
+async function _doLogout(){
+  await _fbAuth.signOut();
+  _fbUser = null; _rosterNames = null;
+  _updateAuthUI();
+}
+function _fbErr(code){
+  const m={'auth/invalid-email':'Invalid email address.',
+    'auth/user-not-found':'No account with this email.',
+    'auth/wrong-password':'Incorrect password.',
+    'auth/invalid-credential':'Incorrect email or password.',
+    'auth/email-already-in-use':'An account with this email already exists.',
+    'auth/weak-password':'Password must be at least 6 characters.',
+    'auth/too-many-requests':'Too many attempts — try again later.'};
+  return m[code]||'Error: '+code;
+}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&document.getElementById('login-overlay').style.display==='flex') doLogin();
+});
+
+// ── Roster editor modal ────────────────────────────────────────────────────
+let _rTab='h', _rQ='';
+
+function openRosterModal(){
+  document.getElementById('roster-modal').style.display='flex';
+  document.getElementById('roster-search').value=''; _rQ='';
+  switchRosterTab('h',document.getElementById('roster-tab-h'));
+}
+function closeRosterModal(){
+  document.getElementById('roster-modal').style.display='none';
+}
+function switchRosterTab(tab,btn){
+  _rTab=tab;
+  document.querySelectorAll('#roster-modal .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _renderRosterList();
+}
+function filterRosterSearch(){
+  _rQ=document.getElementById('roster-search').value.toLowerCase().trim();
+  _renderRosterList();
+}
+function _rPool(){
+  if(_rTab==='h')  return LB_ALL;
+  if(_rTab==='sp') return LB_SP_ALL;
+  return LB_RP_ALL;
+}
+function _renderRosterList(){
+  const pool=_rPool();
+  let players=_rQ ? pool.filter(p=>p.name.toLowerCase().includes(_rQ)||(p.team||'').toLowerCase().includes(_rQ)) : [...pool];
+  // Sort: on-roster first, then alphabetical
+  players.sort((a,b)=>{
+    const aN=TA_ROSTER_NORMS.has(taNorm(a.name));
+    const bN=TA_ROSTER_NORMS.has(taNorm(b.name));
+    if(aN!==bN) return aN?-1:1;
+    return a.name<b.name?-1:1;
+  });
+  if(!_rQ) players=players.slice(0,80); // cap unfiltered list
+  const el=document.getElementById('roster-player-list');
+  if(!players.length){
+    el.innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem">No players found</div>';
+  } else {
+    el.innerHTML=players.map(p=>{
+      const on=TA_ROSTER_NORMS.has(taNorm(p.name));
+      const safe=p.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const badge=p.team?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${p.team}</span>`:'';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
+        <span>${p.name}${badge}</span>
+        <button onclick="_togglePlayer('${safe}',${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
+      </div>`;
+    }).join('');
+  }
+  const rc=_rosterNames?_rosterNames.length:DEFAULT_TA_NAMES.length;
+  document.getElementById('roster-count-info').textContent=rc+' players on roster';
+}
+async function _togglePlayer(name, isOn){
+  if(!_fbUser || _rosterNames===null) return;
+  let names=[..._rosterNames];
+  if(isOn){
+    names=names.filter(n=>taNorm(n)!==taNorm(name));
+  } else {
+    if(!names.some(n=>taNorm(n)===taNorm(name))) names.push(name);
+  }
+  _rosterNames=names;
+  await _saveRoster(_fbUser.uid, names);
+  _rebuildTA(names);
+  _renderRosterList();
+}
+// Close modal on backdrop click
+document.getElementById('roster-modal').addEventListener('click',function(e){
+  if(e.target===this) closeRosterModal();
+});
 </script>
+
+<!-- ══ Login Overlay ══ -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:min(92vw,380px);box-shadow:0 10px 40px rgba(0,0,0,.6)">
+    <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:var(--gold)">👑 Team Alex Login</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px">Sign in to manage your roster across devices</div>
+    <div id="login-error" style="display:none;color:#f55;font-size:.8rem;margin-bottom:10px;padding:8px 10px;background:rgba(255,80,80,.12);border-radius:6px"></div>
+    <input id="login-email" type="email" placeholder="Email" autocomplete="email"
+      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;margin-bottom:10px">
+    <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password"
+      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="login-btn" onclick="doLogin()" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:.9rem;font-weight:700;cursor:pointer">Sign In</button>
+      <button id="signup-btn" onclick="doSignup()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:.9rem;cursor:pointer">Create Account</button>
+    </div>
+    <div style="text-align:center">
+      <button onclick="closeLoginOverlay()" style="background:none;border:none;color:var(--muted);font-size:.78rem;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Roster Editor Modal ══ -->
+<div id="roster-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 8px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;width:min(96vw,500px);box-shadow:0 10px 40px rgba(0,0,0,.6);flex-shrink:0">
+    <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">✏️ Edit Roster</div>
+      <button onclick="closeRosterModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 4px">✕</button>
+    </div>
+    <div style="padding:14px 16px">
+      <input id="roster-search" type="text" placeholder="Search players…" oninput="filterRosterSearch()"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;margin-bottom:12px">
+      <div class="toggle-group" style="margin-bottom:12px">
+        <button class="tgl-btn active" id="roster-tab-h"  onclick="switchRosterTab('h',this)">🏏 Hitters</button>
+        <button class="tgl-btn"        id="roster-tab-sp" onclick="switchRosterTab('sp',this)">⚾ SP</button>
+        <button class="tgl-btn"        id="roster-tab-rp" onclick="switchRosterTab('rp',this)">🔥 RP</button>
+      </div>
+      <div id="roster-player-list" style="max-height:55vh;overflow-y:auto"></div>
+    </div>
+    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);text-align:center">
+      <div id="roster-count-info" style="font-size:.78rem;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
 """
@@ -4009,6 +4321,7 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
         .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
         .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
+        .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
     )
 
 
