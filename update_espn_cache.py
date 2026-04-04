@@ -69,7 +69,7 @@ def do_login_and_save_session() -> None:
         print("  Loading fantasy page to collect session cookies…")
         page.goto("https://fantasy.espn.com/baseball/",
                   wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(3_000)
+        page.wait_for_timeout(5_000)
 
         ctx.storage_state(path=str(SESSION_FILE))
         browser.close()
@@ -136,11 +136,13 @@ def fetch_rosters(league_ids: list, year: int) -> tuple:
             page.on("response", on_response)
 
             try:
-                # The "Teams" page loads all rosters — triggers mRoster API calls
+                # Use domcontentloaded — ESPN pages never reach networkidle
+                # (persistent WebSocket connections keep the network active).
+                # Wait 8s after load so the SPA can boot and fire its API calls.
                 teams_url = (f"https://fantasy.espn.com/baseball/teams"
                              f"?leagueId={lid}")
-                page.goto(teams_url, wait_until="networkidle", timeout=60_000)
-                page.wait_for_timeout(3_000)
+                page.goto(teams_url, wait_until="domcontentloaded", timeout=30_000)
+                page.wait_for_timeout(8_000)
 
                 # If teams page didn't give us roster data, try the league page
                 if "data" not in captured or not any(
@@ -149,8 +151,8 @@ def fetch_rosters(league_ids: list, year: int) -> tuple:
                 ):
                     league_url = (f"https://fantasy.espn.com/baseball/league"
                                   f"?leagueId={lid}")
-                    page.goto(league_url, wait_until="networkidle", timeout=60_000)
-                    page.wait_for_timeout(3_000)
+                    page.goto(league_url, wait_until="domcontentloaded", timeout=30_000)
+                    page.wait_for_timeout(8_000)
 
                 if "data" not in captured:
                     # Might be a session expiry — check if we got redirected to login
