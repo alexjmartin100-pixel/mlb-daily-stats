@@ -215,7 +215,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 2, 2026</strong>
       &nbsp;·&nbsp; 3 game(s)
-      &nbsp;·&nbsp; Updated Apr 3, 2026 7:43 PM
+      &nbsp;·&nbsp; Updated Apr 3, 2026 8:30 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -353,12 +353,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
     <div>
-      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)" id="ta-team-title">Team Alex</div>
-      <div style="font-size:.72rem;color:var(--muted)" id="ta-roster-count">24-player roster</div>
-    </div>
-    <div style="margin-left:auto">
-      <select id="ta-team-select" onchange="switchTeam(this.value)"
-        style="background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:.8rem;cursor:pointer;max-width:200px"></select>
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
+      <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
   </div>
 
@@ -810,7 +806,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 7:43 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 8:30 PM
 </footer>
 
 <script>
@@ -822,7 +818,6 @@ const TA_HITTERS = [{"id": 656305, "game_pk": 823242, "team": "SF", "opp": "NYM"
 const TA_STARTERS= [];
 const TA_RELIEVERS=[];
 const TA_ROSTER_NORMS=new Set(["adley rutschman", "bryson stott", "eury perez", "freddy peralta", "griffin jax", "gunnar henderson", "ian happ", "jose ramirez", "kyle bradish", "mackenzie gore", "matt brash", "matt chapman", "max meyer", "reid detmers", "ryan helsley", "ryan pepiot", "ryan weathers", "shane baz", "tanner bibee", "taylor ward", "tyler soderstrom", "vladimir guerrero jr", "wyatt langford", "zach neto"]);
-const LEAGUES={};
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -1287,68 +1282,6 @@ taHD.sort((a,b)=>cmp(a,b,'barrels',-1));
 taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
 taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
 renderTAH();renderTASP();renderTARP();
-
-// ── Fantasy team switcher ─────────────────────────────────────────────────
-function switchTeam(teamKey){
-  let roster=null, teamName='', rosterSize=0;
-  for(const [,league] of Object.entries(LEAGUES)){
-    if(league.teams[teamKey]){
-      const t=league.teams[teamKey];
-      roster=new Set(t.players);
-      teamName=t.name;
-      rosterSize=t.players.length;
-      break;
-    }
-  }
-  if(!roster) return;
-  // Update header labels
-  document.getElementById('ta-team-title').textContent=teamName;
-  document.getElementById('ta-roster-count').textContent=rosterSize+'-player roster';
-  // Rebuild yesterday game log data
-  taHD =HITTERS.filter(h=>roster.has(taNorm(h.name)));
-  taSPD=ALL_PITCHERS.filter(p=>(p.ip_float>=3||p.is_starter)&&roster.has(taNorm(p.name)));
-  taRPD=ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter&&roster.has(taNorm(p.name)));
-  // Rebuild season LB data
-  taLBD   =[...LB_ALL.filter(p=>roster.has(taNorm(p.name)))];
-  taSPLBD =[...LB_SP_ALL.filter(p=>roster.has(taNorm(p.name)))];
-  taRPLBD =[...LB_RP_ALL.filter(p=>roster.has(taNorm(p.name)))];
-  // Re-sort using current sort state
-  taHD.sort((a,b)=>cmp(a,b,taHSC,taHSD));
-  taSPD.sort((a,b)=>cmp(a,b,taSPSC,taSPSD));
-  taRPD.sort((a,b)=>cmp(a,b,taRPSC,taRPSD));
-  taLBD.sort((a,b)=>cmp(a,b,taLBSC,taLBSD));
-  taSPLBD.sort((a,b)=>cmp(a,b,taSPLBSC,taSPLBSD));
-  taRPLBD.sort((a,b)=>cmp(a,b,taRPLBSC,taRPLBSD));
-  // Re-render all sections
-  renderTAH(); renderTASP(); renderTARP();
-  renderTALB(); renderTASPLB(); renderTARPLB();
-  document.getElementById('ta-tc').textContent=taHD.length+taSPD.length+taRPD.length;
-}
-
-// Populate team dropdown from LEAGUES data
-(function(){
-  const sel=document.getElementById('ta-team-select');
-  if(!sel||!LEAGUES||!Object.keys(LEAGUES).length){
-    // No ESPN data — hide the dropdown
-    if(sel) sel.style.display='none';
-    return;
-  }
-  let hasTeams=false;
-  for(const [,league] of Object.entries(LEAGUES)){
-    const grp=document.createElement('optgroup');
-    grp.label=league.league_name;
-    for(const [tkey,team] of Object.entries(league.teams)){
-      const opt=document.createElement('option');
-      opt.value=tkey;
-      opt.textContent=team.name;
-      if(team.is_my_team) opt.selected=true;
-      grp.appendChild(opt);
-      hasTeams=true;
-    }
-    sel.appendChild(grp);
-  }
-  if(!hasTeams) sel.style.display='none';
-})();
 
 function showTASPView(view,btn){
   document.querySelectorAll('#ta-sp-yday-btn,#ta-sp-season-btn').forEach(b=>b.classList.remove('active'));
@@ -1991,4 +1924,79 @@ function applyColVis(tableId, vis){
   const tbl=document.getElementById(tableId);
   if(!tbl) return;
   tbl.querySelectorAll('[data-col]').forEach(el=>{
-    const k=el.getAttribute('da
+    const k=el.getAttribute('data-col');
+    if(k in vis) el.classList.toggle('col-vis-hidden', vis[k]===false);
+  });
+}
+
+function _pickerHTML(type){
+  const {vis,defs}=_colInfo(type);
+  const items=defs.filter(d=>d.k!=='role').map(d=>`<label class="col-picker-item"><input type="checkbox" data-ck="${type}:${d.k}" ${vis[d.k]!==false?'checked':''} onchange="toggleCol('${type}','${d.k}',this.checked)">${d.label}</label>`).join('');
+  // add Role checkbox for rp (compare only)
+  const roleItem=type==='rp'?`<label class="col-picker-item"><input type="checkbox" data-ck="${type}:role" ${colVisRP.role!==false?'checked':''} onchange="toggleCol('${type}','role',this.checked)">Role</label>`:'';
+  return `<div class="col-picker-actions"><button onclick="selectAllCols('${type}')">Select All</button><button onclick="deselectAllCols('${type}')">Deselect All</button></div><div class="col-picker-grid">${items}${roleItem}</div>`;
+}
+
+function toggleColPicker(type,btn){
+  const panel=btn.nextElementSibling;
+  if(!panel) return;
+  const isOpen=panel.style.display!=='none';
+  // close all pickers first
+  document.querySelectorAll('.col-picker-panel').forEach(p=>p.style.display='none');
+  if(!isOpen){
+    panel.innerHTML=_pickerHTML(type);
+    panel.dataset.pickerType=type;
+    panel.style.display='';
+  }
+}
+
+function toggleCol(type,key,checked){
+  const {vis,tables}=_colInfo(type);
+  const pick=_pick(type);
+  vis[key]=checked;
+  if(checked){
+    if(!pick.includes(key)) pick.push(key);  // add to END → becomes rightmost selected
+  } else {
+    const i=pick.indexOf(key);
+    if(i!==-1) pick.splice(i,1);            // remove from selection order
+  }
+  const order=_buildOrder(type);
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
+}
+
+function selectAllCols(type){
+  const {vis,defs,tables}=_colInfo(type);
+  const pick=_pick(type);
+  defs.forEach(d=>{vis[d.k]=true;});
+  pick.length=0; defs.forEach(d=>pick.push(d.k)); // reset pick to default order
+  const order=_buildOrder(type);
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
+  document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
+}
+
+function deselectAllCols(type){
+  const {vis,defs,tables}=_colInfo(type);
+  const pick=_pick(type);
+  defs.forEach(d=>{vis[d.k]=false;});
+  pick.length=0;  // clear selection order — first clicked will be leftmost
+  const order=_buildOrder(type); // = all defs keys in default order (all hidden)
+  tables.forEach(t=>{ applyColVis(t,vis); _reorderTableCols(t,order); });
+  document.querySelectorAll(`.col-picker-panel[data-picker-type="${type}"]`).forEach(p=>{p.innerHTML=_pickerHTML(type);p.dataset.pickerType=type;});
+}
+
+// Close picker on outside click
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.col-picker-wrap')&&!e.target.closest('.col-picker-btn')){
+    document.querySelectorAll('.col-picker-panel').forEach(p=>p.style.display='none');
+  }
+},true);
+
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#cmp-search')&&!e.target.closest('#cmp-dropdown')){
+    const dd=document.getElementById('cmp-dropdown');
+    if(dd){dd.style.display='none';} cmpDdIdx=-1;
+  }
+});
+</script>
+</body>
+</html>
