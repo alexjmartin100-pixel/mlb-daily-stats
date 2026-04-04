@@ -215,21 +215,21 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 2, 2026</strong>
       &nbsp;·&nbsp; 3 game(s)
-      &nbsp;·&nbsp; Updated Apr 3, 2026 9:03 PM
+      &nbsp;·&nbsp; Updated Apr 3, 2026 9:42 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
 </header>
 
 <div class="tab-bar">
-  <button class="tab-btn active" onclick="showTab('hitters',this)">
+  <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
+    👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('hitters',this)">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
   </button>
   <button class="tab-btn" onclick="showTab('pitchers',this)">
     ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
-  </button>
-  <button class="tab-btn ta-btn" onclick="showTab('teamalex',this)">
-    👑 Team Alex <span class="tab-count" id="ta-tc">—</span>
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
@@ -242,7 +242,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <main>
 
 <!-- ══ HITTERS ══ -->
-<div id="hitters-panel" class="tab-panel active">
+<div id="hitters-panel" class="tab-panel">
   <div class="legend">
     <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
     <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
@@ -350,13 +350,14 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </div>
 
 <!-- ══ TEAM ALEX ══ -->
-<div id="teamalex-panel" class="tab-panel">
+<div id="teamalex-panel" class="tab-panel active">
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
-    <div>
+    <div style="flex:1">
       <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Team Alex</div>
-      <div style="font-size:.72rem;color:var(--muted)">24-player roster</div>
+      <div id="ta-roster-count" style="font-size:.72rem;color:var(--muted)">24-player roster</div>
     </div>
+    <div id="ta-auth-area" style="display:flex;gap:8px;align-items:center"></div>
   </div>
 
   <!-- Hitters section with Yesterday / Season toggle -->
@@ -811,18 +812,24 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 9:03 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 3, 2026 9:42 PM
 </footer>
+
+<!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
 const HITTERS    = [{"id": 467793, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 97.0, "bip": 3, "name": "Carlos Santana"}, {"id": 521692, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 0, "max_ev": 108.5, "bip": 4, "name": "Salvador P\u00e9rez"}, {"id": 543510, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 99.8, "bip": 1, "name": "James Mccann"}, {"id": 543760, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 93.6, "bip": 3, "name": "Marcus Semien"}, {"id": 545121, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 102.7, "bip": 2, "name": "Ildemaro Vargas"}, {"id": 571448, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 98.9, "bip": 2, "name": "Nolan Arenado"}, {"id": 571657, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 91.5, "bip": 2, "name": "Kyle Farmer"}, {"id": 573262, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 1, "hr": 0, "rbi": 2, "grand_slam": false, "k": 0, "bb": 2, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 102.2, "bip": 4, "name": "Mike Yastrzemski"}, {"id": 593871, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 84.4, "bip": 3, "name": "Jorge Polanco"}, {"id": 596019, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 2, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 84.5, "bip": 1, "name": "Francisco Lindor"}, {"id": 605137, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 2, "hr": 1, "rbi": 1, "grand_slam": false, "k": 1, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 104.8, "bip": 2, "name": "Josh Bell"}, {"id": 605170, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 92.3, "bip": 3, "name": "V\u00edctor Caratini"}, {"id": 606466, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 0, "max_ev": 109.6, "bip": 4, "name": "Ketel Marte"}, {"id": 621438, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 93.4, "bip": 2, "name": "Tyrone Taylor"}, {"id": 621439, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 105.2, "bip": 3, "name": "Byron Buxton"}, {"id": 621566, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 3, "hr": 1, "rbi": 3, "grand_slam": false, "k": 1, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 3, "barrels": 2, "max_ev": 108.0, "bip": 4, "name": "Matt Olson"}, {"id": 622761, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 1, "hr": 1, "rbi": 2, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 104.6, "bip": 1, "name": "Jorge Mateo"}, {"id": 642086, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 2, "hr": 1, "rbi": 1, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 1, "max_ev": 109.1, "bip": 3, "name": "Dominic Smith"}, {"id": 642201, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 87.5, "bip": 1, "name": "Eli White"}, {"id": 642715, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 3, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 103.2, "bip": 1, "name": "Willy Adames"}, {"id": 643289, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 3, "hr": 1, "rbi": 1, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 3, "barrels": 1, "max_ev": 101.7, "bip": 4, "name": "Mauricio Dub\u00f3n"}, {"id": 645277, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 2, "hr": 0, "rbi": 1, "grand_slam": false, "k": 2, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 107.7, "bip": 3, "name": "Ozzie Albies"}, {"id": 646240, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 1, "hr": 1, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 105.5, "bip": 4, "name": "Rafael Devers"}, {"id": 650333, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 2, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 97.2, "bip": 4, "name": "Luis Arr\u00e1ez"}, {"id": 656305, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 1, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 91.7, "bip": 4, "name": "Matt Chapman"}, {"id": 656484, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 3, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 84.6, "bip": 1, "name": "Tristan Gray"}, {"id": 657041, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 101.2, "bip": 3, "name": "Lane Thomas"}, {"id": 660670, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 105.3, "bip": 3, "name": "Ronald Acu\u00f1a"}, {"id": 663586, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 1, "hr": 0, "rbi": 2, "grand_slam": false, "k": 1, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 93.1, "bip": 2, "name": "Austin Riley"}, {"id": 663616, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": null, "bip": 0, "name": "Trevor Larnach"}, {"id": 663697, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 96.9, "bip": 4, "name": "Jonathan India"}, {"id": 664056, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 3, "barrels": 1, "max_ev": 102.6, "bip": 3, "name": "Harrison Bader"}, {"id": 664728, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 102.4, "bip": 3, "name": "Kyle Isbel"}, {"id": 665019, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 2, "hr": 1, "rbi": 1, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 102.0, "bip": 3, "name": "Kody Clemens"}, {"id": 665742, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 1, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 87.1, "bip": 3, "name": "Juan Soto"}, {"id": 666182, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 1, "max_ev": 104.0, "bip": 3, "name": "Bo Bichette"}, {"id": 668885, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 2, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 83.7, "bip": 1, "name": "Austin Martin"}, {"id": 668901, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 1, "hr": 1, "rbi": 1, "grand_slam": false, "k": 2, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 108.6, "bip": 2, "name": "Mark Vientos"}, {"id": 668904, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 3, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 98.9, "bip": 1, "name": "Royce Lewis"}, {"id": 669477, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 85.6, "bip": 3, "name": "Casey Schmitt"}, {"id": 670242, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 1, "hr": 1, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 106.8, "bip": 3, "name": "Matt Wallner"}, {"id": 671218, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 2, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 3, "barrels": 1, "max_ev": 111.3, "bip": 4, "name": "Heliot Ramos"}, {"id": 671739, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 1, "hr": 0, "rbi": 2, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 6, "barrels": 3, "max_ev": 111.6, "bip": 6, "name": "Michael Harris"}, {"id": 672515, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 1, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 86.4, "bip": 3, "name": "Gabriel Moreno"}, {"id": 672580, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 1, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 110.2, "bip": 3, "name": "Maikel Garc\u00eda"}, {"id": 672695, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 87.9, "bip": 1, "name": "Geraldo Perdomo"}, {"id": 673357, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 2, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 102.1, "bip": 1, "name": "Luis Robert"}, {"id": 677950, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 106.7, "bip": 2, "name": "Alek Thomas"}, {"id": 677951, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 2, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 1, "max_ev": 110.1, "bip": 2, "name": "Bobby Witt"}, {"id": 678489, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 100.5, "bip": 3, "name": "Jorge Barrosa"}, {"id": 682626, "game_pk": 823242, "team": "NYM", "opp": "SF", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 99.4, "bip": 2, "name": "Francisco \u00c1lvarez"}, {"id": 682998, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 2, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 80.1, "bip": 1, "name": "Corbin Carroll"}, {"id": 686469, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 0, "max_ev": 104.1, "bip": 4, "name": "Vinnie Pasquantino"}, {"id": 686555, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 1, "max_ev": 110.6, "bip": 2, "name": "Isaac Collins"}, {"id": 686948, "game_pk": 825105, "team": "ATL", "opp": "AZ", "r": 3, "hr": 0, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 101.3, "bip": 5, "name": "Drake Baldwin"}, {"id": 691740, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 0, "max_ev": 104.7, "bip": 3, "name": "Daniel Susac"}, {"id": 691783, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 1, "hr": 1, "rbi": 1, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 1, "max_ev": 105.5, "bip": 1, "name": "Jordan Lawlar"}, {"id": 694374, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 62.1, "bip": 1, "name": "Tim Tawa"}, {"id": 695506, "game_pk": 824133, "team": "KC", "opp": "MIN", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 96.2, "bip": 3, "name": "Jac Caglianone"}, {"id": 699912, "game_pk": 825105, "team": "AZ", "opp": "ATL", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 101.0, "bip": 2, "name": "Jose Fernandez"}, {"id": 807712, "game_pk": 824133, "team": "MIN", "opp": "KC", "r": 0, "hr": 0, "rbi": 0, "grand_slam": false, "k": 1, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 1, "barrels": 0, "max_ev": 100.3, "bip": 3, "name": "Luke Keaschall"}, {"id": 808982, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 1, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 1, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 2, "barrels": 0, "max_ev": 100.4, "bip": 3, "name": "Jung Hoo Lee"}];
 const ALL_PITCHERS = [{"id": 543510, "game_pk": 825105, "team": "AZ", "opp": "ATL", "ip": "1.0", "ip_float": 1.0, "hits": 7, "r": 5, "bb": 0, "k": 0, "whiffs": 0, "hard_hits": 5, "barrels": 4, "k_bb_pct": 0.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 18, "pct": 90.0, "velo": 39.4, "season_velo": 39.4, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 2, "pct": 10.0, "velo": 38.9, "season_velo": 38.9, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 20, "stuff_plus": 51.0, "location_plus": 89.0, "name": "James Mccann"}, {"id": 573124, "game_pk": 824133, "team": "MIN", "opp": "KC", "ip": "0.1", "ip_float": 0.333, "hits": 0, "r": 0, "bb": 0, "k": 1, "whiffs": 2, "hard_hits": 0, "barrels": 0, "k_bb_pct": 100.0, "w": 0, "sv": 0, "hld": 1, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 2, "pct": 50.0, "velo": 90.1, "season_velo": 91.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "ST", "name": "Sweeper", "color": "#f39c12", "count": 2, "pct": 50.0, "velo": 76.9, "season_velo": 77.3, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}], "total_pitches": 4, "stuff_plus": 121.0, "location_plus": 120.0, "name": "Taylor Rogers"}, {"id": 592662, "game_pk": 823242, "team": "SF", "opp": "NYM", "ip": "5.1", "ip_float": 5.333, "hits": 3, "r": 2, "bb": 3, "k": 7, "whiffs": 19, "hard_hits": 4, "barrels": 2, "k_bb_pct": 18.2, "w": 1, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 48, "pct": 50.0, "velo": 93.7, "season_velo": 93.8, "game_stuff": null, "velo_alert": false, "whiffs": 6, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 26, "pct": 27.1, "velo": 85.1, "season_velo": 85.2, "game_stuff": null, "velo_alert": false, "whiffs": 8, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 15, "pct": 15.6, "velo": 84.7, "season_velo": 84.7, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "KC", "name": "K-Curve", "color": "#2980b9", "count": 6, "pct": 6.2, "velo": 77.9, "season_velo": null, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 1, "pct": 1.0, "velo": 90.5, "season_velo": 90.5, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 96, "stuff_plus": 109.0, "location_plus": 100.0, "name": "Robbie Ray"}, {"id": 605452, "game_pk": 825105, "team": "AZ", "opp": "ATL", "ip": "2.0", "ip_float": 2.0, "hits": 2, "r": 2, "bb": 3, "k": 1, "whiffs": 8, "hard_hits": 3, "barrels": 1, "k_bb_pct": -18.2, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 17, "pct": 32.7, "velo": 95.0, "season_velo": 95.5, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "FS", "name": "Splitter", "color": "#27ae60", "count": 13, "pct": 25.0, "velo": 91.1, "season_velo": 90.7, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 12, "pct": 23.1, "velo": 95.1, "season_velo": 95.1, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 10, "pct": 19.2, "velo": 89.3, "season_velo": 89.7, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}], "total_pitches": 52, "stuff_plus": 84.0, "location_plus": 85.0, "name": "Joe Ross"}, {"id": 621381, "game_pk": 824133, "team": "KC", "opp": "MIN", "ip": "1.0", "ip_float": 1.0, "hits": 0, "r": 0, "bb": 0, "k": 2, "whiffs": 3, "hard_hits": 0, "barrels": 0, "k_bb_pct": 50.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 8, "pct": 42.1, "velo": 81.0, "season_velo": 80.9, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 7, "pct": 36.8, "velo": 90.2, "season_velo": 90.2, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 2, "pct": 10.5, "velo": 81.8, "season_velo": 81.0, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 2, "pct": 10.5, "velo": 90.6, "season_velo": 91.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 19, "stuff_plus": 113.0, "location_plus": 86.0, "name": "Matt Strahm"}, {"id": 623437, "game_pk": 824133, "team": "MIN", "opp": "KC", "ip": "1.0", "ip_float": 1.0, "hits": 0, "r": 0, "bb": 1, "k": 1, "whiffs": 1, "hard_hits": 1, "barrels": 0, "k_bb_pct": 0.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 7, "pct": 53.8, "velo": 93.4, "season_velo": 94.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 3, "pct": 23.1, "velo": 86.0, "season_velo": 86.2, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 3, "pct": 23.1, "velo": 90.9, "season_velo": 91.5, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 13, "stuff_plus": 82.0, "location_plus": 76.0, "name": "Justin Topa"}, {"id": 625643, "game_pk": 825105, "team": "ATL", "opp": "AZ", "ip": "5.0", "ip_float": 5.0, "hits": 4, "r": 1, "bb": 1, "k": 3, "whiffs": 6, "hard_hits": 5, "barrels": 1, "k_bb_pct": 10.0, "w": 1, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 38, "pct": 47.5, "velo": 93.7, "season_velo": 94.1, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 31, "pct": 38.8, "velo": 82.4, "season_velo": 83.0, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 7, "pct": 8.8, "velo": 74.3, "season_velo": 73.8, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 3, "pct": 3.8, "velo": 84.5, "season_velo": 84.4, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 80, "stuff_plus": 83.0, "location_plus": 117.0, "name": "Reynaldo L\u00f3pez"}, {"id": 640455, "game_pk": 823242, "team": "NYM", "opp": "SF", "ip": "3.2", "ip_float": 3.667, "hits": 4, "r": 2, "bb": 2, "k": 2, "whiffs": 6, "hard_hits": 4, "barrels": 2, "k_bb_pct": 0.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 27, "pct": 36.5, "velo": 89.9, "season_velo": 89.6, "game_stuff": null, "velo_alert": false, "whiffs": 3, "velo_above": false, "velo_below": false}, {"code": "ST", "name": "Sweeper", "color": "#f39c12", "count": 25, "pct": 33.8, "velo": 74.6, "season_velo": 74.9, "game_stuff": null, "velo_alert": false, "whiffs": 3, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 14, "pct": 18.9, "velo": 89.0, "season_velo": 89.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 5, "pct": 6.8, "velo": 82.4, "season_velo": 82.4, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 3, "pct": 4.1, "velo": 83.0, "season_velo": 83.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 74, "stuff_plus": 100.0, "location_plus": 81.0, "name": "Sean Manaea"}, {"id": 641755, "game_pk": 825105, "team": "ATL", "opp": "AZ", "ip": "1.0", "ip_float": 1.0, "hits": 0, "r": 0, "bb": 0, "k": 1, "whiffs": 2, "hard_hits": 0, "barrels": 0, "k_bb_pct": 33.3, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 7, "pct": 70.0, "velo": 86.8, "season_velo": 86.6, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 2, "pct": 20.0, "velo": 95.5, "season_velo": 95.0, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 1, "pct": 10.0, "velo": 82.5, "season_velo": 82.3, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}], "total_pitches": 10, "stuff_plus": 95.0, "location_plus": 79.0, "name": "Tyler Kinley"}, {"id": 656464, "game_pk": 825105, "team": "AZ", "opp": "ATL", "ip": "0.1", "ip_float": 0.333, "hits": 3, "r": 5, "bb": 1, "k": 0, "whiffs": 2, "hard_hits": 1, "barrels": 1, "k_bb_pct": -20.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 11, "pct": 50.0, "velo": 85.6, "season_velo": 85.2, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 8, "pct": 36.4, "velo": 95.1, "season_velo": 94.3, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 3, "pct": 13.6, "velo": 94.1, "season_velo": 94.1, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}], "total_pitches": 22, "stuff_plus": 87.0, "location_plus": 84.0, "name": "Kevin Ginkel"}, {"id": 656849, "game_pk": 823242, "team": "NYM", "opp": "SF", "ip": "4.1", "ip_float": 4.333, "hits": 9, "r": 5, "bb": 2, "k": 5, "whiffs": 8, "hard_hits": 9, "barrels": 1, "k_bb_pct": 12.5, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 18, "pct": 26.5, "velo": 91.0, "season_velo": 90.5, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 17, "pct": 25.0, "velo": 91.8, "season_velo": 90.8, "game_stuff": null, "velo_alert": false, "whiffs": 3, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 12, "pct": 17.6, "velo": 85.5, "season_velo": 85.4, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 12, "pct": 17.6, "velo": 85.2, "season_velo": 85.2, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 9, "pct": 13.2, "velo": 79.7, "season_velo": 80.1, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}], "total_pitches": 68, "stuff_plus": 90.0, "location_plus": 96.0, "name": "David Peterson"}, {"id": 663485, "game_pk": 824133, "team": "MIN", "opp": "KC", "ip": "0.2", "ip_float": 0.667, "hits": 2, "r": 1, "bb": 0, "k": 0, "whiffs": 1, "hard_hits": 2, "barrels": 0, "k_bb_pct": 0.0, "w": 0, "sv": 0, "hld": 1, "bs": 0, "pitch_types": [{"code": "CU", "name": "Curve", "color": "#3498db", "count": 3, "pct": 27.3, "velo": 80.9, "season_velo": 81.2, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 3, "pct": 27.3, "velo": 89.3, "season_velo": 88.5, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 2, "pct": 18.2, "velo": 95.3, "season_velo": 94.2, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": true, "velo_below": false}, {"code": "FS", "name": "Splitter", "color": "#27ae60", "count": 2, "pct": 18.2, "velo": 88.4, "season_velo": 88.2, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 1, "pct": 9.1, "velo": 88.1, "season_velo": 88.1, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 11, "stuff_plus": 95.0, "location_plus": 122.0, "name": "Cole Sands"}, {"id": 666142, "game_pk": 824133, "team": "KC", "opp": "MIN", "ip": "5.1", "ip_float": 5.333, "hits": 4, "r": 1, "bb": 1, "k": 8, "whiffs": 16, "hard_hits": 1, "barrels": 1, "k_bb_pct": 33.3, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 44, "pct": 49.4, "velo": 94.3, "season_velo": 94.4, "game_stuff": null, "velo_alert": false, "whiffs": 6, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 15, "pct": 16.9, "velo": 83.8, "season_velo": 83.8, "game_stuff": null, "velo_alert": false, "whiffs": 5, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 13, "pct": 14.6, "velo": 85.0, "season_velo": 85.0, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "KC", "name": "K-Curve", "color": "#2980b9", "count": 10, "pct": 11.2, "velo": 78.5, "season_velo": null, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 7, "pct": 7.9, "velo": 89.5, "season_velo": 89.4, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 89, "stuff_plus": 108.0, "location_plus": 114.0, "name": "Cole Ragans"}, {"id": 669194, "game_pk": 825105, "team": "AZ", "opp": "ATL", "ip": "5.0", "ip_float": 5.0, "hits": 3, "r": 5, "bb": 3, "k": 3, "whiffs": 9, "hard_hits": 10, "barrels": 3, "k_bb_pct": 0.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 35, "pct": 43.8, "velo": 96.7, "season_velo": 96.5, "game_stuff": null, "velo_alert": false, "whiffs": 3, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 21, "pct": 26.2, "velo": 80.1, "season_velo": 79.9, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 13, "pct": 16.2, "velo": 89.4, "season_velo": 88.7, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 11, "pct": 13.8, "velo": 92.0, "season_velo": 92.0, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}], "total_pitches": 80, "stuff_plus": 98.0, "location_plus": 90.0, "name": "Ryne Nelson"}, {"id": 670167, "game_pk": 824133, "team": "KC", "opp": "MIN", "ip": "1.0", "ip_float": 1.0, "hits": 1, "r": 1, "bb": 2, "k": 1, "whiffs": 2, "hard_hits": 2, "barrels": 0, "k_bb_pct": -16.7, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "ST", "name": "Sweeper", "color": "#f39c12", "count": 10, "pct": 34.5, "velo": 81.3, "season_velo": 81.9, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 7, "pct": 24.1, "velo": 88.6, "season_velo": 88.8, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 7, "pct": 24.1, "velo": 92.3, "season_velo": 92.8, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 3, "pct": 10.3, "velo": 92.2, "season_velo": 93.2, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 29, "stuff_plus": 85.0, "location_plus": 77.0, "name": "John Schreiber"}, {"id": 671737, "game_pk": 824133, "team": "MIN", "opp": "KC", "ip": "6.0", "ip_float": 6.0, "hits": 5, "r": 0, "bb": 1, "k": 3, "whiffs": 8, "hard_hits": 10, "barrels": 2, "k_bb_pct": 8.3, "w": 1, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 56, "pct": 56.0, "velo": 97.1, "season_velo": 97.2, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 27, "pct": 27.0, "velo": 89.5, "season_velo": 88.7, "game_stuff": null, "velo_alert": false, "whiffs": 5, "velo_above": false, "velo_below": false}, {"code": "FS", "name": "Splitter", "color": "#27ae60", "count": 11, "pct": 11.0, "velo": 90.5, "season_velo": 91.1, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "CU", "name": "Curve", "color": "#3498db", "count": 6, "pct": 6.0, "velo": 81.9, "season_velo": 81.9, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 100, "stuff_plus": 111.0, "location_plus": 101.0, "name": "Taj Bradley"}, {"id": 674370, "game_pk": 825105, "team": "ATL", "opp": "AZ", "ip": "3.0", "ip_float": 3.0, "hits": 2, "r": 1, "bb": 1, "k": 1, "whiffs": 4, "hard_hits": 5, "barrels": 0, "k_bb_pct": 0.0, "w": 0, "sv": 1, "hld": 0, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 15, "pct": 35.7, "velo": 94.8, "season_velo": 94.4, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 12, "pct": 28.6, "velo": 95.2, "season_velo": 94.8, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 12, "pct": 28.6, "velo": 85.0, "season_velo": 84.8, "game_stuff": null, "velo_alert": false, "whiffs": 3, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 3, "pct": 7.1, "velo": 90.2, "season_velo": 90.2, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 42, "stuff_plus": 102.0, "location_plus": 74.0, "name": "Osvaldo Bido"}, {"id": 674444, "game_pk": 824133, "team": "KC", "opp": "MIN", "ip": "1.0", "ip_float": 1.0, "hits": 3, "r": 3, "bb": 0, "k": 1, "whiffs": 3, "hard_hits": 3, "barrels": 3, "k_bb_pct": 16.7, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 14, "pct": 51.9, "velo": 96.6, "season_velo": 96.6, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 10, "pct": 37.0, "velo": 86.9, "season_velo": 87.1, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 3, "pct": 11.1, "velo": 91.1, "season_velo": 90.8, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 27, "stuff_plus": 104.0, "location_plus": 105.0, "name": "Steven Cruz"}, {"id": 676254, "game_pk": 823242, "team": "SF", "opp": "NYM", "ip": "0.2", "ip_float": 0.667, "hits": 0, "r": 0, "bb": 0, "k": 1, "whiffs": 0, "hard_hits": 0, "barrels": 0, "k_bb_pct": 50.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 6, "pct": 50.0, "velo": 95.1, "season_velo": 95.1, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 6, "pct": 50.0, "velo": 83.3, "season_velo": 82.9, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 12, "stuff_plus": 124.0, "location_plus": 67.0, "name": "Ryan Walker"}, {"id": 681892, "game_pk": 824133, "team": "MIN", "opp": "KC", "ip": "1.0", "ip_float": 1.0, "hits": 0, "r": 0, "bb": 0, "k": 1, "whiffs": 2, "hard_hits": 0, "barrels": 0, "k_bb_pct": 33.3, "w": 0, "sv": 0, "hld": 1, "bs": 0, "pitch_types": [{"code": "FC", "name": "Cutter", "color": "#e67e22", "count": 7, "pct": 46.7, "velo": 91.9, "season_velo": 91.4, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "ST", "name": "Sweeper", "color": "#f39c12", "count": 4, "pct": 26.7, "velo": 81.9, "season_velo": 81.2, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 2, "pct": 13.3, "velo": 88.5, "season_velo": 88.8, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 2, "pct": 13.3, "velo": 91.9, "season_velo": 92.3, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 15, "stuff_plus": 108.0, "location_plus": 97.0, "name": "Kody Funderburk"}, {"id": 694851, "game_pk": 825105, "team": "AZ", "opp": "ATL", "ip": "1.0", "ip_float": 1.0, "hits": 1, "r": 0, "bb": 1, "k": 2, "whiffs": 1, "hard_hits": 0, "barrels": 0, "k_bb_pct": 20.0, "w": 0, "sv": 0, "hld": 0, "bs": 0, "pitch_types": [{"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 13, "pct": 56.5, "velo": 94.0, "season_velo": 94.4, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "CH", "name": "Change", "color": "#2ecc71", "count": 8, "pct": 34.8, "velo": 87.6, "season_velo": 87.7, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 2, "pct": 8.7, "velo": 86.2, "season_velo": 86.5, "game_stuff": null, "velo_alert": false, "whiffs": 0, "velo_above": false, "velo_below": false}], "total_pitches": 23, "stuff_plus": 88.0, "location_plus": 99.0, "name": "Andrew Hoffmann"}, {"id": 694918, "game_pk": 823242, "team": "SF", "opp": "NYM", "ip": "3.0", "ip_float": 3.0, "hits": 2, "r": 0, "bb": 0, "k": 2, "whiffs": 8, "hard_hits": 1, "barrels": 0, "k_bb_pct": 22.2, "w": 0, "sv": 1, "hld": 0, "bs": 0, "pitch_types": [{"code": "ST", "name": "Sweeper", "color": "#f39c12", "count": 17, "pct": 45.9, "velo": 83.7, "season_velo": 83.7, "game_stuff": null, "velo_alert": false, "whiffs": 4, "velo_above": false, "velo_below": false}, {"code": "FF", "name": "4-Seam", "color": "#e74c3c", "count": 15, "pct": 40.5, "velo": 95.8, "season_velo": 95.8, "game_stuff": null, "velo_alert": false, "whiffs": 2, "velo_above": false, "velo_below": false}, {"code": "SI", "name": "Sinker", "color": "#c0392b", "count": 3, "pct": 8.1, "velo": 94.1, "season_velo": 94.1, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}, {"code": "SL", "name": "Slider", "color": "#f1c40f", "count": 2, "pct": 5.4, "velo": 86.4, "season_velo": 86.5, "game_stuff": null, "velo_alert": false, "whiffs": 1, "velo_above": false, "velo_below": false}], "total_pitches": 37, "stuff_plus": 115.0, "location_plus": 95.0, "name": "Blade Tidwell"}];
 const STARTERS   = ALL_PITCHERS.filter(p=>p.ip_float>=3||p.is_starter);
 const RELIEVERS  = ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter);
-const TA_HITTERS = [{"id": 656305, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 1, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 91.7, "bip": 4, "name": "Matt Chapman"}];
-const TA_STARTERS= [];
-const TA_RELIEVERS=[];
-const TA_ROSTER_NORMS=new Set(["adley rutschman", "bryson stott", "eury perez", "freddy peralta", "griffin jax", "gunnar henderson", "ian happ", "jose ramirez", "kyle bradish", "mackenzie gore", "matt brash", "matt chapman", "max meyer", "reid detmers", "ryan helsley", "ryan pepiot", "ryan weathers", "shane baz", "tanner bibee", "taylor ward", "tyler soderstrom", "vladimir guerrero jr", "wyatt langford", "zach neto"]);
+let TA_HITTERS = [{"id": 656305, "game_pk": 823242, "team": "SF", "opp": "NYM", "r": 1, "hr": 0, "rbi": 1, "grand_slam": false, "k": 0, "bb": 0, "sb": 0, "cs": 0, "sba": 0, "hard_hits": 0, "barrels": 0, "max_ev": 91.7, "bip": 4, "name": "Matt Chapman"}];
+let TA_STARTERS= [];
+let TA_RELIEVERS=[];
+let TA_ROSTER_NORMS=new Set(["adley rutschman", "bryson stott", "eury perez", "freddy peralta", "griffin jax", "gunnar henderson", "ian happ", "jose ramirez", "kyle bradish", "mackenzie gore", "matt brash", "matt chapman", "max meyer", "reid detmers", "ryan helsley", "ryan pepiot", "ryan weathers", "shane baz", "tanner bibee", "taylor ward", "tyler soderstrom", "vladimir guerrero jr", "wyatt langford", "zach neto"]);
+const DEFAULT_TA_NAMES=["adley rutschman", "bryson stott", "eury perez", "freddy peralta", "griffin jax", "gunnar henderson", "ian happ", "jose ramirez", "kyle bradish", "mackenzie gore", "matt brash", "matt chapman", "max meyer", "reid detmers", "ryan helsley", "ryan pepiot", "ryan weathers", "shane baz", "tanner bibee", "taylor ward", "tyler soderstrom", "vladimir guerrero jr", "wyatt langford", "zach neto"]; // baked-in defaults — seeds Firestore on first login
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -1058,6 +1065,10 @@ let taHSC='barrels', taHSD=-1, taSPSC='ip_float', taSPSD=-1, taRPSC='sv', taRPSD
 let taHView='yday';  // 'yday' or 'season'
 
 document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
+document.getElementById('ta-h-tc').textContent=TA_HITTERS.length;
+document.getElementById('ta-sp-tc').textContent=TA_STARTERS.length;
+document.getElementById('ta-rp-tc').textContent=TA_RELIEVERS.length;
+document.getElementById('ta-roster-count').textContent=DEFAULT_TA_NAMES.length+'-player roster';
 
 // taNorm defined here; TA_LB/taLBD initialized below after LB_ALL is defined
 function taNorm(s){
@@ -2013,6 +2024,293 @@ document.addEventListener('click',function(e){
     if(dd){dd.style.display='none';} cmpDdIdx=-1;
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Firebase Auth + Firestore — dynamic roster editing
+// ══════════════════════════════════════════════════════════════════════════
+const _fbCfg = {"apiKey": "AIzaSyDnOOHGhc7qqVZn41kkKpe_XtwYfQyHHTw", "authDomain": "mlb-stats-ae429.firebaseapp.com", "projectId": "mlb-stats-ae429", "storageBucket": "mlb-stats-ae429.firebasestorage.app", "messagingSenderId": "742969160514", "appId": "1:742969160514:web:a6c66d31ad9bc600714edb", "measurementId": "G-NV8103G0QZ"};
+let _fbAuth = null, _fbDb = null, _fbUser = null;
+let _rosterNames = null; // current roster as array of raw display names
+
+(function _initFirebase(){
+  if (!_fbCfg.apiKey || _fbCfg.apiKey.startsWith('REPLACE')) {
+    // Config not filled in yet — show setup hint
+    _updateAuthUI();
+    return;
+  }
+  try {
+    firebase.initializeApp(_fbCfg);
+    _fbAuth = firebase.auth();
+    _fbDb   = firebase.firestore();
+    // Keep login persistent on this device forever
+    _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+    // Fires immediately with cached user (if previously logged in)
+    _fbAuth.onAuthStateChanged(async user => {
+      _fbUser = user;
+      _updateAuthUI();
+      if (user) await _loadRoster(user.uid);
+    });
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    _updateAuthUI();
+  }
+})();
+
+function _updateAuthUI(){
+  const area = document.getElementById('ta-auth-area');
+  if (!area) return;
+  if (!_fbAuth) {
+    area.innerHTML = '<span style="font-size:.7rem;color:var(--muted);opacity:.7">⚙️ roster sync unavailable</span>';
+    return;
+  }
+  if (_fbUser) {
+    const email = _fbUser.email || '';
+    const short = email.length > 22 ? email.slice(0,20)+'…' : email;
+    area.innerHTML =
+      `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`+
+      `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
+  } else {
+    area.innerHTML =
+      `<button onclick="openLoginOverlay()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.78rem;color:var(--muted);cursor:pointer">🔑 Login</button>`;
+  }
+}
+
+async function _loadRoster(uid){
+  try {
+    const doc = await _fbDb.collection('users').doc(uid).get();
+    let names;
+    if (doc.exists && Array.isArray(doc.data().roster) && doc.data().roster.length > 0) {
+      names = doc.data().roster;
+    } else {
+      // First login — seed with current baked-in defaults
+      names = DEFAULT_TA_NAMES;
+      await _saveRoster(uid, names);
+    }
+    _rosterNames = names;
+    _rebuildTA(names);
+  } catch(e) {
+    console.error('Firestore load error:', e);
+  }
+}
+
+async function _saveRoster(uid, names){
+  try {
+    await _fbDb.collection('users').doc(uid).set({roster: names}, {merge: true});
+  } catch(e) {
+    console.error('Firestore save error:', e);
+  }
+}
+
+function _rebuildTA(rosterNames){
+  const norms = new Set(rosterNames.map(n => taNorm(n)));
+  TA_HITTERS      = HITTERS.filter(h => norms.has(taNorm(h.name)));
+  TA_STARTERS     = STARTERS.filter(p => norms.has(taNorm(p.name)));
+  TA_RELIEVERS    = RELIEVERS.filter(p => norms.has(taNorm(p.name)));
+  TA_ROSTER_NORMS = norms;
+
+  // Patch season gmLI onto new TA_RELIEVERS
+  TA_RELIEVERS.forEach(p => { p.gm_li = rpLIMap[p.id] ?? null; });
+
+  // Reset sorted display arrays
+  taHD  = [...TA_HITTERS].sort((a,b) => cmp(a,b,'barrels',-1));
+  taSPD = [...TA_STARTERS].sort((a,b) => cmp(a,b,'ip_float',-1));
+  taRPD = [...TA_RELIEVERS].sort((a,b) => cmp(a,b,'sv',-1));
+
+  // Rebuild season LB slices
+  taLBD   = LB_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)));
+  taSPLBD = [...LB_SP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
+  taRPLBD = [...LB_RP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
+
+  // Update counts
+  const total = TA_HITTERS.length + TA_STARTERS.length + TA_RELIEVERS.length;
+  document.getElementById('ta-tc').textContent  = total;
+  document.getElementById('ta-h-tc').textContent  = TA_HITTERS.length;
+  document.getElementById('ta-sp-tc').textContent = TA_STARTERS.length;
+  document.getElementById('ta-rp-tc').textContent = TA_RELIEVERS.length;
+  const cntEl = document.getElementById('ta-roster-count');
+  if (cntEl) cntEl.textContent = rosterNames.length + '-player roster';
+
+  // Re-render all visible Team Alex tables
+  renderTAH(); renderTASP(); renderTARP();
+  renderTALB(); renderTASPLB(); renderTARPLB();
+}
+
+// ── Login overlay ──────────────────────────────────────────────────────────
+function openLoginOverlay(){
+  const ov = document.getElementById('login-overlay');
+  ov.style.display = 'flex';
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value  = '';
+  setTimeout(()=>document.getElementById('login-email').focus(), 50);
+}
+function closeLoginOverlay(){
+  document.getElementById('login-overlay').style.display = 'none';
+}
+async function doLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('login-btn');
+  btn.textContent = 'Signing in…'; btn.disabled = true; errEl.style.display='none';
+  try {
+    await _fbAuth.signInWithEmailAndPassword(email, pass);
+    closeLoginOverlay();
+  } catch(e) {
+    errEl.textContent = _fbErr(e.code); errEl.style.display='';
+  } finally {
+    btn.textContent = 'Sign In'; btn.disabled = false;
+  }
+}
+async function doSignup(){
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('signup-btn');
+  btn.textContent = 'Creating…'; btn.disabled = true; errEl.style.display='none';
+  try {
+    await _fbAuth.createUserWithEmailAndPassword(email, pass);
+    closeLoginOverlay();
+  } catch(e) {
+    errEl.textContent = _fbErr(e.code); errEl.style.display='';
+  } finally {
+    btn.textContent = 'Create Account'; btn.disabled = false;
+  }
+}
+async function _doLogout(){
+  await _fbAuth.signOut();
+  _fbUser = null; _rosterNames = null;
+  _updateAuthUI();
+}
+function _fbErr(code){
+  const m={'auth/invalid-email':'Invalid email address.',
+    'auth/user-not-found':'No account with this email.',
+    'auth/wrong-password':'Incorrect password.',
+    'auth/invalid-credential':'Incorrect email or password.',
+    'auth/email-already-in-use':'An account with this email already exists.',
+    'auth/weak-password':'Password must be at least 6 characters.',
+    'auth/too-many-requests':'Too many attempts — try again later.'};
+  return m[code]||'Error: '+code;
+}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&document.getElementById('login-overlay').style.display==='flex') doLogin();
+});
+
+// ── Roster editor modal ────────────────────────────────────────────────────
+let _rTab='h', _rQ='';
+
+function openRosterModal(){
+  document.getElementById('roster-modal').style.display='flex';
+  document.getElementById('roster-search').value=''; _rQ='';
+  switchRosterTab('h',document.getElementById('roster-tab-h'));
+}
+function closeRosterModal(){
+  document.getElementById('roster-modal').style.display='none';
+}
+function switchRosterTab(tab,btn){
+  _rTab=tab;
+  document.querySelectorAll('#roster-modal .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _renderRosterList();
+}
+function filterRosterSearch(){
+  _rQ=document.getElementById('roster-search').value.toLowerCase().trim();
+  _renderRosterList();
+}
+function _rPool(){
+  if(_rTab==='h')  return LB_ALL;
+  if(_rTab==='sp') return LB_SP_ALL;
+  return LB_RP_ALL;
+}
+function _renderRosterList(){
+  const pool=_rPool();
+  let players=_rQ ? pool.filter(p=>p.name.toLowerCase().includes(_rQ)||(p.team||'').toLowerCase().includes(_rQ)) : [...pool];
+  // Sort: on-roster first, then alphabetical
+  players.sort((a,b)=>{
+    const aN=TA_ROSTER_NORMS.has(taNorm(a.name));
+    const bN=TA_ROSTER_NORMS.has(taNorm(b.name));
+    if(aN!==bN) return aN?-1:1;
+    return a.name<b.name?-1:1;
+  });
+  if(!_rQ) players=players.slice(0,80); // cap unfiltered list
+  const el=document.getElementById('roster-player-list');
+  if(!players.length){
+    el.innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem">No players found</div>';
+  } else {
+    el.innerHTML=players.map(p=>{
+      const on=TA_ROSTER_NORMS.has(taNorm(p.name));
+      const safe=p.name.replace(/\/g,'\\').replace(/'/g,"\'");
+      const badge=p.team?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${p.team}</span>`:'';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
+        <span>${p.name}${badge}</span>
+        <button onclick="_togglePlayer('${safe}',${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
+      </div>`;
+    }).join('');
+  }
+  const rc=_rosterNames?_rosterNames.length:DEFAULT_TA_NAMES.length;
+  document.getElementById('roster-count-info').textContent=rc+' players on roster';
+}
+async function _togglePlayer(name, isOn){
+  if(!_fbUser || _rosterNames===null) return;
+  let names=[..._rosterNames];
+  if(isOn){
+    names=names.filter(n=>taNorm(n)!==taNorm(name));
+  } else {
+    if(!names.some(n=>taNorm(n)===taNorm(name))) names.push(name);
+  }
+  _rosterNames=names;
+  await _saveRoster(_fbUser.uid, names);
+  _rebuildTA(names);
+  _renderRosterList();
+}
+// Close modal on backdrop click
+document.getElementById('roster-modal').addEventListener('click',function(e){
+  if(e.target===this) closeRosterModal();
+});
 </script>
+
+<!-- ══ Login Overlay ══ -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:min(92vw,380px);box-shadow:0 10px 40px rgba(0,0,0,.6)">
+    <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:var(--gold)">👑 Team Alex Login</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px">Sign in to manage your roster across devices</div>
+    <div id="login-error" style="display:none;color:#f55;font-size:.8rem;margin-bottom:10px;padding:8px 10px;background:rgba(255,80,80,.12);border-radius:6px"></div>
+    <input id="login-email" type="email" placeholder="Email" autocomplete="email"
+      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;margin-bottom:10px">
+    <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password"
+      style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button id="login-btn" onclick="doLogin()" style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:.9rem;font-weight:700;cursor:pointer">Sign In</button>
+      <button id="signup-btn" onclick="doSignup()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:.9rem;cursor:pointer">Create Account</button>
+    </div>
+    <div style="text-align:center">
+      <button onclick="closeLoginOverlay()" style="background:none;border:none;color:var(--muted);font-size:.78rem;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Roster Editor Modal ══ -->
+<div id="roster-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9998;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 8px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;width:min(96vw,500px);box-shadow:0 10px 40px rgba(0,0,0,.6);flex-shrink:0">
+    <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">✏️ Edit Roster</div>
+      <button onclick="closeRosterModal()" style="background:none;border:none;color:var(--muted);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 4px">✕</button>
+    </div>
+    <div style="padding:14px 16px">
+      <input id="roster-search" type="text" placeholder="Search players…" oninput="filterRosterSearch()"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;margin-bottom:12px">
+      <div class="toggle-group" style="margin-bottom:12px">
+        <button class="tgl-btn active" id="roster-tab-h"  onclick="switchRosterTab('h',this)">🏏 Hitters</button>
+        <button class="tgl-btn"        id="roster-tab-sp" onclick="switchRosterTab('sp',this)">⚾ SP</button>
+        <button class="tgl-btn"        id="roster-tab-rp" onclick="switchRosterTab('rp',this)">🔥 RP</button>
+      </div>
+      <div id="roster-player-list" style="max-height:55vh;overflow-y:auto"></div>
+    </div>
+    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);text-align:center">
+      <div id="roster-count-info" style="font-size:.78rem;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
