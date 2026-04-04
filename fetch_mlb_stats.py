@@ -2975,7 +2975,7 @@ function renderRP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
-    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:D2()}</td>
+    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:'<span class="c-dim">—</span>'}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -3219,7 +3219,7 @@ function renderTARP(){
     <td class="r">${gl(p.k,rpL.k)||fK_p(p.k)}</td>
     <td class="r">${gl(p.sv,rpL.sv)||(p.sv>0?`${p.sv}`:'0')}</td>
     <td class="r">${gl(p.hld,rpL.hld)||(p.hld>0?`${p.hld}`:'0')}</td>
-    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:D2()}</td>
+    <td class="r">${p.gm_li!=null?`<span class="c-dim" style="font-size:.8rem">${p.gm_li.toFixed(2)}</span>`:'<span class="c-dim">—</span>'}</td>
     <td class="r">${gl(p.bs,rpL.bs)||(p.bs>0?`${p.bs}`:'0')}</td>
     <td class="r">${gl(p.w,rpL.w)||(p.w>0?`${p.w}`:'0')}</td>
     <td class="r">${gl(p.whiffs,rpL.whiffs)||fWh(p.whiffs)}</td>
@@ -3278,8 +3278,8 @@ const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
 const rpLIMap = {}; LB_RP_ALL.forEach(p=>{ if(p.gm_li!=null) rpLIMap[p.id]=p.gm_li; });
 RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
 TA_RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
-// Re-render yesterday RP tables now that gmLI is populated (initial renders ran before LB data loaded)
-renderRP(); renderTARP();
+// Re-render yesterday RP tables now that gmLI is populated (deferred so D2/helpers are fully initialized)
+setTimeout(()=>{ renderRP(); renderTARP(); }, 0);
 
 // Pre-compute k_bb_pct for any pitcher missing it (k% - bb%) — must run BEFORE buildCfg
 [...LB_SP_ALL,...LB_RP_ALL].forEach(p=>{
