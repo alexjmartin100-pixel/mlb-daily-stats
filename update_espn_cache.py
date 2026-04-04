@@ -106,10 +106,10 @@ def fetch_rosters(league_ids: list, year: int) -> tuple:
             # Give the page a moment to settle and set all auth cookies
             page.wait_for_timeout(2_000)
 
-        # ── Navigate to fantasy home to ensure all fantasy cookies are set ─
-        page.goto("https://fantasy.espn.com/baseball/team",
-                  wait_until="domcontentloaded", timeout=30_000)
-        page.wait_for_timeout(1_500)
+        # ── Navigate to fantasy home so ESPN sets all session cookies ────────
+        page.goto("https://fantasy.espn.com/baseball/",
+                  wait_until="networkidle", timeout=45_000)
+        page.wait_for_timeout(2_000)
 
         # ── Save / refresh the session state ──────────────────────────────
         ctx.storage_state(path=str(SESSION_FILE))
@@ -123,7 +123,10 @@ def fetch_rosters(league_ids: list, year: int) -> tuple:
                 swid_inner = cookie["value"].strip("{}").upper()
                 break
 
-        # ── Fetch each league via direct browser navigation ───────────────
+        # ── Fetch each league via fetch() inside the authenticated page ───
+        # page.goto() to an API endpoint looks like a browser navigation and
+        # ESPN redirects it to the web app. fetch() from inside the page looks
+        # like the ESPN web app's own XHR calls, which ESPN answers with JSON.
         for lid in league_ids:
             api_url = (
                 f"https://fantasy.espn.com/apis/v3/games/flb"
@@ -131,20 +134,30 @@ def fetch_rosters(league_ids: list, year: int) -> tuple:
                 f"?view=mRoster&view=mTeam"
             )
             try:
-                page.goto(api_url, wait_until="domcontentloaded", timeout=30_000)
-                raw = page.evaluate("document.body.innerText")
+                js = f"""
+async () => {{
+    const r = await fetch({json.dumps(api_url)}, {{
+        credentials: 'include',
+        headers: {{
+            'Accept': 'application/json',
+            'X-Fantasy-Source': 'kona',
+            'X-Fantasy-Platform': 'kona-PROD-m.5533.fantasy.x.011478067.0'
+        }}
+    }});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+}}
+"""
+                data = page.evaluate(js)
 
-                # Detect if ESPN returned the web app instead of JSON
-                if raw.lstrip().startswith("<") or "Skip to main content" in raw:
-                    # Session expired — delete the state file so next run re-prompts
+                # Detect if ESPN returned an error object instead of league data
+                if not isinstance(data, dict) or "teams" not in data:
                     SESSION_FILE.unlink(missing_ok=True)
                     raise ValueError(
-                        "Session expired or not authenticated.\n"
-                        f"  Deleted {SESSION_FILE.name} — run the script again\n"
-                        "  to go through the one-time login process."
+                        f"Unexpected response (no 'teams' key): {str(data)[:200]}\n"
+                        f"  Deleted {SESSION_FILE.name} — run again to re-login."
                     )
 
-                data        = json.loads(raw)
                 league_name = (data.get("settings") or {}).get("name") or f"League {lid}"
                 teams_out: dict = {}
 
