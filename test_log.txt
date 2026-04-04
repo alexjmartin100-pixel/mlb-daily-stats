@@ -1,0 +1,337 @@
+Checking dependencies…
+  Installing Playwright Chromium (cached after first run)…
+
+=======================================================
+  MLB Daily Stats · Sunday, March 29, 2026
+=======================================================
+
+[ 1/6 ] Statcast
+  Downloading Statcast data for 2026-03-29…
+  0%|          | 0/1 [00:00<?, ?it/s]100%|##########| 1/1 [00:00<00:00, 18.58it/s]
+  3,662 pitches across 12 game(s)
+  Stuff+ columns in Statcast data: none found
+  Starters identified: 24
+
+[ 2/6 ] Stolen Bases (MLB Stats API)
+  Fetching SB data via MLB Stats API for 2026-03-29…
+    9 steal attempt(s) for 9 player(s)
+
+[ 2b/6 ] Pitcher box score data (W/SV/HLD/BS)
+  Fetching pitcher box score data via MLB Stats API for 2026-03-29…
+      Save: Ryan Helsley (id=664854)
+      Save: Lucas Erceg (id=668674)
+      Save: Jeff Hoffman (id=656546)
+      Save: Emilio Pagán (id=641941)
+      Save: José Urquidy (id=664353)
+      Save: Bryan King (id=687911)
+      Save: Trevor Megill (id=656730)
+      Save: Clayton Beeter (id=690925)
+      Save: Cooper Criswell (id=681867)
+    Pitcher box data: 40 pitcher(s) with W/SV/HLD/BS
+
+[ 3/6 ] Aggregating stats
+  [Statcast Stuff+ cols] stuff_plus_stuff_avg: present=False, all-null=True | stuff_plus_loc_avg: present=False
+  244 batter rows · 106 pitcher rows
+
+[ 4/6 ] Player lookup
+  Looking up 12 missing player(s) via MLB Stats API…
+
+[ 5/6 ] Stuff+
+  Stuff+ from Statcast pitch columns: 0/106 pitcher(s)
+  Fetching Baseball Savant season velocity (2026)…
+  ✓ Savant season velo: 319 pitchers, 104/106 matched
+  FanGraphs: cookie file found + trying Playwright…
+  Fetching FanGraphs Stuff+/Loc+ (game-log API) for 2026-03-29…
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=11847&position=P&type=0
+    Chris Martin: got 3 game-log rows via pybaseball id=11847
+      Column names: ['Date', 'Opp', 'teamid', 'season', 'Team', 'HomeAway', 'Age', 'W', 'L', 'ERA', 'G', 'GS', 'QS', 'CG', 'ShO', 'SV', 'HLD', 'BS', 'IP', 'TBF', 'H', 'R', 'ER', 'HR', 'BB', 'IBB', 'HBP', 'WP', 'BK', 'SO', 'K/9', 'BB/9', 'H/9', 'K/BB', 'IFH%', 'BUH%', 'GB', 'FB', 'LD', 'IFFB', 'IFH', 'BU', 'BUH', 'K%', 'BB%', 'K-BB%', 'SIERA', 'HR/9', 'AVG', 'WHIP', 'BABIP', 'LOB%', 'FIP', 'E-F', 'xFIP', 'ERA-', 'FIP-', 'xFIP-', 'GB/FB', 'LD%', 'GB%', 'FB%', 'IFFB%', 'HR/FB', 'RS', 'RS/9', 'Balls', 'Strikes', 'Pitches', 'WPA', '-WPA', '+WPA', 'RE24', 'REW', 'pLI', 'inLI', 'gmLI', 'exLI', 'Pulls', 'Games', 'WPA/LI', 'Clutch', 'SD', 'MD', 'FB%1', 'FBv', 'SL%', 'SLv', 'CT%', 'CTv', 'SF%', 'SFv', 'wFB', 'wSL', 'wCT', 'wSF', 'wFB/C', 'wSL/C', 'wCT/C', 'wSF/C', 'O-Swing%', 'Z-Swing%', 'Swing%', 'O-Contact%', 'Z-Contact%', 'Contact%', 'Zone%', 'F-Strike%', 'SwStr%', 'Pull', 'Cent', 'Oppo', 'Soft', 'Med', 'Hard', 'bipCount', 'Pull%', 'Cent%', 'Oppo%', 'Soft%', 'Med%', 'Hard%', 'PlayerName', 'playerid', 'tERA', 'pb_o_FF', 'pb_s_FF', 'pb_c_FF', 'pb_o_SI', 'pb_s_SI', 'pb_c_SI', 'pb_o_SL', 'pb_s_SL', 'pb_c_SL', 'pb_o_FC', 'pb_s_FC', 'pb_c_FC', 'pb_o_FS', 'pb_s_FS', 'pb_c_FS', 'pb_overall', 'pb_stuff', 'pb_command', 'pb_xRV100', 'pb_ERA', 'sp_s_FF', 'sp_l_FF', 'sp_p_FF', 'sp_s_SI', 'sp_l_SI', 'sp_p_SI', 'sp_s_SL', 'sp_l_SL', 'sp_p_SL', 'sp_s_FC', 'sp_l_FC', 'sp_p_FC', 'sp_s_FS', 'sp_l_FS', 'sp_p_FS', 'sp_stuff', 'sp_location', 'sp_pitching', 'PPTV', 'CPTV', 'BPTV', 'DSV', 'DGV', 'BTV', 'EBV', 'ESV', 'rFTeamV', 'rBTeamV', 'rTV', 'xERA', 'pfxFA%', 'pfxFC%', 'pfxFS%', 'pfxSI%', 'pfxSL%', 'pfxST%', 'pfxvFA', 'pfxvFC', 'pfxvFS', 'pfxvSI', 'pfxvSL', 'pfxvST', 'pfxFA-X', 'pfxFC-X', 'pfxFS-X', 'pfxSI-X', 'pfxSL-X', 'pfxST-X', 'pfxFA-Z', 'pfxFC-Z', 'pfxFS-Z', 'pfxSI-Z', 'pfxSL-Z', 'pfxST-Z', 'pfxwFA', 'pfxwFC', 'pfxwFS', 'pfxwSI', 'pfxwSL', 'pfxwST', 'pfxwFA/C', 'pfxwFC/C', 'pfxwFS/C', 'pfxwSI/C', 'pfxwSL/C', 'pfxwST/C', 'pfxaaFA', 'pfxaaFC', 'pfxaaFS', 'pfxaaSI', 'pfxaaSL', 'pfxaaST', 'pfxspFA', 'pfxspFC', 'pfxspFS', 'pfxspSI', 'pfxspSL', 'pfxspST', 'pfxO-Swing%', 'pfxZ-Swing%', 'pfxSwing%', 'pfxO-Contact%', 'pfxZ-Contact%', 'pfxContact%', 'pfxZone%', 'pfxPace', 'AvgBatSpeed', 'FastSwing%', 'SwingLength', 'SquaredUpContact%', 'SquaredUpSwing%', 'BlastContact%', 'BlastSwing%', 'Swords', 'CompetitiveSwings', 'Tilt', 'AttackAngle', 'AttackDirection', 'IdealAttackAngle%', 'DepthInBox', 'DistanceOffPlate', 'scH-Swing%', 'scH-Contact%', 'scH-Zone%', 'scS-Swing%', 'scS-Contact%', 'scS-Zone%', 'scC-Swing%', 'scC-Contact%', 'scC-Zone%', 'scW-Zone%', 'scSI-Swing%', 'scSI-Contact%', 'scSI-Zone%', 'scSO-Swing%', 'scSO-Contact%', 'scSO-Zone%', 'scO-Swing%', 'scO-Contact%', 'scO-Zone%', 'scZ-Swing%', 'scZ-Contact%', 'scZ-Zone%', 'piFA%', 'piFC%', 'piFS%', 'piSI%', 'piSL%', 'pivFA', 'pivFC', 'pivFS', 'pivSI', 'pivSL', 'piFA-X', 'piFC-X', 'piFS-X', 'piSI-X', 'piSL-X', 'piFA-Z', 'piFC-Z', 'piFS-Z', 'piSI-Z', 'piSL-Z', 'piwFA', 'piwFC', 'piwFS', 'piwSI', 'piwSL', 'piwFA/C', 'piwFC/C', 'piwFS/C', 'piwSI/C', 'piwSL/C', 'piO-Swing%', 'piZ-Swing%', 'piSwing%', 'piO-Contact%', 'piZ-Contact%', 'piContact%', 'piZone%', 'Events', 'EV', 'LA', 'Barrels', 'Barrel%', 'maxEV', 'HardHit', 'HardHit%', 'gamedate', 'dh']
+      Stuff+ col='sp_stuff'  Loc+ col='sp_location'
+    Chris Martin (<a href="/wins.aspx?date=2026-03-29&team=Rangers&dh=0">2026-03-29</a>): Stuff+=105.0  Loc+=34.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=11423&position=P&type=0
+    Jose Quintana: got 2 game-log rows via pybaseball id=11423
+    Jose Quintana (<a href="/wins.aspx?date=2026-03-29&team=Rockies&dh=0">2026-03-29</a>): Stuff+=88.0  Loc+=84.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=11426&position=P&type=0
+    Drew Pomeranz: got 3 game-log rows via pybaseball id=11426
+    Drew Pomeranz (<a href="/wins.aspx?date=2026-03-29&team=Angels&dh=0">2026-03-29</a>): Stuff+=109.0  Loc+=52.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=13361&position=P&type=0
+    Steven Matz: got 2 game-log rows via pybaseball id=13361
+    Steven Matz (<a href="/wins.aspx?date=2026-03-29&team=Rays&dh=0">2026-03-29</a>): Stuff+=101.0  Loc+=106.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=13346&position=P&type=0
+    Hoby Milner: got 3 game-log rows via pybaseball id=13346
+    Hoby Milner (<a href="/wins.aspx?date=2026-03-29&team=Cubs&dh=0">2026-03-29</a>): Stuff+=94.0  Loc+=134.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=13435&position=P&type=0
+    Pierce Johnson: got 4 game-log rows via pybaseball id=13435
+    Pierce Johnson (<a href="/wins.aspx?date=2026-03-29&team=Reds&dh=0">2026-03-29</a>): Stuff+=101.0  Loc+=123.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=13580&position=P&type=0
+    Steven Okert: got 3 game-log rows via pybaseball id=13580
+    Steven Okert (<a href="/wins.aspx?date=2026-03-29&team=Astros&dh=0">2026-03-29</a>): Stuff+=125.0  Loc+=94.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=16918&position=P&type=0
+    Luke Weaver: got 3 game-log rows via pybaseball id=16918
+    Luke Weaver (<a href="/wins.aspx?date=2026-03-29&team=Mets&dh=0">2026-03-29</a>): Stuff+=87.0  Loc+=80.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=14706&position=P&type=0
+    Anthony Banda: got 3 game-log rows via pybaseball id=14706
+    Anthony Banda (<a href="/wins.aspx?date=2026-03-29&team=Twins&dh=0">2026-03-29</a>): Stuff+=97.0  Loc+=132.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=12447&position=P&type=0
+    Seth Lugo: got 2 game-log rows via pybaseball id=12447
+    Seth Lugo (<a href="/wins.aspx?date=2026-03-29&team=Royals&dh=0">2026-03-29</a>): Stuff+=91.0  Loc+=115.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=13799&position=P&type=0
+    Matt Strahm: got 3 game-log rows via pybaseball id=13799
+    Matt Strahm (<a href="/wins.aspx?date=2026-03-29&team=Royals&dh=0">2026-03-29</a>): Stuff+=113.0  Loc+=116.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19249&position=P&type=0
+    Seranthony Domínguez: got 3 game-log rows via pybaseball id=19249
+    Seranthony Domínguez (<a href="/wins.aspx?date=2026-03-29&team=White Sox&dh=0">2026-03-29</a>): Stuff+=100.0  Loc+=96.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=15488&position=P&type=0
+    Antonio Senzatela: got 2 game-log rows via pybaseball id=15488
+    Antonio Senzatela (<a href="/wins.aspx?date=2026-03-29&team=Rockies&dh=0">2026-03-29</a>): Stuff+=110.0  Loc+=116.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=6107&position=P&type=0
+    Huascar Brazobán: got 3 game-log rows via pybaseball id=6107
+    Huascar Brazobán (<a href="/wins.aspx?date=2026-03-29&team=Mets&dh=0">2026-03-29</a>): Stuff+=113.0  Loc+=129.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17556&position=P&type=0
+    Jimmy Herget: got 3 game-log rows via pybaseball id=17556
+    Jimmy Herget (<a href="/wins.aspx?date=2026-03-29&team=Rockies&dh=0">2026-03-29</a>): Stuff+=108.0  Loc+=119.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=15507&position=P&type=0
+    Hunter Harvey: got 2 game-log rows via pybaseball id=15507
+    Hunter Harvey (<a href="/wins.aspx?date=2026-03-29&team=Cubs&dh=0">2026-03-29</a>): Stuff+=97.0  Loc+=110.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=15873&position=P&type=0
+    Sean Manaea: got 2 game-log rows via pybaseball id=15873
+    Sean Manaea (<a href="/wins.aspx?date=2026-03-29&team=Mets&dh=0">2026-03-29</a>): Stuff+=99.0  Loc+=84.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19804&position=P&type=0
+    Bryan Baker: got 3 game-log rows via pybaseball id=19804
+    Bryan Baker (<a href="/wins.aspx?date=2026-03-29&team=Rays&dh=0">2026-03-29</a>): Stuff+=112.0  Loc+=98.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20387&position=P&type=0
+    Anthony Kay: got 2 game-log rows via pybaseball id=20387
+    Anthony Kay (<a href="/wins.aspx?date=2026-03-29&team=White Sox&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=99.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=15734&position=P&type=0
+    Brad Keller: got 2 game-log rows via pybaseball id=15734
+    Brad Keller (<a href="/wins.aspx?date=2026-03-29&team=Phillies&dh=0">2026-03-29</a>): Stuff+=122.0  Loc+=117.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19316&position=P&type=0
+    Eric Lauer: got 2 game-log rows via pybaseball id=19316
+    Eric Lauer (<a href="/wins.aspx?date=2026-03-29&team=Blue Jays&dh=0">2026-03-29</a>): Stuff+=91.0  Loc+=112.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=21224&position=P&type=0
+    Bailey Ober: got 2 game-log rows via pybaseball id=21224
+    Bailey Ober (<a href="/wins.aspx?date=2026-03-29&team=Twins&dh=0">2026-03-29</a>): Stuff+=87.0  Loc+=100.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=14771&position=P&type=0
+    Emilio Pagán: got 3 game-log rows via pybaseball id=14771
+    Emilio Pagán (<a href="/wins.aspx?date=2026-03-29&team=Reds&dh=0">2026-03-29</a>): Stuff+=89.0  Loc+=91.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17878&position=P&type=0
+    Dennis Santana: got 4 game-log rows via pybaseball id=17878
+    Dennis Santana (<a href="/wins.aspx?date=2026-03-29&team=Pirates&dh=0">2026-03-29</a>): Stuff+=95.0  Loc+=101.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20185&position=P&type=0
+    Zach Pop: got 3 game-log rows via pybaseball id=20185
+    Zach Pop (<a href="/wins.aspx?date=2026-03-29&team=Phillies&dh=0">2026-03-29</a>): Stuff+=117.0  Loc+=23.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=16609&position=P&type=0
+    Bryan Abreu: got 3 game-log rows via pybaseball id=16609
+    Bryan Abreu (<a href="/wins.aspx?date=2026-03-29&team=Astros&dh=0">2026-03-29</a>): Stuff+=82.0  Loc+=99.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17968&position=P&type=0
+    Brock Burke: got 3 game-log rows via pybaseball id=17968
+    Brock Burke (<a href="/wins.aspx?date=2026-03-29&team=Reds&dh=0">2026-03-29</a>): Stuff+=112.0  Loc+=109.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17432&position=P&type=0
+    Jeff Hoffman: got 3 game-log rows via pybaseball id=17432
+    Jeff Hoffman (<a href="/wins.aspx?date=2026-03-29&team=Blue Jays&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=110.0
+    Grant Holmes: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17722&position=P&type=0
+    Trevor Megill: got 2 game-log rows via pybaseball id=17722
+    Trevor Megill (<a href="/wins.aspx?date=2026-03-29&team=Brewers&dh=0">2026-03-29</a>): Stuff+=124.0  Loc+=147.0
+    Michael Petersen: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27517&position=P&type=0
+    Jared Koenig: got 2 game-log rows via pybaseball id=27517
+    Jared Koenig (<a href="/wins.aspx?date=2026-03-29&team=Brewers&dh=0">2026-03-29</a>): Stuff+=125.0  Loc+=123.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20422&position=P&type=0
+    Jovani Morán: got 2 game-log rows via pybaseball id=20422
+    Jovani Morán (<a href="/wins.aspx?date=2026-03-29&team=Red Sox&dh=0">2026-03-29</a>): Stuff+=97.0  Loc+=82.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19926&position=P&type=0
+    Tony Santillan: got 3 game-log rows via pybaseball id=19926
+    Tony Santillan (<a href="/wins.aspx?date=2026-03-29&team=Reds&dh=0">2026-03-29</a>): Stuff+=88.0  Loc+=60.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=21504&position=P&type=0
+    Jake Irvin: got 2 game-log rows via pybaseball id=21504
+    Jake Irvin (<a href="/wins.aspx?date=2026-03-29&team=Nationals&dh=0">2026-03-29</a>): Stuff+=112.0  Loc+=108.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=18674&position=P&type=0
+    Jake Woodford: got 3 game-log rows via pybaseball id=18674
+    Jake Woodford (<a href="/wins.aspx?date=2026-03-29&team=Brewers&dh=0">2026-03-29</a>): Stuff+=99.0  Loc+=129.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19618&position=P&type=0
+    Jordan Hicks: got 3 game-log rows via pybaseball id=19618
+    Jordan Hicks (<a href="/wins.aspx?date=2026-03-29&team=White Sox&dh=0">2026-03-29</a>): Stuff+=109.0  Loc+=112.0
+    Tyler Phillips: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19337&position=P&type=0
+    Richard Lovelady: got 3 game-log rows via pybaseball id=19337
+    Richard Lovelady (<a href="/wins.aspx?date=2026-03-29&team=Mets&dh=0">2026-03-29</a>): Stuff+=99.0  Loc+=88.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=17897&position=P&type=0
+    Garrett Cleavinger: got 3 game-log rows via pybaseball id=17897
+    Garrett Cleavinger (<a href="/wins.aspx?date=2026-03-29&team=Rays&dh=0">2026-03-29</a>): Stuff+=113.0  Loc+=44.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=18064&position=P&type=0
+    Phil Maton: got 3 game-log rows via pybaseball id=18064
+    Phil Maton (<a href="/wins.aspx?date=2026-03-29&team=Cubs&dh=0">2026-03-29</a>): Stuff+=84.0  Loc+=126.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=18413&position=P&type=0
+    José Urquidy: got 2 game-log rows via pybaseball id=18413
+    José Urquidy (<a href="/wins.aspx?date=2026-03-29&team=Pirates&dh=0">2026-03-29</a>): Stuff+=108.0  Loc+=129.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=18138&position=P&type=0
+    Ryan Helsley: got 3 game-log rows via pybaseball id=18138
+    Ryan Helsley (<a href="/wins.aspx?date=2026-03-29&team=Orioles&dh=0">2026-03-29</a>): Stuff+=97.0  Loc+=116.0
+    Grant Wolfram: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19959&position=P&type=0
+    Jesús Luzardo: got 2 game-log rows via pybaseball id=19959
+    Jesús Luzardo (<a href="/wins.aspx?date=2026-03-29&team=Phillies&dh=0">2026-03-29</a>): Stuff+=116.0  Loc+=94.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=21863&position=P&type=0
+    George Soriano: got 2 game-log rows via pybaseball id=21863
+    George Soriano (<a href="/wins.aspx?date=2026-03-29&team=Cardinals&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=117.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=25911&position=P&type=0
+    Yennier Cano: got 3 game-log rows via pybaseball id=25911
+    Yennier Cano (<a href="/wins.aspx?date=2026-03-29&team=Orioles&dh=0">2026-03-29</a>): Stuff+=122.0  Loc+=127.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19178&position=P&type=0
+    Tommy Nance: got 3 game-log rows via pybaseball id=19178
+    Tommy Nance (<a href="/wins.aspx?date=2026-03-29&team=Blue Jays&dh=0">2026-03-29</a>): Stuff+=140.0  Loc+=118.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=22051&position=P&type=0
+    John King: got 2 game-log rows via pybaseball id=22051
+    John King (<a href="/wins.aspx?date=2026-03-29&team=Marlins&dh=0">2026-03-29</a>): Stuff+=104.0  Loc+=88.0
+    Cole Winn: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19360&position=P&type=0
+    Lucas Erceg: got 3 game-log rows via pybaseball id=19360
+    Lucas Erceg (<a href="/wins.aspx?date=2026-03-29&team=Royals&dh=0">2026-03-29</a>): Stuff+=105.0  Loc+=103.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=22201&position=P&type=0
+    Mackenzie Gore: got 2 game-log rows via pybaseball id=22201
+    Mackenzie Gore (<a href="/wins.aspx?date=2026-03-29&team=Rangers&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=104.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19716&position=P&type=0
+    Dustin May: got 2 game-log rows via pybaseball id=19716
+    Dustin May (<a href="/wins.aspx?date=2026-03-29&team=Cardinals&dh=0">2026-03-29</a>): Stuff+=99.0  Loc+=95.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20000&position=P&type=0
+    Tyler Wells: got 3 game-log rows via pybaseball id=20000
+    Tyler Wells (<a href="/wins.aspx?date=2026-03-29&team=Orioles&dh=0">2026-03-29</a>): Stuff+=106.0  Loc+=99.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=22264&position=P&type=0
+    Shane Baz: got 2 game-log rows via pybaseball id=22264
+    Shane Baz (<a href="/wins.aspx?date=2026-03-29&team=Orioles&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=92.0
+    J. T. Ginn: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27572&position=P&type=0
+    Carmen Mlodzinski: got 2 game-log rows via pybaseball id=27572
+    Carmen Mlodzinski (<a href="/wins.aspx?date=2026-03-29&team=Pirates&dh=0">2026-03-29</a>): Stuff+=97.0  Loc+=124.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=22288&position=P&type=0
+    Mason Englert: got 2 game-log rows via pybaseball id=22288
+    Mason Englert (<a href="/wins.aspx?date=2026-03-29&team=Rays&dh=0">2026-03-29</a>): Stuff+=95.0  Loc+=114.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=26214&position=P&type=0
+    Chris Murphy: got 3 game-log rows via pybaseball id=26214
+    Chris Murphy (<a href="/wins.aspx?date=2026-03-29&team=White Sox&dh=0">2026-03-29</a>): Stuff+=109.0  Loc+=114.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20375&position=P&type=0
+    Greg Weissert: got 3 game-log rows via pybaseball id=20375
+    Greg Weissert (<a href="/wins.aspx?date=2026-03-29&team=Red Sox&dh=0">2026-03-29</a>): Stuff+=111.0  Loc+=117.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=22361&position=P&type=0
+    Colin Holderman: got 3 game-log rows via pybaseball id=22361
+    Colin Holderman (<a href="/wins.aspx?date=2026-03-29&team=Guardians&dh=0">2026-03-29</a>): Stuff+=107.0  Loc+=73.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20020&position=P&type=0
+    John Schreiber: got 2 game-log rows via pybaseball id=20020
+    John Schreiber (<a href="/wins.aspx?date=2026-03-29&team=Royals&dh=0">2026-03-29</a>): Stuff+=96.0  Loc+=109.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20023&position=P&type=0
+    Rico Garcia: got 2 game-log rows via pybaseball id=20023
+    Rico Garcia (<a href="/wins.aspx?date=2026-03-29&team=Orioles&dh=0">2026-03-29</a>): Stuff+=149.0  Loc+=140.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19444&position=P&type=0
+    Yohan Ramírez: got 3 game-log rows via pybaseball id=19444
+    Yohan Ramírez (<a href="/wins.aspx?date=2026-03-29&team=Pirates&dh=0">2026-03-29</a>): Stuff+=118.0  Loc+=84.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=19614&position=P&type=0
+    Cionel Pérez: got 3 game-log rows via pybaseball id=19614
+    Cionel Pérez (<a href="/wins.aspx?date=2026-03-29&team=Nationals&dh=0">2026-03-29</a>): Stuff+=100.0  Loc+=114.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=29950&position=P&type=0
+    Jordan Leasure: got 3 game-log rows via pybaseball id=29950
+    Jordan Leasure (<a href="/wins.aspx?date=2026-03-29&team=White Sox&dh=0">2026-03-29</a>): Stuff+=114.0  Loc+=134.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27470&position=P&type=0
+    Emerson Hancock: got 2 game-log rows via pybaseball id=27470
+    Emerson Hancock (<a href="/wins.aspx?date=2026-03-29&team=Mariners&dh=0">2026-03-29</a>): Stuff+=99.0  Loc+=116.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=23363&position=P&type=0
+    Robert Garcia: got 3 game-log rows via pybaseball id=23363
+    Robert Garcia (<a href="/wins.aspx?date=2026-03-29&team=Rangers&dh=0">2026-03-29</a>): Stuff+=121.0  Loc+=87.0
+    Pj Poulin: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20385&position=P&type=0
+    Isaac Mattson: got 3 game-log rows via pybaseball id=20385
+    Isaac Mattson (<a href="/wins.aspx?date=2026-03-29&team=Pirates&dh=0">2026-03-29</a>): Stuff+=114.0  Loc+=129.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27474&position=P&type=0
+    Max Meyer: got 2 game-log rows via pybaseball id=27474
+    Max Meyer (<a href="/wins.aspx?date=2026-03-29&team=Marlins&dh=0">2026-03-29</a>): Stuff+=109.0  Loc+=113.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=23779&position=P&type=0
+    Justin Bruihl: got 3 game-log rows via pybaseball id=23779
+    Justin Bruihl (<a href="/wins.aspx?date=2026-03-29&team=Cardinals&dh=0">2026-03-29</a>): Stuff+=112.0  Loc+=111.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27500&position=P&type=0
+    Slade Cecconi: got 2 game-log rows via pybaseball id=27500
+    Slade Cecconi (<a href="/wins.aspx?date=2026-03-29&team=Guardians&dh=0">2026-03-29</a>): Stuff+=98.0  Loc+=97.0
+    Kyle Backhus: no game-log data found (tried [])
+    Braydon Fisher: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=24614&position=P&type=0
+    Victor Vodnik: got 2 game-log rows via pybaseball id=24614
+    Victor Vodnik (<a href="/wins.aspx?date=2026-03-29&team=Rockies&dh=0">2026-03-29</a>): Stuff+=104.0  Loc+=102.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=30074&position=P&type=0
+    Chase Silseth: got 4 game-log rows via pybaseball id=30074
+    Chase Silseth (<a href="/wins.aspx?date=2026-03-29&team=Angels&dh=0">2026-03-29</a>): Stuff+=106.0  Loc+=124.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=24737&position=P&type=0
+    Gus Varland: got 2 game-log rows via pybaseball id=24737
+    Gus Varland (<a href="/wins.aspx?date=2026-03-29&team=Nationals&dh=0">2026-03-29</a>): Stuff+=105.0  Loc+=122.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=24975&position=P&type=0
+    Cooper Criswell: got 3 game-log rows via pybaseball id=24975
+    Cooper Criswell (<a href="/wins.aspx?date=2026-03-29&team=Mariners&dh=0">2026-03-29</a>): Stuff+=103.0  Loc+=146.0
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=20546&position=P&type=0
+    Grant Anderson: got 3 game-log rows via pybaseball id=20546
+    Grant Anderson (<a href="/wins.aspx?date=2026-03-29&team=Brewers&dh=0">2026-03-29</a>): Stuff+=93.0  Loc+=85.0
+    Mason Montgomery: no game-log data found (tried [])
+    Yaramil Hiraldo: no game-log data found (tried [])
+    Roddery Muñoz: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=33829&position=P&type=0
+    Shota Imanaga: got 2 game-log rows via pybaseball id=33829
+    Shota Imanaga (<a href="/wins.aspx?date=2026-03-29&team=Cubs&dh=0">2026-03-29</a>): Stuff+=105.0  Loc+=101.0
+    Christian Roa: no game-log data found (tried [])
+    Jack Kochanowicz: no game-log data found (tried [])
+    Brandon Sproat: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=25679&position=P&type=0
+    Kevin Kelly: got 2 game-log rows via pybaseball id=25679
+    Kevin Kelly (<a href="/wins.aspx?date=2026-03-29&team=Rays&dh=0">2026-03-29</a>): Stuff+=117.0  Loc+=106.0
+    Bryan King: no game-log data found (tried [])
+    Chris Roycroft: no game-log data found (tried [])
+    Peyton Pallette: no game-log data found (tried [])
+    Mason Fluharty: no game-log data found (tried [])
+    Matt Pushard: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27494&position=P&type=0
+    Clayton Beeter: got 3 game-log rows via pybaseball id=27494
+    Clayton Beeter (<a href="/wins.aspx?date=2026-03-29&team=Nationals&dh=0">2026-03-29</a>): Stuff+=106.0  Loc+=135.0
+    Mick Abel: no game-log data found (tried [])
+    Nolan Mclean: no game-log data found (tried [])
+    Grant Taylor: no game-log data found (tried [])
+    Carter Baumler: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=27914&position=P&type=0
+    Daniel Palencia: got 2 game-log rows via pybaseball id=27914
+    Daniel Palencia (<a href="/wins.aspx?date=2026-03-29&team=Cubs&dh=0">2026-03-29</a>): Stuff+=109.0  Loc+=89.0
+    Rhett Lowder: no game-log data found (tried [])
+    _call_game_log → https://www.fangraphs.com/api/players/game-log?playerid=29754&position=P&type=0
+    Sam Bachman: got 3 game-log rows via pybaseball id=29754
+    Sam Bachman (<a href="/wins.aspx?date=2026-03-29&team=Angels&dh=0">2026-03-29</a>): Stuff+=101.0  Loc+=73.0
+    Didier Fuentes: no game-log data found (tried [])
+    Aj Blubaugh: no game-log data found (tried [])
+    Luis Morales: no game-log data found (tried [])
+    Connelly Early: no game-log data found (tried [])
+    Tatsuya Imai: no game-log data found (tried [])
+    Stuff+ attached: 76/106 starter(s)
+  Stuff+ after FanGraphs: 76/106 pitcher(s)
+  Trying pybaseball arsenal stats (2026)…
+  pybaseball arsenal → 842 rows, cols: ['last_name, first_name', 'player_id', 'team_name_alt', 'pitch_type', 'pitch_name', 'run_value_per_100', 'run_value', 'pitches', 'pitch_usage', 'pa', 'ba', 'slg', 'woba', 'whiff_percent', 'k_percent', 'put_away', 'est_ba', 'est_slg', 'est_woba', 'hard_hit_percent']
+  id_col='player_id'  sp_col=None  lp_col=None
+  Trying Baseball Savant arsenal CSV (2026) — weighted avg…
+  Savant 2026: 319 pitchers in CSV, 104/106 of our starters present
+  arsenal-stats FF: 257 rows, id='player_id' sp=None lp=None cnt='pitches'  cols=['last_name, first_name', 'player_id', 'team_name_alt', 'pitch_type', 'pitch_name', 'run_value_per_100', 'run_value', 'pitches']
+  pitch-arsenal-stats (2026): no data — trying legacy pitch-arsenals endpoint…
+  Stuff+ fallback: agg_col=None pt_cols=['ff_n_stuff_plus', 'si_n_stuff_plus', 'fc_n_stuff_plus', 'sl_n_stuff_plus'] id_col='pitcher'
+  Stuff+ legacy (2026): 0/106 target pitchers matched
+  Loc+ legacy (2026): 0/106 matched
+  Savant n CSV (2025): 812 rows
+  Savant 2025: 812 pitchers in CSV, 99/106 of our starters present
+  arsenal-stats FF: 746 rows, id='player_id' sp=None lp=None cnt='pitches'  cols=['last_name, first_name', 'player_id', 'team_name_alt', 'pitch_type', 'pitch_name', 'run_value_per_100', 'run_value', 'pitches']
+  pitch-arsenal-stats (2025): no data — trying legacy pitch-arsenals endpoint…
+  Stuff+ fallback: agg_col=None pt_cols=['ff_n_stuff_plus', 'si_n_stuff_plus', 'fc_n_stuff_plus', 'sl_n_stuff_plus'] id_col='pitcher'
+  Stuff+ legacy (2025): 0/106 target pitchers matched
+  Loc+ legacy (2025): 0/106 matched
+  ✗ Could not retrieve Stuff+/Loc+ from any source
+  Stuff+ after all sources: 76/106 pitcher(s)
+
+[ 5b/6 ] Team Alex roster filter
+  Team Alex: 9 hitter(s), 3 starter(s), 1 reliever(s) played yesterday
+
+[ 6/6 ] Rendering HTML
+
+✅  Dashboard saved → C:\Users\alexj\OneDrive\Documents\Claude\Projects\MLB Daily Results\mlb_daily_stats.html
+    12 game(s) · 244 batters · 27 starters · 79 relievers
+
+[ Firebase ] Deploying to Firebase Hosting…
+  Firebase CLI not found — skipping deploy
+  (Run 'npm install -g firebase-tools' to enable auto-deploy)

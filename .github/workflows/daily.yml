@@ -38,22 +38,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install system deps and Playwright browser
-        run: |
-          sudo apt-get install -y xvfb
-          pip install playwright playwright-stealth
-          python -m playwright install chromium
-
       - name: Write FanGraphs cookie
         run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
 
       - name: Generate MLB stats dashboard
-        run: xvfb-run -a python fetch_mlb_stats.py
+        run: python fetch_mlb_stats.py
         env:
           SKIP_AUTO_INSTALL: "1"   # skip the Windows pip/playwright block
-          ESPN_LEAGUE_IDS:  ${{ secrets.ESPN_LEAGUE_IDS }}
-          ESPN_SWID:        ${{ secrets.ESPN_SWID }}
-          ESPN_S2:          ${{ secrets.ESPN_S2 }}
 
       - name: Commit updated dashboard to repo
         run: |
