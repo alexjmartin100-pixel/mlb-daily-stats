@@ -4296,6 +4296,20 @@ async function _togglePlayer(name, isOn){
 document.getElementById('roster-modal').addEventListener('click',function(e){
   if(e.target===this) closeRosterModal();
 });
+
+// ── Visual Viewport zoom fix ───────────────────────────────────────────────
+// When the user zooms OUT on mobile, the visual viewport width grows beyond
+// the CSS layout viewport (device-width). Without this fix, table-wraps stay
+// anchored to the narrower CSS pixel width and don't fill the visible screen.
+// Setting body.minWidth to the visual viewport width lets everything expand.
+if(window.visualViewport){
+  function _vvFit(){
+    const vw=Math.ceil(window.visualViewport.width);
+    document.body.style.minWidth=vw+'px';
+  }
+  window.visualViewport.addEventListener('resize',_vvFit);
+  _vvFit();
+}
 </script>
 
 <!-- ══ Login Overlay ══ -->
