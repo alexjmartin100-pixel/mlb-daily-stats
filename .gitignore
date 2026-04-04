@@ -9,3 +9,4 @@ pybaseball_cache/
 Thumbs.db
 espn_cache_last_run.txt
 espn_session.json
+espn_cookies.json
