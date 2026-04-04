@@ -1980,7 +1980,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.1,maximum-scale=10">
+<meta name="viewport" content="width=760,minimum-scale=0.3,maximum-scale=5">
 <title>MLB Daily Stats · __DATE_DISPLAY__</title>
 
 <!-- PWA: installable as app icon on iOS & Android -->
@@ -4299,20 +4299,6 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
   if(e.target===this) closeRosterModal();
 });
 
-// ── Visual Viewport zoom fix ───────────────────────────────────────────────
-// minimum-scale=0.1 in the viewport meta allows the user to zoom out and
-// have it stay. When zoomed out the visual viewport CSS-pixel width grows;
-// we expand body so table-wraps fill that width. We never touch the meta
-// tag dynamically — that caused iOS to snap back to normal zoom.
-(function(){
-  if(!window.visualViewport) return;
-  function _vvFit(){
-    const vw=Math.ceil(window.visualViewport.width);
-    document.body.style.setProperty('min-width',vw+'px','important');
-  }
-  window.visualViewport.addEventListener('resize',_vvFit);
-  _vvFit();
-})();
 </script>
 
 <!-- ══ Login Overlay ══ -->
