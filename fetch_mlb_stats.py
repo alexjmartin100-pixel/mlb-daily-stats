@@ -1980,7 +1980,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.1,maximum-scale=10,shrink-to-fit=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.1,maximum-scale=10">
 <title>MLB Daily Stats · __DATE_DISPLAY__</title>
 
 <!-- PWA: installable as app icon on iOS & Android -->
@@ -2046,7 +2046,7 @@ html{font-size:14px;background:var(--bg);color:var(--text);
 .hdr-meta strong{color:#aabcc8}
 .tab-bar{display:flex;align-items:flex-end;background:var(--card);
   border-bottom:2px solid var(--border);padding:0 26px;
-  overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;}
 .tab-bar::-webkit-scrollbar{display:none;}
 .tab-btn{background:none;border:none;color:var(--muted);
   padding:12px 24px 10px;font-size:.88rem;font-weight:600;cursor:pointer;
@@ -4300,35 +4300,17 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 });
 
 // ── Visual Viewport zoom fix ───────────────────────────────────────────────
-// On iOS, body/html min-width alone doesn't work because Safari's
-// shrink-to-fit re-zooms content back when it overflows device-width.
-// Fix: dynamically update the viewport <meta> to explicitly widen the
-// layout viewport to match the visual viewport when zoomed out, then
-// also force the body+main to that width so table-wraps fill the screen.
+// minimum-scale=0.1 in the viewport meta allows the user to zoom out and
+// have it stay. When zoomed out the visual viewport CSS-pixel width grows;
+// we expand body so table-wraps fill that width. We never touch the meta
+// tag dynamically — that caused iOS to snap back to normal zoom.
 (function(){
   if(!window.visualViewport) return;
-  const _vmeta=document.querySelector('meta[name=viewport]');
-  const _BASE='width=device-width,initial-scale=1,minimum-scale=0.1,maximum-scale=10,shrink-to-fit=no';
   function _vvFit(){
-    const sc=window.visualViewport.scale;
     const vw=Math.ceil(window.visualViewport.width);
-    if(sc<0.97){
-      // Zoomed out: force layout viewport to match visual viewport width
-      if(_vmeta) _vmeta.content='width='+vw+',initial-scale='+sc.toFixed(4)+',minimum-scale=0.1,maximum-scale=10,shrink-to-fit=no';
-      document.body.style.setProperty('min-width',vw+'px','important');
-      document.body.style.setProperty('width',vw+'px','important');
-      const _m=document.querySelector('main');
-      if(_m){_m.style.setProperty('min-width',vw+'px','important');_m.style.setProperty('width',vw+'px','important');}
-    } else {
-      if(_vmeta) _vmeta.content=_BASE;
-      document.body.style.removeProperty('min-width');
-      document.body.style.removeProperty('width');
-      const _m=document.querySelector('main');
-      if(_m){_m.style.removeProperty('min-width');_m.style.removeProperty('width');}
-    }
+    document.body.style.setProperty('min-width',vw+'px','important');
   }
   window.visualViewport.addEventListener('resize',_vvFit);
-  document.addEventListener('touchend',function(){setTimeout(_vvFit,150);});
   _vvFit();
 })();
 </script>
