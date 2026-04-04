@@ -2,20 +2,22 @@
 """
 update_espn_cache.py  –  Run this on YOUR LOCAL MACHINE to sync ESPN rosters.
 
-Logs into ESPN with your username/password (via a real Chromium browser),
-fetches every team's roster for each of your leagues, writes
-espn_rosters_cache.json, then commits and pushes it so the daily GitHub
-Actions build can read it without touching ESPN's API at all.
+FIRST RUN (one-time setup):
+  A Chrome window opens. Log in to ESPN normally — complete any email
+  verification ESPN asks for. Once you're logged in the script takes over,
+  saves your session, fetches rosters, and pushes the cache to GitHub.
+  You won't need to log in again unless ESPN logs you out.
 
-HOW TO AUTOMATE:
-  Set it up once in Windows Task Scheduler pointing at run_espn_update.bat.
-  Weekly is plenty — only re-run sooner if you make a big roster move.
+EVERY RUN AFTER THAT (automated via Task Scheduler):
+  No browser window, no login — loads the saved session silently and runs
+  in the background.
 
-CREDENTIALS (set once as Windows environment variables):
-  ESPN_USERNAME     your ESPN login email
-  ESPN_PASSWORD     your ESPN password
-  ESPN_LEAGUE_IDS   2081322885  (comma-separated if you have multiple)
-  MY_TEAM_NAME      team alex   (optional, used as fallback match)
+SETUP:
+  Set two Windows environment variables once
+  (search "Edit environment variables for your account" in Start menu):
+    ESPN_LEAGUE_IDS   2081322885
+    MY_TEAM_NAME      team alex
+  Then run:  python update_espn_cache.py
 """
 
 import json
@@ -26,16 +28,15 @@ import unicodedata
 from pathlib import Path
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-ESPN_USERNAME   = os.environ.get("ESPN_USERNAME",   "")
-ESPN_PASSWORD   = os.environ.get("ESPN_PASSWORD",   "")
 ESPN_LEAGUE_IDS = os.environ.get("ESPN_LEAGUE_IDS", "2081322885")
 MY_TEAM_NAME    = os.environ.get("MY_TEAM_NAME",    "team alex")
 YEAR            = 2026
 AUTO_PUSH       = True
 # ─────────────────────────────────────────────────────────────────────────────
 
-REPO_DIR   = Path(__file__).parent.resolve()
-CACHE_FILE = REPO_DIR / "espn_rosters_cache.json"
+REPO_DIR      = Path(__file__).parent.resolve()
+CACHE_FILE    = REPO_DIR / "espn_rosters_cache.json"
+SESSION_FILE  = REPO_DIR / "espn_session.json"   # gitignored — stays local
 
 
 def _norm(name: str) -> str:
@@ -45,65 +46,84 @@ def _norm(name: str) -> str:
     return name.lower().replace(".", "").strip()
 
 
-def login_and_fetch(league_ids: list, year: int) -> tuple:
+def fetch_rosters(league_ids: list, year: int) -> tuple:
     """
-    Opens a real Chromium browser, logs into ESPN, then navigates directly
-    to each league's API endpoint and reads the JSON from the page body.
-    Returns (leagues_data, my_team_norms).
+    Opens Chromium with a saved session (headless) or prompts for first-time
+    login (headed).  Returns (leagues_data dict, my_team_norms set).
     """
     from playwright.sync_api import sync_playwright
+
+    first_time = not SESSION_FILE.exists()
+
+    if first_time:
+        print("\n" + "=" * 60)
+        print("  FIRST-TIME SETUP")
+        print("  A browser window will open — log in to ESPN as normal.")
+        print("  Complete any email/2FA verification ESPN asks for.")
+        print("  Once you're on the ESPN home page the script continues.")
+        print("=" * 60 + "\n")
 
     leagues_data: dict = {}
     my_team_norms: set = set()
 
     with sync_playwright() as pw:
-        # Run headed (visible) so ESPN's login page renders properly.
-        # Change headless=False → True once you've confirmed it works.
-        browser = pw.chromium.launch(headless=False)
-        ctx     = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
+        if first_time:
+            # Headed so the user can see the login page and interact with it
+            browser = pw.chromium.launch(headless=False)
+            ctx = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                )
             )
-        )
+        else:
+            # Headless — load the saved session, no login needed
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(
+                storage_state=str(SESSION_FILE),
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                )
+            )
+
         page = ctx.new_page()
 
-        # ── Step 1: log in ────────────────────────────────────────────────
-        print("  Navigating to ESPN login…")
-        page.goto("https://www.espn.com/login", wait_until="domcontentloaded",
-                  timeout=30_000)
+        # ── First-time: navigate to login and wait for user to finish ─────
+        if first_time:
+            page.goto("https://www.espn.com/login", wait_until="domcontentloaded",
+                      timeout=30_000)
+            print("Waiting for you to log in… (the script continues once you")
+            print("are on the ESPN home or fantasy page)\n")
+            # Wait until the URL no longer contains "login" — i.e. login succeeded
+            page.wait_for_url(
+                lambda url: "login" not in url and "espn.com" in url,
+                timeout=180_000   # 3 minutes to complete login + email verification
+            )
+            print("  ✓ Login detected — saving session…")
+            # Give the page a moment to settle and set all auth cookies
+            page.wait_for_timeout(2_000)
 
-        # ESPN login is inside an iframe
-        try:
-            frame = page.frame_locator('iframe[name="disneyid-iframe"]')
-            frame.locator('input[type="email"], input[name="loginValue"]').fill(
-                ESPN_USERNAME, timeout=10_000
-            )
-            frame.locator('button[type="submit"], button:has-text("Continue")').click(
-                timeout=10_000
-            )
-            frame.locator('input[type="password"]').fill(
-                ESPN_PASSWORD, timeout=10_000
-            )
-            frame.locator('button[type="submit"], button:has-text("Log In")').click(
-                timeout=10_000
-            )
-            # Wait for redirect back to espn.com after successful login
-            page.wait_for_url("**/espn.com/**", timeout=20_000)
-            print("  ✓ Logged in")
-        except Exception as e:
-            print(f"  Login step error: {e}")
-            print("  Attempting to continue anyway (may already be logged in)…")
+        # ── Navigate to fantasy home to ensure all fantasy cookies are set ─
+        page.goto("https://fantasy.espn.com/baseball/team",
+                  wait_until="domcontentloaded", timeout=30_000)
+        page.wait_for_timeout(1_500)
 
-        # ── Step 2: fetch each league ─────────────────────────────────────
-        swid_raw = ""
+        # ── Save / refresh the session state ──────────────────────────────
+        ctx.storage_state(path=str(SESSION_FILE))
+        if first_time:
+            print(f"  ✓ Session saved to {SESSION_FILE.name}")
+
+        # ── Read SWID from the live cookie jar ────────────────────────────
+        swid_inner = ""
         for cookie in ctx.cookies():
             if cookie["name"] == "SWID":
-                swid_raw = cookie["value"]
+                swid_inner = cookie["value"].strip("{}").upper()
                 break
-        swid_inner = swid_raw.strip("{}").upper()
 
+        # ── Fetch each league via direct browser navigation ───────────────
         for lid in league_ids:
             api_url = (
                 f"https://fantasy.espn.com/apis/v3/games/flb"
@@ -114,10 +134,14 @@ def login_and_fetch(league_ids: list, year: int) -> tuple:
                 page.goto(api_url, wait_until="domcontentloaded", timeout=30_000)
                 raw = page.evaluate("document.body.innerText")
 
+                # Detect if ESPN returned the web app instead of JSON
                 if raw.lstrip().startswith("<") or "Skip to main content" in raw:
+                    # Session expired — delete the state file so next run re-prompts
+                    SESSION_FILE.unlink(missing_ok=True)
                     raise ValueError(
-                        "Got HTML instead of JSON — login may have failed. "
-                        "Try running with headless=False to watch what happens."
+                        "Session expired or not authenticated.\n"
+                        f"  Deleted {SESSION_FILE.name} — run the script again\n"
+                        "  to go through the one-time login process."
                     )
 
                 data        = json.loads(raw)
@@ -173,23 +197,14 @@ def login_and_fetch(league_ids: list, year: int) -> tuple:
 
 
 def main():
-    if not ESPN_USERNAME or not ESPN_PASSWORD:
-        sys.exit(
-            "ERROR: ESPN_USERNAME or ESPN_PASSWORD is empty.\n\n"
-            "Set them as Windows environment variables:\n"
-            "  Search 'Edit environment variables for your account' in Start\n"
-            "  Add ESPN_USERNAME = your ESPN email\n"
-            "  Add ESPN_PASSWORD = your ESPN password\n\n"
-            "Then close and reopen PowerShell and run again."
-        )
-
     league_ids = [s.strip() for s in ESPN_LEAGUE_IDS.split(",") if s.strip()]
-    print(f"Fetching rosters for {len(league_ids)} league(s) (year={YEAR})…")
+    mode = "first-time login" if not SESSION_FILE.exists() else "saved session"
+    print(f"ESPN roster sync — {len(league_ids)} league(s), mode={mode}")
 
-    leagues_data, my_team_norms = login_and_fetch(league_ids, YEAR)
+    leagues_data, my_team_norms = fetch_rosters(league_ids, YEAR)
 
     if not leagues_data:
-        sys.exit("No leagues fetched — cache NOT updated.")
+        sys.exit("\nNo leagues fetched — cache NOT updated.")
 
     cache = {
         "year":          YEAR,
@@ -197,8 +212,7 @@ def main():
         "my_team_norms": sorted(my_team_norms),
     }
     CACHE_FILE.write_text(json.dumps(cache, indent=2, default=str), encoding="utf-8")
-    print(f"\nWrote {CACHE_FILE.name}  "
-          f"({len(my_team_norms)} players on my team)")
+    print(f"\nWrote {CACHE_FILE.name}  ({len(my_team_norms)} players on my team)")
 
     if not AUTO_PUSH:
         print("AUTO_PUSH=False — skipping git commit.")
@@ -208,7 +222,8 @@ def main():
     try:
         subprocess.run(["git", "-C", str(REPO_DIR), "add", "espn_rosters_cache.json"],
                        check=True)
-        diff = subprocess.run(["git", "-C", str(REPO_DIR), "diff", "--cached", "--quiet"])
+        diff = subprocess.run(["git", "-C", str(REPO_DIR),
+                                "diff", "--cached", "--quiet"])
         if diff.returncode == 0:
             print("Nothing to commit — roster unchanged since last update.")
             return
