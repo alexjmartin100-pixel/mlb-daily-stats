@@ -5531,7 +5531,7 @@ function tradeSearch(side, q) {{
       return '<div data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
         + ' onmousedown="tradeAdd(this.dataset.side,this.dataset.name)"'
         + ' style="padding:7px 12px;cursor:pointer;border-bottom:1px solid #252525;font-size:.83rem"'
-        + ' onmouseover="this.style.background='#252525'" onmouseout="this.style.background=''">'
+        + '>
         + '<span style="font-weight:600">' + p.name + '</span>'
         + '<span style="opacity:.55;font-size:.77rem;margin-left:7px">' + meta + '</span>'
         + '</div>';
@@ -5573,8 +5573,7 @@ function _tradePlayerRow(side, p) {{
     + '<span style="color:' + dCol + ';font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
     + '<button data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
     + ' onmousedown="tradeRemove(this.dataset.side,this.dataset.name)"'
-    + ' style="background:none;border:none;color:#555;cursor:pointer;font-size:.75rem;padding:2px 4px;line-height:1;border-radius:3px"'
-    + ' onmouseover="this.style.color='#e05555'" onmouseout="this.style.color='#555'">&#x2715;</button>'
+    + ' style="background:none;border:none;color:#888;cursor:pointer;font-size:.75rem;padding:2px 4px;line-height:1;border-radius:3px">&#x2715;</button>'
     + '</div></div>';
 }}
 
