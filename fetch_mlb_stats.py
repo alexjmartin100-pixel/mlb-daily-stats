@@ -5151,7 +5151,7 @@ def render_fantasy_tab(fdata: dict) -> str:
                 else:
                     dol_html  = (f'<div style="font-size:.9rem;line-height:1.15">'
                                  f'{_fmt_mval(dollar)}</div>')
-                    proj_html = (f'<div style="font-size:.68rem;opacity:.65;'
+                    proj_html = (f'<div style="font-size:.68rem;color:#777;'
                                  f'line-height:1.1;margin-top:1px">'
                                  f'({_fmt_proj(proj, cat)})</div>'
                                  if proj is not None else '')
