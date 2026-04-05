@@ -5149,16 +5149,16 @@ def render_fantasy_tab(fdata: dict) -> str:
                         f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
                     )
                 else:
-                    proj_html = (f'<div style="font-size:.9rem;line-height:1.15">'
-                                 f'{_fmt_proj(proj, cat)}</div>'
-                                 if proj is not None else '')
-                    dol_html  = (f'<div style="font-size:.68rem;opacity:.65;'
-                                 f'line-height:1.1;margin-top:1px">'
+                    dol_html  = (f'<div style="font-size:.9rem;line-height:1.15">'
                                  f'{_fmt_mval(dollar)}</div>')
+                    proj_html = (f'<div style="font-size:.68rem;opacity:.65;'
+                                 f'line-height:1.1;margin-top:1px">'
+                                 f'({_fmt_proj(proj, cat)})</div>'
+                                 if proj is not None else '')
                     stat_cells += (
                         f'<td style="text-align:center;padding:3px 6px" '
                         f'data-val="{dollar}">'
-                        f'{proj_html}{dol_html}</td>'
+                        f'{dol_html}{proj_html}</td>'
                     )
 
             rows_html.append(
