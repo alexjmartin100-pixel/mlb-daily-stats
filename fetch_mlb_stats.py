@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MLB Daily Stats Dashboard Generator  v3
+MLB Daily Stats Dashboard Generator  v3.1
 =========================================
 Data sources:
   • Baseball Savant (Statcast)  — pitch-by-pitch game data
