@@ -4602,7 +4602,7 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
         "mp": 20, "msp": 5, "mrp": 5,
         "type": player_type,
         "players": "", "proj": proj, "split": "",
-        "points": "c|1,2,3,4,9|0,1,12,2,3,4",
+        "points": "c|1,2,3,4,9,5|0,1,12,2,3,4",  # 5=OBP added to hitting cats
         "rep": 0, "drp": 0,
         "pp": "C,SS,2B,3B,OF,1B",
         "pos": "1,1,1,1,3,1,1,1,0,1,3,2,1,6,35",
@@ -4665,7 +4665,7 @@ def _fetch_fg_auction_full(proj: str, player_type: str = "bat") -> list:
         "mp": 20, "msp": 5, "mrp": 5,
         "type": player_type,
         "players": "", "proj": proj, "split": "",
-        "points": "c|1,2,3,4,9|0,1,12,2,3,4",
+        "points": "c|1,2,3,4,9,5|0,1,12,2,3,4",  # 5=OBP added to hitting cats
         "rep": 0, "drp": 0,
         "pp": "C,SS,2B,3B,OF,1B",
         "pos": "1,1,1,1,3,1,1,1,0,1,3,2,1,6,35",
@@ -4876,28 +4876,27 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    "W":    _avg_field("W"),
-                    "ERA":  _avg_field("ERA"),
-                    "WHIP": _avg_field("WHIP"),
-                    "SO":   _avg_field("SO", "K"),
-                    "SV":   _avg_field("SV"),
-                    "HLD":  _avg_field("HLD"),
-                    "IP":   _avg_field("IP"),
-                    "G":    _avg_field("G"),
-                    "GS":   _avg_field("GS"),
+                    # Marginal dollar contributions per category (from FG auction calc)
+                    "W":    _avg_field("mW"),
+                    "ERA":  _avg_field("mERA"),
+                    "WHIP": _avg_field("mWHIP"),
+                    "SO":   _avg_field("mSO"),
+                    "SV":   _avg_field("mSV"),
+                    "HLD":  _avg_field("mHLD"),
+                    # Structural fields (not displayed as stat cols)
+                    "_ip":  _avg_field("IP"),   # used for SP/RP classification
                 }
             else:
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    "R":   _avg_field("R"),
-                    "HR":  _avg_field("HR"),
-                    "RBI": _avg_field("RBI"),
-                    "SB":  _avg_field("SB"),
-                    "SO":  _avg_field("SO"),
-                    "OBP": _avg_field("OBP"),
-                    "PA":  _avg_field("PA"),
-                    "G":   _avg_field("G"),
+                    # Marginal dollar contributions per category (from FG auction calc)
+                    "R":   _avg_field("mR"),
+                    "HR":  _avg_field("mHR"),
+                    "RBI": _avg_field("mRBI"),
+                    "SB":  _avg_field("mSB"),
+                    "SO":  _avg_field("mSO"),   # negative = hurts (K is bad for hitter)
+                    "OBP": _avg_field("mOBP"),
                 }
 
             result.append({
@@ -5045,21 +5044,16 @@ def render_fantasy_tab(fdata: dict) -> str:
 
     # ── stat display helpers ───────────────────────────────────────────────
     def _stat_fmt(v, cat):
-        """Format a stat value; v must not be None."""
-        if cat == "OBP":
-            return f"{float(v):.3f}"
-        if cat in ("ERA", "WHIP"):
-            return f"{float(v):.2f}"
-        return str(int(round(float(v))))
+        """Format a marginal dollar value; v must not be None.
+        All stat columns are now per-category dollar contributions from FG auction calc."""
+        fv = float(v)
+        return f"${fv:.1f}" if fv >= 0 else f"−${abs(fv):.1f}"
 
     def _get_stat(p, cat):
-        """Return raw float stat from player dict, or None if absent."""
-        if cat == "K":
-            v = p.get("SO") if p.get("SO") is not None else p.get("K")
-        elif cat == "HLD":
-            v = p.get("HLD") if p.get("HLD") is not None else p.get("holds")
-        else:
-            v = p.get(cat)
+        """Return marginal dollar float for cat from player dict, or None if absent.
+        cat 'K' maps to 'SO' key in player dict."""
+        key = "SO" if cat == "K" else cat
+        v = p.get(key)
         if v is None:
             return None
         try:
@@ -5134,12 +5128,11 @@ def render_fantasy_tab(fdata: dict) -> str:
                 f'<tbody>{"".join(rows_html)}</tbody>'
                 f'</table></div>')
 
-    # ── classify pitcher role (SP vs RP) from projected GS ────────────────
+    # ── classify pitcher role (SP vs RP) from projected IP ────────────────
     for entry in fdata["fut_p"]:
-        gs_v = entry["player"].get("GS") if entry["player"].get("GS") is not None \
-               else entry["player"].get("gs")
-        gs = float(gs_v) if gs_v is not None else 0.0
-        entry["role"] = "sp" if gs >= 3 else "rp"
+        ip_v = entry["player"].get("_ip")
+        ip = float(ip_v) if ip_v is not None else 0.0
+        entry["role"] = "sp" if ip >= 50 else "rp"
 
     tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
     tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
@@ -5283,7 +5276,60 @@ function fantSort(tblId, th) {{
     var rc = tr.querySelector('.rank-col');
     if (rc) {{ rc.textContent = i + 1; rc.dataset.val = i + 1; }}
   }});
+  // Re-apply colors after sort
+  applyFantColors(tblId);
 }}
+
+/* ── Column color coding (gold leader + red→white→blue gradient) ─── */
+function applyFantColors(tblId) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  var rows = Array.from(tbl.querySelectorAll('tbody tr:not([style*="display: none"])'));
+  if (!rows.length) return;
+  var nCols = rows[0].cells.length;
+  // Color columns 3+ (skip rank=0, name=1, team=2)
+  for (var c = 3; c < nCols; c++) {{
+    var vals = [];
+    rows.forEach(function(tr) {{
+      var v = parseFloat(tr.cells[c] && tr.cells[c].dataset.val);
+      if (!isNaN(v)) vals.push(v);
+    }});
+    if (!vals.length) continue;
+    var best = Math.max.apply(null, vals);
+    rows.forEach(function(tr) {{
+      var cell = tr.cells[c];
+      if (!cell) return;
+      var v = parseFloat(cell.dataset.val);
+      if (isNaN(v)) return;
+      if (v === best) {{
+        cell.style.color = '#f0c040';
+        cell.style.fontWeight = '700';
+        return;
+      }}
+      var better = vals.filter(function(x) {{ return x > v + 0.00001; }}).length;
+      var total = vals.length;
+      if (total <= 1) return;
+      var t = better / (total - 1);
+      var r, g, b;
+      if (t < 0.5) {{
+        var s = t * 2;
+        r = Math.round(255 + (235 - 255) * s);
+        g = Math.round(60  + (235 - 60)  * s);
+        b = Math.round(50  + (235 - 50)  * s);
+      }} else {{
+        var s2 = (t - 0.5) * 2;
+        r = Math.round(235 + (50  - 235) * s2);
+        g = Math.round(235 + (110 - 235) * s2);
+        b = Math.round(235 + (255 - 235) * s2);
+      }}
+      cell.style.color = 'rgb(' + r + ',' + g + ',' + b + ')';
+      cell.style.fontWeight = '600';
+    }});
+  }}
+}}
+// Apply colors on initial load
+applyFantColors('fant-h-tbl');
+applyFantColors('fant-p-tbl');
 </script>
 """
     return inner
