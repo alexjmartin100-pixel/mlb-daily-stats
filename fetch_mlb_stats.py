@@ -4652,6 +4652,49 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
     return {}
 
 
+def _fetch_fg_auction_full(proj: str, player_type: str = "bat") -> list:
+    """
+    Like fetch_fg_auction_dollar_values but returns the **full** row list
+    so callers can access projected stats (R, HR, RBI, OBP, etc.) in addition
+    to the Dollars value.  Same league settings / URL params as the original.
+
+    Returns [] on failure.
+    """
+    from urllib.parse import urlencode
+    params = {
+        "teams": 10, "lg": "MLB", "dollars": 260, "mb": 1,
+        "mp": 20, "msp": 5, "mrp": 5,
+        "type": player_type,
+        "players": "", "proj": proj, "split": "",
+        "points": "c|1,2,3,4,9|0,1,12,2,3,4",
+        "rep": 0, "drp": 0,
+        "pp": "C,SS,2B,3B,OF,1B",
+        "pos": "1,1,1,1,3,1,1,1,0,1,3,2,1,6,35",
+        "sort": "", "view": 0,
+    }
+    url = ("https://www.fangraphs.com/api/fantasy/auction-calculator/data"
+           + "?" + urlencode(params))
+    hdrs = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer":    "https://www.fangraphs.com/fantasy-tools/auction-calculator",
+        "Accept":     "application/json",
+    }
+    cookie_str = _load_fg_cookie()
+    if cookie_str:
+        hdrs["Cookie"] = str(cookie_str)
+    try:
+        resp = requests.get(url, headers=hdrs, timeout=30)
+        if resp.status_code == 200:
+            payload = resp.json()
+            rows = payload.get("data", payload) if isinstance(payload, dict) else payload
+            print(f"    [fg-full {proj}/{player_type}] {len(rows or [])} rows")
+            return list(rows or [])
+        print(f"  [FANTASY] FG full {proj}/{player_type} HTTP {resp.status_code}")
+    except Exception as exc:
+        print(f"  [FANTASY] FG full {proj}/{player_type} error: {exc}")
+    return []
+
+
 def _avg_fg_auction(a: dict, b: dict) -> dict:
     """Average two FG auction-calculator dollar-value dicts by key."""
     if not a:
@@ -4745,30 +4788,20 @@ def _z_to_dollars(players: list, cats: list, neg_cats: set,
 
 def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int) -> dict:
     """
-    Compute YTD and projected fantasy dollar values for hitters and pitchers.
-    Returns dict with keys: ytd_h, ytd_p, fut_h, fut_p.
+    Compute projected fantasy dollar values for hitters and pitchers.
+
+    Dollar values come EXCLUSIVELY from the FanGraphs Auction Calculator API
+    (averaged across OOPSY DC RoS and Bat X RoS projection systems).
+    No z-score calculation is used for dollar values.
+
+    Stat columns (R, HR, RBI, etc.) come from the averaged OOPSY + Bat X
+    RoS projections fetched separately.
+
+    Returns dict with keys: fut_h, fut_p.
     """
-    cfg    = _FANT
-    total  = cfg["n_teams"] * cfg["budget"]           # 2 600
-    h_bud  = total * cfg["h_split"]                   # 1 742
-    p_bud  = total * (1 - cfg["h_split"])             #   858
-    n_h    = cfg["n_teams"] * cfg["h_slots"]          #   140
-    n_p    = cfg["n_teams"] * cfg["p_slots"]          #    90
-    h_use  = h_bud - n_h                              # 1 602
-    p_use  = p_bud - n_p                              #   768
 
-    # ── Present (YTD season leaderboards) ─────────────────────────────────
-    all_pit_lb = ((list(lb_pitch_data.get("starters",  []))
-                 + list(lb_pitch_data.get("relievers", [])))
-                 if lb_pitch_data else [])
-    min_ip = cfg.get("min_ip", 35)
-
-    ytd_h = _z_to_dollars(lb_data or [], cfg["h_cats"], cfg["h_neg_cats"],
-                           n_h, h_use, False)
-    ytd_p = _z_to_dollars(all_pit_lb,   cfg["p_cats"], cfg["p_neg_cats"],
-                           n_p, p_use, True, min_ip=min_ip)
-
-    # ── Future (OOPSY + Bat X projected average) ──────────────────────────
+    # ── Projected stats (OOPSY + Bat X average) ───────────────────────────
+    # Used for stat display columns (R, HR, RBI, SB, OBP, etc.).
     print("  [FANTASY] Fetching OOPSY projections…")
     ob = fetch_fg_projections(year, "oopsy", "bat")
     op = fetch_fg_projections(year, "oopsy", "pit")
@@ -4779,91 +4812,138 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     avg_b = _avg_proj_sets(ob, bb)
     avg_p = _avg_proj_sets(op, bp)
 
-    def _nb(r):
-        return {
-            "name": r.get("PlayerName", ""), "team": r.get("Team", ""),
-            "fg_id": r.get("playerid"),      "mlbam": r.get("xMLBAMID"),
-            "R":   r.get("R",   0), "HR":  r.get("HR",  0),
-            "RBI": r.get("RBI", 0), "SB":  r.get("SB",  0),
-            "SO":  r.get("SO",  0), "OBP": r.get("OBP", 0),
-            "PA":  r.get("PA",  0), "G":   r.get("G",   0),
-        }
+    def _pid(r):
+        """Normalize playerid to str-int key."""
+        v = r.get("playerid") if isinstance(r, dict) else r
+        if not v:
+            return None
+        try:
+            return str(int(float(v)))
+        except (ValueError, TypeError):
+            return str(v)
 
-    def _np(r):
-        return {
-            "name": r.get("PlayerName", ""), "team": r.get("Team", ""),
-            "fg_id": r.get("playerid"),      "mlbam": r.get("xMLBAMID"),
-            "W":    r.get("W",    0), "ERA":  r.get("ERA",  0),
-            "WHIP": r.get("WHIP", 0), "SO":   r.get("SO",   0),
-            "SV":   r.get("SV",   0), "HLD":  r.get("HLD",  0),
-            "IP":   r.get("IP",   0), "G":    r.get("G",    0),
-            "GS":   r.get("GS",   0),
-        }
+    # Build projected-stat lookup by normalised playerid
+    proj_h_map = {k: r for r in (avg_b or []) if (k := _pid(r))}
+    proj_p_map = {k: r for r in (avg_p or []) if (k := _pid(r))}
 
-    proj_b = [_nb(r) for r in avg_b] if avg_b else []
-    proj_p = [_np(r) for r in avg_p] if avg_p else []
+    # ── FanGraphs Auction Calculator rows (both projection systems) ────────
+    print("  [FANTASY] Fetching FG auction-calculator rows (OOPSY DC RoS + Bat X RoS)…")
+    rows_oo_h = _fetch_fg_auction_full("roopsydc", "bat")
+    rows_bx_h = _fetch_fg_auction_full("rthebatx", "bat")
+    rows_oo_p = _fetch_fg_auction_full("roopsydc", "pit")
+    rows_bx_p = _fetch_fg_auction_full("rthebatx", "pit")
 
-    # ── z-score fallback (used if FG auction-calc is unreachable) ─────────────
-    fut_h = _z_to_dollars(proj_b, cfg["h_cats"], cfg["h_neg_cats"], n_h, h_use, False)
-    fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["p_neg_cats"], n_p, p_use, True,
-                          min_ip=min_ip)
-
-    # ── FanGraphs Auction Calculator dollar values (avg OOPSY DC + Bat X RoS) ─
-    # Projection codes: 'roopsydc' = OOPYS DC (RoS), 'rthebatx' = THE BAT X (RoS)
-    print("  [FANTASY] Fetching FG auction-calculator values (OOPSY DC RoS + Bat X RoS)…")
-    fg_h = _avg_fg_auction(
-        fetch_fg_auction_dollar_values("roopsydc", "bat"),
-        fetch_fg_auction_dollar_values("rthebatx", "bat"),
-    )
-    fg_p = _avg_fg_auction(
-        fetch_fg_auction_dollar_values("roopsydc", "pit"),
-        fetch_fg_auction_dollar_values("rthebatx", "pit"),
-    )
-
-    def _apply_fg_dollars(z_list: list, fg_map: dict) -> list:
-        """Replace dollar values in a z-score list with FG auction-calc values.
-
-        Normalizes playerid keys to str(int) to handle float IDs (e.g. 12345.0
-        vs 12345).  Players not found in fg_map are capped at $1 so that z-score
-        artifacts never inflate fringe players above FG-priced players.
+    def _merge_auction(rows_a: list, rows_b: list,
+                       is_pitcher: bool, stat_map: dict) -> list:
         """
-        if not fg_map:
-            return z_list  # FG data unavailable – keep z-scores intact
-        matched = 0
-        for entry in z_list:
-            p = entry["player"]
-            raw_fg = p.get("fg_id") or p.get("playerid") or ""
-            raw_ml = p.get("mlbam") or p.get("xMLBAMID") or ""
-            try:
-                fgid = str(int(float(raw_fg))) if raw_fg else ""
-            except (ValueError, TypeError):
-                fgid = str(raw_fg)
-            try:
-                mlbam = str(int(float(raw_ml))) if raw_ml else ""
-            except (ValueError, TypeError):
-                mlbam = str(raw_ml)
-            d = fg_map.get(fgid) or fg_map.get(mlbam)
-            if d is not None:
-                entry["dollar"] = round(float(d), 1)
-                matched += 1
+        Merge two FG auction row-sets by playerid, average their Dollars,
+        and join projected stats from stat_map for display columns.
+        Returns list[{player, dollar}] sorted by dollar desc.
+        Dollar values are taken directly from FG — no z-score, no cap.
+        """
+        by_id: dict = {}
+        for r in (rows_a or []):
+            k = _pid(r)
+            if k:
+                by_id.setdefault(k, {})["a"] = r
+        for r in (rows_b or []):
+            k = _pid(r)
+            if k:
+                by_id.setdefault(k, {})["b"] = r
+
+        result = []
+        for fgid, ab in by_id.items():
+            a   = ab.get("a")
+            b   = ab.get("b")
+            ref = a or b
+            da  = float(a.get("Dollars", 0)) if a else None
+            db  = float(b.get("Dollars", 0)) if b else None
+            if da is not None and db is not None:
+                dollar = (da + db) / 2.0
             else:
-                # Not in FG auction pool → cap at $1 (replacement level)
-                # This prevents z-score artifacts from floating fringe players.
-                entry["dollar"] = 1.0
-        print(f"    [FG overlay] {matched}/{len(z_list)} matched")
-        return z_list
+                dollar = da if da is not None else db
 
-    fut_h = _apply_fg_dollars(fut_h, fg_h)
-    fut_p = _apply_fg_dollars(fut_p, fg_p)
+            proj = stat_map.get(fgid) or {}
+            name = (ref.get("PlayerName") or ref.get("Name")
+                    or proj.get("PlayerName") or "")
+            team = ref.get("Team") or proj.get("Team") or ""
+            mlbam = ref.get("xMLBAMID")
 
-    print(f"  [FANTASY] YTD  — {len(ytd_h)} hitters, {len(ytd_p)} pitchers")
+            if is_pitcher:
+                player = {
+                    "name": name, "team": team,
+                    "fg_id": fgid, "mlbam": mlbam,
+                    "W":    float(proj.get("W")    or ref.get("W")    or 0),
+                    "ERA":  float(proj.get("ERA")  or ref.get("ERA")  or 0),
+                    "WHIP": float(proj.get("WHIP") or ref.get("WHIP") or 0),
+                    "SO":   float(proj.get("SO")   or ref.get("SO")   or ref.get("K") or 0),
+                    "SV":   float(proj.get("SV")   or ref.get("SV")   or 0),
+                    "HLD":  float(proj.get("HLD")  or ref.get("HLD")  or 0),
+                    "IP":   float(proj.get("IP")   or ref.get("IP")   or 0),
+                    "G":    float(proj.get("G")    or ref.get("G")    or 0),
+                    "GS":   float(proj.get("GS")   or ref.get("GS")   or 0),
+                }
+            else:
+                player = {
+                    "name": name, "team": team,
+                    "fg_id": fgid, "mlbam": mlbam,
+                    "R":   float(proj.get("R")   or ref.get("R")   or 0),
+                    "HR":  float(proj.get("HR")  or ref.get("HR")  or 0),
+                    "RBI": float(proj.get("RBI") or ref.get("RBI") or 0),
+                    "SB":  float(proj.get("SB")  or ref.get("SB")  or 0),
+                    "SO":  float(proj.get("SO")  or ref.get("SO")  or 0),
+                    "OBP": float(proj.get("OBP") or ref.get("OBP") or 0),
+                    "PA":  float(proj.get("PA")  or ref.get("PA")  or 0),
+                    "G":   float(proj.get("G")   or ref.get("G")   or 0),
+                }
+
+            result.append({
+                "player": player,
+                "dollar": round(float(dollar), 1),
+                # z / zc kept as stubs so downstream code doesn't break
+                "z": 0.0, "zc": {},
+            })
+
+        result.sort(key=lambda x: x["dollar"], reverse=True)
+        return result
+
+    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False, proj_h_map)
+    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True,  proj_p_map)
+
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers "
-          f"(FG auction: {len(fg_h)} h-keys, {len(fg_p)} p-keys)")
+          f"(from FG auction calc, OOPSY DC RoS + Bat X RoS avg)")
 
-    return {"ytd_h": ytd_h, "ytd_p": ytd_p, "fut_h": fut_h, "fut_p": fut_p}
+    return {"fut_h": fut_h, "fut_p": fut_p}
 
 
 # ─── HTML helpers ─────────────────────────────────────────────────────────────
+
+# MLB team colour map — matches the JS TEAM_COLORS in the dashboard JS
+_TEAM_COLORS_PY: dict = {
+    "ARI": ("#A71930", "#fff"), "ATL": ("#CE1141", "#fff"), "BAL": ("#DF4601", "#fff"),
+    "BOS": ("#BD3039", "#fff"), "CHC": ("#0E3386", "#fff"), "CWS": ("#27251F", "#fff"),
+    "CIN": ("#C6011F", "#fff"), "CLE": ("#00385D", "#fff"), "COL": ("#33006F", "#fff"),
+    "DET": ("#0C2340", "#fff"), "HOU": ("#002D62", "#fff"), "KC":  ("#004687", "#fff"),
+    "LAA": ("#BA0021", "#fff"), "LAD": ("#005A9C", "#fff"), "MIA": ("#00A3E0", "#fff"),
+    "MIL": ("#12284B", "#fff"), "MIN": ("#002B5C", "#fff"), "NYM": ("#002D72", "#fff"),
+    "NYY": ("#003087", "#fff"), "OAK": ("#003831", "#fff"), "PHI": ("#E81828", "#fff"),
+    "PIT": ("#FDB827", "#1a1a1a"), "SD":  ("#2F241D", "#fff"), "SEA": ("#0C2C56", "#fff"),
+    "SF":  ("#FD5A1E", "#fff"),  "STL": ("#C41E3A", "#fff"), "TB":  ("#092C5C", "#fff"),
+    "TEX": ("#003278", "#fff"), "TOR": ("#134A8E", "#fff"), "WSH": ("#AB0003", "#fff"),
+}
+
+
+def _team_badge_py(abbr: str) -> str:
+    """Render an MLB team badge <span> matching the JS tm() helper."""
+    if not abbr:
+        return ""
+    key = abbr.strip().upper()
+    tc  = _TEAM_COLORS_PY.get(key)
+    if tc:
+        return (f'<span class="tm" style="background:{tc[0]};color:{tc[1]};'
+                f'border-color:{tc[0]}44">{key}</span>')
+    return f'<span class="tm" style="background:rgba(255,255,255,.12);color:var(--text)">{key}</span>'
+
 
 def _fmt_dollar(v):
     if v is None:
@@ -4972,22 +5052,21 @@ def render_fantasy_tab(fdata: dict) -> str:
         return str(int(round(float(v))))
 
     # ── build one HTML table ───────────────────────────────────────────────
-    def _build_table(merged: list, cats: list, is_pitcher: bool, table_id: str) -> str:
+    # Columns: # | Name | Team | Proj $ | [stat cols…]
+    # Dollar values come directly from FG auction calc (no YTD $ column).
+    def _build_table(players: list, cats: list, table_id: str) -> str:
         sort_js = f"fantSort('{table_id}',this)"
-        def _th(label, col_idx, extra=""):
+        def _th(label, col_idx):
             return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
-                    f'style="cursor:pointer;user-select:none" {extra}>'
+                    f'style="cursor:pointer;user-select:none">'
                     f'{label} <span style="opacity:.45;font-size:.7rem">&#9660;</span></th>')
 
         col = 0
-        hdr_parts = [
-            '<thead><tr>',
-            _th('#', col := col),
-            _th('Name', col := col + 1),
-            _th('Team', col := col + 1),
-            _th('Proj&nbsp;$', col := col + 1),
-            _th('YTD&nbsp;$', col := col + 1),
-        ]
+        hdr_parts = ['<thead><tr>',
+                     _th('#', col),
+                     _th('Name', (col := col + 1)),
+                     _th('Team', (col := col + 1)),
+                     _th('Proj&nbsp;$', (col := col + 1))]
         for c in cats:
             col += 1
             hdr_parts.append(_th(c, col))
@@ -4995,86 +5074,50 @@ def render_fantasy_tab(fdata: dict) -> str:
         hdr = "".join(hdr_parts)
 
         rows_html = []
-        for rank, row in enumerate(merged[:200], 1):
-            nm   = row["name"]
-            tm   = row["team"]
-            yr   = row["ytd"]
-            fr   = row["fut"]
-            ydol = yr["dollar"] if yr else None
-            fdol = fr["dollar"] if fr else None
-            src  = (fr["player"] if fr else (yr["player"] if yr else {}))
-            zc   = (fr["zc"] if fr else (yr["zc"] if yr else {}))
+        for rank, entry in enumerate(players, 1):
+            p    = entry["player"]
+            nm   = p.get("name") or p.get("PlayerName") or "–"
+            tm   = (p.get("team") or p.get("Team") or "").strip().upper()
+            role = entry.get("role", "")
+            fdol = entry["dollar"]
+            fdol_str = _fmt_dollar(fdol)
+            fdol_col = _dollar_color(fdol)
+            fdol_val = fdol
+
+            team_cell = _team_badge_py(tm)
 
             stat_cells = ""
             for cat in cats:
-                v    = _fant_stat(src, cat)
-                zval = zc.get(cat, 0)
-                zsign = "+" if zval >= 0 else ""
+                v = _fant_stat(p, cat)
                 stat_cells += (
                     f'<td style="text-align:center" data-val="{v}">'
-                    f'<div style="color:{_z_color(zval)}">{_stat_fmt(v, cat)}</div>'
-                    f'<div style="font-size:.65rem;color:#777;line-height:1.1">'
-                    f'z{zsign}{zval:.1f}</div></td>'
+                    f'{_stat_fmt(v, cat)}</td>'
                 )
 
-            ydol_str = _fmt_dollar(ydol)
-            fdol_str = _fmt_dollar(fdol)
-            ydol_col = _dollar_color(ydol)
-            fdol_col = _dollar_color(fdol)
-            fdol_val = fdol if fdol is not None else -99
-            ydol_val = ydol if ydol is not None else -99
-
-
-            # role tag so JS can filter SP vs RP
-            role = row.get("role", "rp")
             rows_html.append(
                 f'<tr data-role="{role}">'
                 f'<td class="rank-col" data-val="{rank}">{rank}</td>'
                 f'<td class="name-col">{nm}</td>'
-                f'<td style="color:#aaa;font-size:.8rem">{tm}</td>'
-                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem" data-val="{fdol_val}">{fdol_str}</td>'
-                f'<td style="color:{ydol_col}" data-val="{ydol_val}">{ydol_str}</td>'
+                f'<td style="white-space:nowrap">{team_cell}</td>'
+                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
+                f' data-val="{fdol_val}">{fdol_str}</td>'
                 f'{stat_cells}'
                 f'</tr>'
             )
 
-        return (
-            f'<div class="table-wrap" id="{table_id}">'
-            f'<table class="stats-table"><colgroup></colgroup>'
-            f'{hdr}'
-            f'<tbody>{"".join(rows_html)}</tbody>'
-            f'</table></div>'
-        )
+        return (f'<div class="table-wrap" id="{table_id}">'
+                f'<table class="stats-table"><colgroup></colgroup>'
+                f'{hdr}'
+                f'<tbody>{"".join(rows_html)}</tbody>'
+                f'</table></div>')
 
-    # ── classify pitcher role (SP vs RP) ──────────────────────────────────
-    def _pitcher_role(row: dict) -> str:
-        yr = row.get("ytd")
-        fr = row.get("fut")
-        if yr and yr["player"].get("is_sp"):
-            return "sp"
-        if fr:
-            fp = fr["player"]
-            if float(fp.get("GS") or fp.get("gs") or 0) >= 3:
-                return "sp"
-        # Fallback: if YTD has low SV+HLD and some W, treat as SP
-        if yr:
-            yp = yr["player"]
-            if (float(yp.get("sv") or yp.get("SV") or 0) == 0
-                    and float(yp.get("hld") or yp.get("HLD") or 0) == 0
-                    and float(yp.get("w") or yp.get("W") or 0) >= 2):
-                return "sp"
-        return "rp"
+    # ── classify pitcher role (SP vs RP) from projected GS ────────────────
+    for entry in fdata["fut_p"]:
+        gs = float(entry["player"].get("GS") or entry["player"].get("gs") or 0)
+        entry["role"] = "sp" if gs >= 3 else "rp"
 
-    # ── merge YTD + future ─────────────────────────────────────────────────
-    merged_h = _merge_players(fdata["ytd_h"], fdata["fut_h"], False)
-    merged_p = _merge_players(fdata["ytd_p"], fdata["fut_p"], True)
-
-    # Tag each pitcher row with role
-    for row in merged_p:
-        row["role"] = _pitcher_role(row)
-
-    tbl_h = _build_table(merged_h, h_cats, False, "fant-h-tbl")
-    tbl_p = _build_table(merged_p, p_cats, True,  "fant-p-tbl")
+    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
+    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
 
     inner = f"""
 <div id="fantasy-panel" class="tab-panel">
@@ -5083,8 +5126,7 @@ def render_fantasy_tab(fdata: dict) -> str:
     <p style="color:var(--muted);font-size:.82rem;margin:0 0 14px">
       10-team H2H &nbsp;&bull;&nbsp; $260/team &nbsp;&bull;&nbsp; 6&times;6
       &nbsp;&bull;&nbsp; 35&nbsp;IP&nbsp;min
-      &nbsp;|&nbsp; <strong>Proj&nbsp;$</strong>: avg(OOPSY&nbsp;DC&nbsp;RoS,&nbsp;Bat&nbsp;X&nbsp;RoS) via FanGraphs&nbsp;Auction&nbsp;Calculator
-      &nbsp;&bull;&nbsp; <strong>YTD&nbsp;$</strong>: season-to-date z-score
+      &nbsp;|&nbsp; <strong>$</strong>: avg(OOPSY&nbsp;DC&nbsp;RoS,&nbsp;Bat&nbsp;X&nbsp;RoS) directly from FanGraphs&nbsp;Auction&nbsp;Calculator
       &nbsp;&bull;&nbsp; Click any column header to sort
     </p>
     <div style="display:flex;gap:10px;margin-bottom:14px">
@@ -5150,8 +5192,7 @@ function fantSwitch(which) {{
   ['h','p'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     var on  = (w === which);
-    btn.classList.toggle('active', on);
-    btn.style.borderBottom = on ? '3px solid var(--accent)' : '3px solid transparent';
+    btn.classList.toggle('active', on);    btn.style.borderBottom = on ? '3px solid var(--accent)' : '3px solid transparent';
     btn.style.color        = on ? '#fff' : '';
   }});
 }}
