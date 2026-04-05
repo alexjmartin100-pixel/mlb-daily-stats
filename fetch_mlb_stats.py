@@ -5287,3 +5287,29 @@ function fantSort(tblId, th) {{
 </script>
 """
     return inner
+
+
+def inject_fantasy_tab(html: str, fdata: dict) -> str:
+    """
+    Inject Fantasy tab button + panel into the rendered dashboard HTML.
+    Inserts the tab button after the compare button, and the panel before </body>.
+    """
+    if not fdata:
+        return html
+
+    btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
+    anchor   = "showTab('compare'"
+    if anchor in html:
+        idx     = html.index(anchor)
+        end_btn = html.index("</button>", idx) + len("</button>")
+        html    = html[:end_btn] + btn_html + html[end_btn:]
+    else:
+        html = html.replace('</div>', btn_html + '\n</div>', 1)
+
+    panel_html = render_fantasy_tab(fdata)
+    html       = html.replace("</body>", panel_html + "\n</body>")
+    return html
+
+
+if __name__ == "__main__":
+    main()
