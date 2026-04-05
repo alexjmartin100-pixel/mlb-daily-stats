@@ -5204,6 +5204,32 @@ def render_fantasy_tab(fdata: dict) -> str:
     tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
     tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
 
+    # ── trade tab: embed player pool as JSON for client-side search ─────────
+    import json as _json
+    def _sf(v):
+        try: return round(float(v or 0), 1)
+        except: return 0.0
+    _trade_h = []
+    for _e in fdata["fut_h"]:
+        _p = _e["player"]
+        _trade_h.append({
+            "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
+            "dollars": _sf(_e["dollar"]), "is_pitcher": False,
+            "cats": {"R":_sf(_p.get("R")),"HR":_sf(_p.get("HR")),"RBI":_sf(_p.get("RBI")),
+                     "SB":_sf(_p.get("SB")),"K":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))}
+        })
+    _trade_p = []
+    for _e in fdata["fut_p"]:
+        _p = _e["player"]
+        _trade_p.append({
+            "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
+            "role": _e.get("role","sp"), "dollars": _sf(_e["dollar"]), "is_pitcher": True,
+            "cats": {"W":_sf(_p.get("W")),"ERA":_sf(_p.get("ERA")),"WHIP":_sf(_p.get("WHIP")),
+                     "K":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))}
+        })
+    _trade_h_json = _json.dumps(_trade_h)
+    _trade_p_json = _json.dumps(_trade_p)
+
     inner = f"""
 <div id="fantasy-panel" class="tab-panel">
   <div style="padding:18px 20px 6px">
@@ -5224,6 +5250,11 @@ def render_fantasy_tab(fdata: dict) -> str:
               onclick="fantSwitch('p')"
               style="padding:8px 18px">
         Pitchers
+      </button>
+      <button id="fant-trade-btn" class="tab-btn"
+              onclick="fantSwitch('trade')"
+              style="padding:8px 18px">
+        &#x1F4B1; Trade
       </button>
     </div>
   </div>
@@ -5265,18 +5296,89 @@ def render_fantasy_tab(fdata: dict) -> str:
                     padding:6px 12px;border-radius:6px;font-size:.85rem;
                     width:240px;outline:none;margin-left:12px">
     </div>
-    {tbl_p}
+    {{tbl_p}}
+  </div>
+</div>
+
+<!-- ══ TRADE CALCULATOR ══ -->
+<div id="fant-trade-wrap" style="display:none;padding:18px 20px 0">
+
+  <!-- Two-column layout: Sending | Compare | Receiving -->
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- ── SENDING ── -->
+    <div style="flex:1;min-width:260px">
+      <div style="color:var(--accent);font-weight:700;font-size:.88rem;margin-bottom:10px;
+                  padding:6px 10px;background:rgba(255,80,70,.1);border-radius:6px;
+                  border-left:3px solid var(--accent)">
+        &#x1F4E4; Sending
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input id="trade-send-search" type="text" placeholder="&#128269; Add player&#8230;"
+               oninput="tradeSearch('send',this.value)"
+               onblur="setTimeout(function(){{var d=document.getElementById('trade-send-dd');if(d)d.style.display='none';}},160)"
+               style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                      color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+        <div id="trade-send-dd"
+             style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                    background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                    max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+      </div>
+      <div id="trade-send-list" style="min-height:50px"></div>
+      <div style="margin-top:10px;padding:7px 10px;background:#1a1a1a;border-radius:6px;
+                  display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--muted);font-size:.8rem">Total value</span>
+        <span id="trade-send-total" style="font-weight:700;font-size:.93rem;color:#aaa">$0.0</span>
+      </div>
+    </div>
+
+    <!-- ── CENTER: verdict + category breakdown ── -->
+    <div style="width:190px;flex-shrink:0;padding-top:40px;display:flex;flex-direction:column;align-items:center">
+      <div id="trade-verdict" style="text-align:center;margin-bottom:14px">
+        <span style="color:var(--muted);font-size:.8rem">Add players<br>to compare</span>
+      </div>
+      <div id="trade-cat-breakdown" style="width:100%"></div>
+    </div>
+
+    <!-- ── RECEIVING ── -->
+    <div style="flex:1;min-width:260px">
+      <div style="color:#4caf50;font-weight:700;font-size:.88rem;margin-bottom:10px;
+                  padding:6px 10px;background:rgba(76,175,80,.1);border-radius:6px;
+                  border-left:3px solid #4caf50">
+        &#x1F4E5; Receiving
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input id="trade-recv-search" type="text" placeholder="&#128269; Add player&#8230;"
+               oninput="tradeSearch('recv',this.value)"
+               onblur="setTimeout(function(){{var d=document.getElementById('trade-recv-dd');if(d)d.style.display='none';}},160)"
+               style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                      color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+        <div id="trade-recv-dd"
+             style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                    background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                    max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+      </div>
+      <div id="trade-recv-list" style="min-height:50px"></div>
+      <div style="margin-top:10px;padding:7px 10px;background:#1a1a1a;border-radius:6px;
+                  display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--muted);font-size:.8rem">Total value</span>
+        <span id="trade-recv-total" style="font-weight:700;font-size:.93rem;color:#aaa">$0.0</span>
+      </div>
+    </div>
+
   </div>
 </div>
 
 <script>
 /* ── Hitter / Pitcher main toggle ────────────────────────────────── */
 function fantSwitch(which) {{
-  document.getElementById('fant-h-wrap').style.display = which==='h' ? '' : 'none';
-  document.getElementById('fant-p-wrap').style.display = which==='p' ? '' : 'none';
-  ['h','p'].forEach(function(w) {{
+  document.getElementById('fant-h-wrap').style.display     = which==='h'     ? '' : 'none';
+  document.getElementById('fant-p-wrap').style.display     = which==='p'     ? '' : 'none';
+  document.getElementById('fant-trade-wrap').style.display = which==='trade' ? '' : 'none';
+  ['h','p','trade'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
-    var on  = (w === which);
+    if (!btn) return;
+    var on = (w === which);
     btn.style.borderBottom = on ? '3px solid var(--accent)' : 'none';
     btn.style.color = on ? '#fff' : '';
   }});
@@ -5407,6 +5509,158 @@ function applyFantColors(tblId) {{
 // Apply colors on initial load
 applyFantColors('fant-h-tbl');
 applyFantColors('fant-p-tbl');
+/* ── Trade Calculator ────────────────────────────────────────── */
+var TRADE_HITTERS  = {_trade_h_json};
+var TRADE_PITCHERS = {_trade_p_json};
+var _tradeRoster   = {{ send: [], recv: [] }};
+
+function tradeSearch(side, q) {{
+  var dd = document.getElementById('trade-' + side + '-dd');
+  q = (q || '').toLowerCase().trim();
+  if (!q) {{ dd.style.display = 'none'; return; }}
+  var added = _tradeRoster.send.concat(_tradeRoster.recv).map(function(p) {{ return p.name; }});
+  var pool  = TRADE_HITTERS.concat(TRADE_PITCHERS);
+  var hits  = pool.filter(function(p) {{
+    return added.indexOf(p.name) === -1 && p.name.toLowerCase().indexOf(q) !== -1;
+  }}).slice(0, 8);
+  if (!hits.length) {{
+    dd.innerHTML = '<div style="padding:8px 12px;color:var(--muted);font-size:.82rem">No results</div>';
+  }} else {{
+    dd.innerHTML = hits.map(function(p) {{
+      var meta = p.team + (p.role ? ' ' + p.role.toUpperCase() : '') + '  $' + p.dollars.toFixed(1);
+      return '<div data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
+        + ' onmousedown="tradeAdd(this.dataset.side,this.dataset.name)"'
+        + ' style="padding:7px 12px;cursor:pointer;border-bottom:1px solid #252525;font-size:.83rem"'
+        + ' onmouseover="this.style.background='#252525'" onmouseout="this.style.background=''">'
+        + '<span style="font-weight:600">' + p.name + '</span>'
+        + '<span style="opacity:.55;font-size:.77rem;margin-left:7px">' + meta + '</span>'
+        + '</div>';
+    }}).join('');
+  }}
+  dd.style.display = '';
+}}
+
+function tradeAdd(side, name) {{
+  var pool = TRADE_HITTERS.concat(TRADE_PITCHERS);
+  var p = null;
+  for (var i=0;i<pool.length;i++) {{ if (pool[i].name === name) {{ p=pool[i]; break; }} }}
+  if (!p) return;
+  var already = false;
+  for (var i=0;i<_tradeRoster[side].length;i++) {{ if (_tradeRoster[side][i].name===name) {{ already=true; break; }} }}
+  if (!already) _tradeRoster[side].push(p);
+  var inp = document.getElementById('trade-' + side + '-search');
+  if (inp) inp.value = '';
+  var dd = document.getElementById('trade-' + side + '-dd');
+  if (dd) dd.style.display = 'none';
+  _tradeRender();
+}}
+
+function tradeRemove(side, name) {{
+  _tradeRoster[side] = _tradeRoster[side].filter(function(p) {{ return p.name !== name; }});
+  _tradeRender();
+}}
+
+function _tradePlayerRow(side, p) {{
+  var d = p.dollars;
+  var dStr = (d >= 0 ? '$' : '−$') + Math.abs(d).toFixed(1);
+  var dCol = d >= 10 ? '#f0c040' : d >= 0 ? '#7ec87e' : '#e05555';
+  var roleTag = p.role ? '<span style="opacity:.45;font-size:.68rem;margin-left:3px">' + p.role.toUpperCase() + '</span>' : '';
+  return '<div style="display:flex;align-items:center;justify-content:space-between;'
+    + 'padding:5px 8px;background:#1a1a1a;border-radius:5px;margin-bottom:3px">'
+    + '<div><span style="font-size:.83rem;font-weight:600">' + p.name + '</span>'
+    + '<span style="font-size:.73rem;color:var(--muted);margin-left:5px">' + p.team + roleTag + '</span></div>'
+    + '<div style="display:flex;align-items:center;gap:7px">'
+    + '<span style="color:' + dCol + ';font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
+    + '<button data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
+    + ' onmousedown="tradeRemove(this.dataset.side,this.dataset.name)"'
+    + ' style="background:none;border:none;color:#555;cursor:pointer;font-size:.75rem;padding:2px 4px;line-height:1;border-radius:3px"'
+    + ' onmouseover="this.style.color='#e05555'" onmouseout="this.style.color='#555'">&#x2715;</button>'
+    + '</div></div>';
+}}
+
+function _tradeSectionRows(players, isPitcher) {{
+  return players.filter(function(p) {{ return !!p.is_pitcher === isPitcher; }});
+}}
+
+function _tradeRender() {{
+  ['send','recv'].forEach(function(side) {{
+    var players = _tradeRoster[side];
+    var hitters  = _tradeSectionRows(players, false);
+    var pitchers = _tradeSectionRows(players, true);
+    var html = '';
+    if (!players.length) {{
+      html = '<div style="color:var(--muted);font-size:.79rem;font-style:italic;padding:6px 2px">No players added</div>';
+    }} else {{
+      if (hitters.length) {{
+        html += '<div style="font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
+              + 'letter-spacing:.05em;margin:6px 0 4px">&#x1F3CF; Hitters</div>';
+        hitters.forEach(function(p) {{ html += _tradePlayerRow(side, p); }});
+      }}
+      if (pitchers.length) {{
+        html += '<div style="font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
+              + 'letter-spacing:.05em;margin:8px 0 4px">&#x26BE; Pitchers</div>';
+        pitchers.forEach(function(p) {{ html += _tradePlayerRow(side, p); }});
+      }}
+    }}
+    document.getElementById('trade-' + side + '-list').innerHTML = html;
+    var total = players.reduce(function(a,p) {{ return a + p.dollars; }}, 0);
+    var el = document.getElementById('trade-' + side + '-total');
+    if (el) {{
+      el.textContent = (total >= 0 ? '$' : '−$') + Math.abs(total).toFixed(1);
+      el.style.color = total >= 5 ? '#7ec87e' : total < -1 ? '#e05555' : '#aaa';
+    }}
+  }});
+  _tradeCalc();
+}}
+
+function _tradeCalc() {{
+  var S = _tradeRoster.send, R = _tradeRoster.recv;
+  var verdictEl   = document.getElementById('trade-verdict');
+  var breakdownEl = document.getElementById('trade-cat-breakdown');
+  var sTotal = S.reduce(function(a,p){{return a+p.dollars;}},0);
+  var rTotal = R.reduce(function(a,p){{return a+p.dollars;}},0);
+  var net = rTotal - sTotal;
+
+  if (!S.length && !R.length) {{
+    verdictEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>';
+    breakdownEl.innerHTML = '';
+    return;
+  }}
+
+  var netStr = (net >= 0 ? '+$' : '−$') + Math.abs(net).toFixed(1);
+  var col = net > 0.5 ? '#4caf50' : net < -0.5 ? '#e05555' : '#888';
+  var msg = net > 0.5 ? 'You win' : net < -0.5 ? 'You lose' : 'Even trade';
+  verdictEl.innerHTML =
+    '<div style="font-size:1.05rem;font-weight:800;color:' + col + '">' + msg + '</div>'
+    + '<div style="font-size:.85rem;color:' + col + ';margin-top:3px;font-weight:700">' + netStr + '</div>'
+    + '<div style="font-size:.7rem;color:var(--muted);margin-top:4px">overall value</div>';
+
+  var allCats = ['R','HR','RBI','SB','K','OBP','W','ERA','WHIP','SV','HLD'];
+  var rows = '';
+  allCats.forEach(function(cat) {{
+    var sSum = S.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
+    var rSum = R.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
+    if (Math.abs(sSum)<0.05 && Math.abs(rSum)<0.05) return;
+    var diff    = rSum - sSum;
+    var diffStr = (diff>=0?'+$':'−$') + Math.abs(diff).toFixed(1);
+    var dCol    = diff > 0.2 ? '#4caf50' : diff < -0.2 ? '#e05555' : '#888';
+    var icon    = diff > 0.2 ? '&#9650;' : diff < -0.2 ? '&#9660;' : '&#8776;';
+    var sStr    = (sSum>=0?'$':'−$') + Math.abs(sSum).toFixed(1);
+    var rStr    = (rSum>=0?'$':'−$') + Math.abs(rSum).toFixed(1);
+    rows += '<div style="display:grid;grid-template-columns:32px 1fr 1fr 52px;'
+          + 'align-items:center;padding:4px 2px;border-bottom:1px solid #222;font-size:.76rem;gap:4px">'
+          + '<span style="color:var(--muted);font-weight:700">' + cat + '</span>'
+          + '<span style="color:#666;font-size:.72rem">snd:' + sStr + '</span>'
+          + '<span style="color:#666;font-size:.72rem">rcv:' + rStr + '</span>'
+          + '<span style="color:' + dCol + ';font-weight:700;text-align:right">' + icon + ' ' + diffStr + '</span>'
+          + '</div>';
+  }});
+  breakdownEl.innerHTML = rows
+    ? '<div style="font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
+      + 'letter-spacing:.05em;text-align:center;margin-bottom:8px">By Category</div>' + rows
+    : '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:8px">No shared categories</div>';
+}}
+
 </script>
 """
     return inner
