@@ -5199,7 +5199,7 @@ def render_fantasy_tab(fdata: dict) -> str:
     for entry in fdata["fut_p"]:
         ip_v = entry["player"].get("_ip")
         ip = float(ip_v) if ip_v is not None else 0.0
-        entry["role"] = "sp" if ip >= 50 else "rp"
+        entry["role"] = "sp" if ip >= 100 else "rp"
 
     tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
     tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
