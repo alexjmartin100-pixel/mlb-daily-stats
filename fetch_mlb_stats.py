@@ -5215,6 +5215,9 @@ def render_fantasy_tab(fdata: dict) -> str:
     def _sf(v):
         try: return round(float(v or 0), 1)
         except: return 0.0
+    def _sfp(v, d=3):
+        try: return round(float(v or 0), d)
+        except: return 0.0
     _trade_h = []
     for _e in fdata["fut_h"]:
         _p = _e["player"]
@@ -5222,7 +5225,10 @@ def render_fantasy_tab(fdata: dict) -> str:
             "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
             "dollars": _sf(_e["dollar"]), "is_pitcher": False,
             "cats": {"R":_sf(_p.get("R")),"HR":_sf(_p.get("HR")),"RBI":_sf(_p.get("RBI")),
-                     "SB":_sf(_p.get("SB")),"K":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))}
+                     "SB":_sf(_p.get("SB")),"K":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))},
+            "proj": {"R":_sfp(_p.get("R_p"),0),"HR":_sfp(_p.get("HR_p"),0),
+                     "RBI":_sfp(_p.get("RBI_p"),0),"SB":_sfp(_p.get("SB_p"),0),
+                     "K":_sfp(_p.get("SO_p"),0),"OBP":_sfp(_p.get("OBP_p"),3)}
         })
     _trade_p = []
     for _e in fdata["fut_p"]:
@@ -5231,7 +5237,10 @@ def render_fantasy_tab(fdata: dict) -> str:
             "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
             "role": _e.get("role","sp"), "dollars": _sf(_e["dollar"]), "is_pitcher": True,
             "cats": {"W":_sf(_p.get("W")),"ERA":_sf(_p.get("ERA")),"WHIP":_sf(_p.get("WHIP")),
-                     "K":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))}
+                     "K":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
+            "proj": {"W":_sfp(_p.get("W_p"),0),"ERA":_sfp(_p.get("ERA_p"),2),
+                     "WHIP":_sfp(_p.get("WHIP_p"),2),"K":_sfp(_p.get("SO_p"),0),
+                     "SV":_sfp(_p.get("SV_p"),0),"HLD":_sfp(_p.get("HLD_p"),0)}
         })
     _trade_h_json = _json.dumps(_trade_h)
     _trade_p_json = _json.dumps(_trade_p)
@@ -5339,9 +5348,9 @@ def render_fantasy_tab(fdata: dict) -> str:
     </div>
 
     <!-- ── CENTER: verdict + category breakdown ── -->
-    <div style="width:190px;flex-shrink:0;padding-top:40px;display:flex;flex-direction:column;align-items:center">
-      <div id="trade-verdict" style="text-align:center;margin-bottom:14px">
-        <span style="color:var(--muted);font-size:.8rem">Add players<br>to compare</span>
+    <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch">
+      <div id="trade-verdict" style="text-align:center;margin-bottom:10px">
+        <span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>
       </div>
       <div id="trade-cat-breakdown" style="width:100%"></div>
     </div>
@@ -5630,43 +5639,142 @@ function _tradeCalc() {{
   var net = rTotal - sTotal;
 
   if (!S.length && !R.length) {{
-    verdictEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>';
+    verdictEl.innerHTML = '<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:20px 0">Add players<br>to both sides</div>';
     breakdownEl.innerHTML = '';
     return;
   }}
 
+  // ── Overall verdict banner ──────────────────────────────────────────────
+  var col    = net > 0.5 ? '#4caf50' : net < -0.5 ? '#e05555' : '#888';
+  var bgCol  = net > 0.5 ? 'rgba(76,175,80,.10)' : net < -0.5 ? 'rgba(227,24,55,.10)' : 'rgba(100,100,100,.10)';
+  var bdrCol = net > 0.5 ? '#4caf50' : net < -0.5 ? '#e05555' : '#555';
   var netStr = (net >= 0 ? '+$' : '−$') + Math.abs(net).toFixed(1);
-  var col = net > 0.5 ? '#4caf50' : net < -0.5 ? '#e05555' : '#888';
-  var msg = net > 0.5 ? 'You win' : net < -0.5 ? 'You lose' : 'Even trade';
+  var sTotalStr = (sTotal>=0?'$':'−$')+Math.abs(sTotal).toFixed(1);
+  var rTotalStr = (rTotal>=0?'$':'−$')+Math.abs(rTotal).toFixed(1);
+  // Arrow: points toward the side getting more value
+  // net>0 means recv is better → arrow points RIGHT (→)
+  // net<0 means send is better → arrow points LEFT (←)
+  var arrowHtml;
+  if (net > 0.5) {{
+    arrowHtml = '<div style="font-size:2rem;color:#4caf50;line-height:1;letter-spacing:-4px">&#x25B6;&#x25B6;</div>'
+              + '<div style="font-size:.62rem;color:#4caf50;font-weight:700;letter-spacing:.05em">RECEIVING WINS</div>';
+  }} else if (net < -0.5) {{
+    arrowHtml = '<div style="font-size:2rem;color:#e05555;line-height:1;letter-spacing:-4px">&#x25C0;&#x25C0;</div>'
+              + '<div style="font-size:.62rem;color:#e05555;font-weight:700;letter-spacing:.05em">SENDING WINS</div>';
+  }} else {{
+    arrowHtml = '<div style="font-size:1.6rem;color:#888;line-height:1">&#x2248;</div>'
+              + '<div style="font-size:.62rem;color:#888;font-weight:700;letter-spacing:.05em">EVEN TRADE</div>';
+  }}
   verdictEl.innerHTML =
-    '<div style="font-size:1.05rem;font-weight:800;color:' + col + '">' + msg + '</div>'
-    + '<div style="font-size:.85rem;color:' + col + ';margin-top:3px;font-weight:700">' + netStr + '</div>'
-    + '<div style="font-size:.7rem;color:var(--muted);margin-top:4px">overall value</div>';
+    '<div style="background:' + bgCol + ';border:1px solid ' + bdrCol + ';border-radius:8px;padding:10px 8px 8px;text-align:center">'
+    + arrowHtml
+    + '<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:.75rem">'
+    +   '<div style="text-align:left">'
+    +     '<div style="color:var(--muted);font-size:.62rem">SEND</div>'
+    +     '<div style="color:#e05555;font-weight:700">' + sTotalStr + '</div>'
+    +   '</div>'
+    +   '<div style="color:' + col + ';font-weight:800;font-size:.95rem">' + netStr + '</div>'
+    +   '<div style="text-align:right">'
+    +     '<div style="color:var(--muted);font-size:.62rem">RECV</div>'
+    +     '<div style="color:#4caf50;font-weight:700">' + rTotalStr + '</div>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
 
+  // ── Per-category stat boxes ─────────────────────────────────────────────
+  var lowerBetter = {{ERA: true, WHIP: true}};
   var allCats = ['R','HR','RBI','SB','K','OBP','W','ERA','WHIP','SV','HLD'];
-  var rows = '';
+
+  function fmtProj(cat, v) {{
+    if (cat==='OBP') return v.toFixed(3);
+    if (cat==='ERA'||cat==='WHIP') return v.toFixed(2);
+    return Math.round(v).toString();
+  }}
+  function fmtDiff(cat, diff) {{
+    // Positive diff = recv has more (good for counting/OBP, bad for ERA/WHIP)
+    var sign = diff >= 0 ? '+' : '−';
+    var abs  = Math.abs(diff);
+    var val  = (cat==='OBP') ? abs.toFixed(3) : (cat==='ERA'||cat==='WHIP') ? abs.toFixed(2) : Math.round(abs).toString();
+    return sign + val + '\u00a0' + cat;
+  }}
+  function dolFmt(v) {{
+    return (v>=0?'$':'−$') + Math.abs(v).toFixed(1);
+  }}
+
+  var boxes = '';
   allCats.forEach(function(cat) {{
-    var sSum = S.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
-    var rSum = R.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
-    if (Math.abs(sSum)<0.05 && Math.abs(rSum)<0.05) return;
-    var diff    = rSum - sSum;
-    var diffStr = (diff>=0?'+$':'−$') + Math.abs(diff).toFixed(1);
-    var dCol    = diff > 0.2 ? '#4caf50' : diff < -0.2 ? '#e05555' : '#888';
-    var icon    = diff > 0.2 ? '&#9650;' : diff < -0.2 ? '&#9660;' : '&#8776;';
-    var sStr    = (sSum>=0?'$':'−$') + Math.abs(sSum).toFixed(1);
-    var rStr    = (rSum>=0?'$':'−$') + Math.abs(rSum).toFixed(1);
-    rows += '<div style="display:grid;grid-template-columns:32px 1fr 1fr 52px;'
-          + 'align-items:center;padding:4px 2px;border-bottom:1px solid #222;font-size:.76rem;gap:4px">'
-          + '<span style="color:var(--muted);font-weight:700">' + cat + '</span>'
-          + '<span style="color:#666;font-size:.72rem">snd:' + sStr + '</span>'
-          + '<span style="color:#666;font-size:.72rem">rcv:' + rStr + '</span>'
-          + '<span style="color:' + dCol + ';font-weight:700;text-align:right">' + icon + ' ' + diffStr + '</span>'
-          + '</div>';
+    var sDol  = S.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
+    var rDol  = R.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
+    if (Math.abs(sDol)<0.05 && Math.abs(rDol)<0.05) return;
+
+    var sProj = S.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
+    var rProj = R.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
+
+    var dolDiff  = rDol  - sDol;
+    var projDiff = rProj - sProj;
+    // For ERA/WHIP, lower is better: invert proj diff sign for display labeling
+    var projDiffDisplay = lowerBetter[cat] ? -projDiff : projDiff;
+
+    // Arrow direction: dollar-based (correctly handles ERA/WHIP)
+    var recvWins = dolDiff >  0.2;
+    var sendWins = dolDiff < -0.2;
+    var arrowCol  = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
+    var arrowBody;
+    if (recvWins)      arrowBody = '&#x25B6;&#x25B6;';  // ▶▶ → receiving wins
+    else if (sendWins) arrowBody = '&#x25C0;&#x25C0;';  // ◀◀ ← sending wins
+    else               arrowBody = '&#x2248;';           // ≈
+
+    var dolDiffStr  = (dolDiff>=0?'+$':'−$') + Math.abs(dolDiff).toFixed(1);
+    var projDiffStr = fmtDiff(cat, projDiffDisplay);
+    var dolDiffCol  = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
+
+    // Send/recv side colors
+    var sDolCol = sendWins ? '#4caf50' : '#888';
+    var rDolCol = recvWins ? '#4caf50' : '#888';
+
+    boxes +=
+      '<div style="background:#161616;border:1px solid #2a2a2a;border-radius:7px;'
+    + 'margin-bottom:6px;overflow:hidden">'
+
+    // Cat header bar
+    + '<div style="background:#1e1e1e;padding:3px 8px;display:flex;justify-content:space-between;align-items:center">'
+    +   '<span style="font-size:.72rem;font-weight:800;color:#ccc;letter-spacing:.04em">' + cat + '</span>'
+    +   '<span style="font-size:.62rem;color:' + dolDiffCol + ';font-weight:700">' + dolDiffStr + '</span>'
+    + '</div>'
+
+    // Main row: send | arrow | recv
+    + '<div style="display:grid;grid-template-columns:1fr 48px 1fr;align-items:center;padding:7px 6px 4px;gap:2px">'
+
+    // Send side
+    +   '<div style="text-align:center">'
+    +     '<div style="font-size:1.05rem;font-weight:800;color:#ddd">' + fmtProj(cat, sProj) + '</div>'
+    +     '<div style="font-size:.68rem;color:' + sDolCol + ';margin-top:1px">' + dolFmt(sDol) + '</div>'
+    +   '</div>'
+
+    // Arrow
+    +   '<div style="text-align:center">'
+    +     '<div style="font-size:1.2rem;color:' + arrowCol + ';line-height:1;letter-spacing:-3px">' + arrowBody + '</div>'
+    +   '</div>'
+
+    // Recv side
+    +   '<div style="text-align:center">'
+    +     '<div style="font-size:1.05rem;font-weight:800;color:#ddd">' + fmtProj(cat, rProj) + '</div>'
+    +     '<div style="font-size:.68rem;color:' + rDolCol + ';margin-top:1px">' + dolFmt(rDol) + '</div>'
+    +   '</div>'
+
+    + '</div>'
+
+    // Delta footer
+    + '<div style="padding:2px 8px 5px;text-align:center">'
+    +   '<span style="font-size:.68rem;color:' + dolDiffCol + ';font-weight:700">' + projDiffStr + '</span>'
+    +   (lowerBetter[cat] ? '<span style="font-size:.58rem;color:var(--muted);margin-left:3px">(lower=better)</span>' : '')
+    + '</div>'
+
+    + '</div>';
   }});
-  breakdownEl.innerHTML = rows
-    ? '<div style="font-size:.68rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
-      + 'letter-spacing:.05em;text-align:center;margin-bottom:8px">By Category</div>' + rows
-    : '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:8px">No shared categories</div>';
+
+  breakdownEl.innerHTML = boxes
+    || '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:12px">No shared categories</div>';
 }}
 
 </script>
