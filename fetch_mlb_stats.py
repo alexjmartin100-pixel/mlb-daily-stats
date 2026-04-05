@@ -4514,9 +4514,14 @@ _FANT = {
     "h_slots":  15,   # 11 active + 4 bench hitters per team
     "p_slots":  8,    # 6 active + 2 bench pitchers per team
     "h_split":  0.67, # fraction of total budget allocated to hitters
-    "h_cats":   ["R", "HR", "RBI", "SB", "K", "OBP"],
-    "p_cats":   ["W", "ERA", "WHIP", "K", "SV", "HLD"],
-    "neg_cats": {"ERA", "WHIP"},  # lower = better
+    "h_cats":     ["R", "HR", "RBI", "SB", "K", "OBP"],
+    "p_cats":     ["W", "ERA", "WHIP", "K", "SV", "HLD"],
+    # Separate neg_cats for hitters vs pitchers:
+    #   hitters:  K (strikeouts) is a negative category — fewer Ks wins the category
+    #   pitchers: ERA and WHIP are negative — lower is better
+    "h_neg_cats": {"K"},
+    "p_neg_cats": {"ERA", "WHIP"},
+    "neg_cats":   {"ERA", "WHIP"},  # legacy key kept for any direct references
     "min_ip":   35,   # minimum IP for a pitcher to qualify for the pool
 }
 
@@ -4630,10 +4635,13 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
                 fgid    = p.get("playerid")
                 mlbamid = p.get("xMLBAMID")
                 if fgid:
-                    result[str(fgid)] = float(d)
+                    try:
+                        result[str(int(float(fgid)))] = float(d)
+                    except (ValueError, TypeError):
+                        result[str(fgid)] = float(d)
                 if mlbamid:
                     try:
-                        result[str(int(mlbamid))] = float(d)
+                        result[str(int(float(mlbamid)))] = float(d)
                     except (ValueError, TypeError):
                         pass
             print(f"    → {len(rows or [])} players, {len(result)} keys")
@@ -4755,9 +4763,9 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                  if lb_pitch_data else [])
     min_ip = cfg.get("min_ip", 35)
 
-    ytd_h = _z_to_dollars(lb_data or [], cfg["h_cats"], cfg["neg_cats"],
+    ytd_h = _z_to_dollars(lb_data or [], cfg["h_cats"], cfg["h_neg_cats"],
                            n_h, h_use, False)
-    ytd_p = _z_to_dollars(all_pit_lb,   cfg["p_cats"], cfg["neg_cats"],
+    ytd_p = _z_to_dollars(all_pit_lb,   cfg["p_cats"], cfg["p_neg_cats"],
                            n_p, p_use, True, min_ip=min_ip)
 
     # ── Future (OOPSY + Bat X projected average) ──────────────────────────
@@ -4796,8 +4804,8 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     proj_p = [_np(r) for r in avg_p] if avg_p else []
 
     # ── z-score fallback (used if FG auction-calc is unreachable) ─────────────
-    fut_h = _z_to_dollars(proj_b, cfg["h_cats"], cfg["neg_cats"], n_h, h_use, False)
-    fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["neg_cats"], n_p, p_use, True,
+    fut_h = _z_to_dollars(proj_b, cfg["h_cats"], cfg["h_neg_cats"], n_h, h_use, False)
+    fut_p = _z_to_dollars(proj_p, cfg["p_cats"], cfg["p_neg_cats"], n_p, p_use, True,
                           min_ip=min_ip)
 
     # ── FanGraphs Auction Calculator dollar values (avg OOPSY DC + Bat X RoS) ─
@@ -4813,16 +4821,36 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     )
 
     def _apply_fg_dollars(z_list: list, fg_map: dict) -> list:
-        """Replace dollar values in a z-score list with FG auction-calc values."""
+        """Replace dollar values in a z-score list with FG auction-calc values.
+
+        Normalizes playerid keys to str(int) to handle float IDs (e.g. 12345.0
+        vs 12345).  Players not found in fg_map are capped at $1 so that z-score
+        artifacts never inflate fringe players above FG-priced players.
+        """
         if not fg_map:
-            return z_list
+            return z_list  # FG data unavailable – keep z-scores intact
+        matched = 0
         for entry in z_list:
             p = entry["player"]
-            fgid  = str(p.get("fg_id") or p.get("playerid") or "")
-            mlbam = str(p.get("mlbam") or p.get("xMLBAMID") or "")
+            raw_fg = p.get("fg_id") or p.get("playerid") or ""
+            raw_ml = p.get("mlbam") or p.get("xMLBAMID") or ""
+            try:
+                fgid = str(int(float(raw_fg))) if raw_fg else ""
+            except (ValueError, TypeError):
+                fgid = str(raw_fg)
+            try:
+                mlbam = str(int(float(raw_ml))) if raw_ml else ""
+            except (ValueError, TypeError):
+                mlbam = str(raw_ml)
             d = fg_map.get(fgid) or fg_map.get(mlbam)
             if d is not None:
                 entry["dollar"] = round(float(d), 1)
+                matched += 1
+            else:
+                # Not in FG auction pool → cap at $1 (replacement level)
+                # This prevents z-score artifacts from floating fringe players.
+                entry["dollar"] = 1.0
+        print(f"    [FG overlay] {matched}/{len(z_list)} matched")
         return z_list
 
     fut_h = _apply_fg_dollars(fut_h, fg_h)
@@ -5074,11 +5102,20 @@ def render_fantasy_tab(fdata: dict) -> str:
   </div>
 
   <!-- Hitters table -->
-  <div id="fant-h-wrap">{tbl_h}</div>
+  <div id="fant-h-wrap">
+    <div style="padding:4px 20px 8px">
+      <input id="fant-h-search" type="text" placeholder="&#128269; Search hitters…"
+             oninput="fantSearch('fant-h-tbl', this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none">
+    </div>
+    {tbl_h}
+  </div>
 
-  <!-- Pitchers section with SP/RP sub-toggle -->
+  <!-- Pitchers section with SP/RP sub-toggle + search -->
   <div id="fant-p-wrap" style="display:none">
-    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center">
+    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <span style="color:var(--muted);font-size:.8rem;margin-right:4px">Filter:</span>
       <button id="fp-all-btn" class="tab-btn active"
               onclick="fantPitchFilter('all')"
@@ -5095,6 +5132,11 @@ def render_fantasy_tab(fdata: dict) -> str:
               style="padding:5px 14px;font-size:.82rem">
         RP
       </button>
+      <input id="fant-p-search" type="text" placeholder="&#128269; Search pitchers…"
+             oninput="fantSearchPit(this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none;margin-left:12px">
     </div>
     {tbl_p}
   </div>
@@ -5114,14 +5156,62 @@ function fantSwitch(which) {{
   }});
 }}
 
+/* ── Player search (hitters) ────────────────────────────────────── */
+function fantSearch(tblId, text) {{
+  var q    = text.trim().toLowerCase();
+  var wrap = document.getElementById(tblId);
+  if (!wrap) return;
+  var rows = wrap.querySelectorAll('tbody tr');
+  var rank = 1;
+  rows.forEach(function(r) {{
+    var nm   = (r.querySelector('.name-col') || {{}}).textContent || '';
+    var show = !q || nm.toLowerCase().indexOf(q) >= 0;
+    r.style.display = show ? '' : 'none';
+    if (show) {{
+      var rc = r.querySelector('.rank-col');
+      if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
+      rank++;
+    }}
+  }});
+}}
+
+/* ── Player search (pitchers – respects current SP/RP filter) ───── */
+var _fantPitRole = 'all';
+function fantSearchPit(text) {{
+  var q    = text.trim().toLowerCase();
+  var wrap = document.getElementById('fant-p-tbl');
+  if (!wrap) return;
+  var rows = wrap.querySelectorAll('tbody tr');
+  var rank = 1;
+  rows.forEach(function(r) {{
+    var nm        = (r.querySelector('.name-col') || {{}}).textContent || '';
+    var nameMatch = !q || nm.toLowerCase().indexOf(q) >= 0;
+    var roleMatch = (_fantPitRole === 'all') || (r.getAttribute('data-role') === _fantPitRole);
+    var show = nameMatch && roleMatch;
+    r.style.display = show ? '' : 'none';
+    if (show) {{
+      var rc = r.querySelector('.rank-col');
+      if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
+      rank++;
+    }}
+  }});
+}}
+
 /* ── SP / RP / All pitcher sub-filter ───────────────────────────── */
 function fantPitchFilter(role) {{
-  var tbl = document.querySelector('#fant-p-tbl tbody');
+  _fantPitRole = role;
+  var searchEl = document.getElementById('fant-p-search');
+  var text = searchEl ? searchEl.value : '';
+  var q    = text.trim().toLowerCase();
+  var tbl  = document.querySelector('#fant-p-tbl tbody');
   if (!tbl) return;
   var rows = tbl.querySelectorAll('tr');
   var rank = 1;
   rows.forEach(function(r) {{
-    var show = (role === 'all') || (r.getAttribute('data-role') === role);
+    var nm        = (r.querySelector('.name-col') || {{}}).textContent || '';
+    var nameMatch = !q || nm.toLowerCase().indexOf(q) >= 0;
+    var roleMatch = (role === 'all') || (r.getAttribute('data-role') === role);
+    var show = nameMatch && roleMatch;
     r.style.display = show ? '' : 'none';
     if (show) {{
       var rc = r.querySelector('.rank-col');
@@ -5156,9 +5246,12 @@ function fantSort(tblId, th) {{
     return asc ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
   }});
   rows.forEach(function(r) {{ tbody.appendChild(r); }});
-  rows.forEach(function(r, i) {{
+  var rank = 1;
+  tbody.querySelectorAll('tr').forEach(function(r) {{
+    if (r.style.display === 'none') return;
     var rc = r.querySelector('.rank-col');
-    if (rc) {{ rc.textContent = i+1; rc.setAttribute('data-val', i+1); }}
+    if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
+    rank++;
   }});
   var allTh = wrap.querySelectorAll('th');
   allTh.forEach(function(h) {{
