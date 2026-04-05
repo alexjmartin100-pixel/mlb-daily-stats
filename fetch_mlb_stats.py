@@ -2205,16 +2205,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
     👑 <span id="ta-team-name-tab">My Team</span> <span class="tab-count" id="ta-tc">—</span>
   </button>
-<<<<<<< Updated upstream
   <button class="tab-btn" onclick="showTab('gamelog',this)">
     ⚾ Game Log <span class="tab-count" id="gl-tc">—</span>
-=======
-  <button class="tab-btn" onclick="showTab('hitters',this)">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
-  </button>
-  <button class="tab-btn" onclick="showTab('pitchers',this)">
-    ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
->>>>>>> Stashed changes
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
@@ -2226,7 +2218,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <main>
 
-<<<<<<< Updated upstream
 <!-- ══ GAME LOG ══ -->
 <div id="gamelog-panel" class="tab-panel">
 
@@ -2346,113 +2337,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     </div>
   </div>
 
-=======
-<!-- ══ HITTERS ══ -->
-<div id="hitters-panel" class="tab-panel">
-  <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-    <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
-  </div>
-  <div class="controls">
-    <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
-    <span class="row-count" id="h-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
-  </div>
-  <div class="table-wrap">
-    <table id="h-tbl">
-      <thead><tr>
-        <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
-        <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
-        <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
-        <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
-        <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
-        <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
-        <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
-        <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
-        <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
-        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
-        <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
-        <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
-      </tr></thead>
-      <tbody id="h-body"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- ══ PITCHERS (Starters + Relievers) ══ -->
-<div id="pitchers-panel" class="tab-panel">
-  <div class="note">
-    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
-    Arsenal: game velocity <span class="vd">(season avg)</span> —
-    fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
-    <span class="gs">S+</span> = game Stuff+ for that pitch type.
-    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
-  </div>
-  <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-  </div>
-  <div class="toggle-group">
-    <button class="tgl-btn active" id="pitch-sp-btn" onclick="showPitchType('sp',this)">⚾ Starters <span id="p-sp-tc" style="opacity:.6;font-size:.75em"></span></button>
-    <button class="tgl-btn" id="pitch-rp-btn" onclick="showPitchType('rp',this)">🔥 Relievers <span id="p-rp-tc" style="opacity:.6;font-size:.75em"></span></button>
-  </div>
-  <div class="controls">
-    <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
-    <span class="row-count" id="p-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
-  </div>
-
-  <!-- Starters table -->
-  <div id="p-sp-wrap" class="table-wrap">
-    <table id="sp-tbl">
-      <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-col="team" data-k="team"          onclick="srtSP(this,'team')">Team</th>
-        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtSP(this,'hits')">H</th>
-        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtSP(this,'r')">R</th>
-        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
-        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtSP(this,'k')">K</th>
-        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtSP(this,'w')">W</th>
-        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
-        <th>Arsenal</th>
-      </tr></thead>
-      <tbody id="sp-body"></tbody>
-    </table>
-  </div>
-
-  <!-- Relievers table (hidden by default) -->
-  <div id="p-rp-wrap" class="table-wrap" style="display:none">
-    <table id="rp-tbl">
-      <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-col="team" data-k="team"          onclick="srtRP(this,'team')">Team</th>
-        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtRP(this,'hits')">H</th>
-        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtRP(this,'r')">R</th>
-        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
-        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
-        <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
-        <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
-        <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
-        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
-        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
-        <th>Arsenal</th>
-      </tr></thead>
-      <tbody id="rp-body"></tbody>
-    </table>
-  </div>
->>>>>>> Stashed changes
 </div>
 
 <!-- ══ TEAM ALEX ══ -->
@@ -2973,24 +2857,15 @@ const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.
 // Inverted-sort columns (lower = better): first click → ascending
 const LB_INV_SORT=new Set(['k_pct','chase_pct','whiff_pct','so']);
 
-<<<<<<< Updated upstream
 // Game Log tab + sub-tab counts
 document.getElementById('gl-tc').textContent=HITTERS.length+STARTERS.length+RELIEVERS.length;
-=======
-// Pitchers tab counts
-document.getElementById('p-tc').textContent=STARTERS.length+RELIEVERS.length;
->>>>>>> Stashed changes
 document.getElementById('p-sp-tc').textContent=STARTERS.length;
 document.getElementById('p-rp-tc').textContent=RELIEVERS.length;
 
 let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
-<<<<<<< Updated upstream
 let pitchType='sp';  // current pitcher sub-view: 'sp' or 'rp'
 let glType='h';      // current game log sub-tab: 'h', 'sp', or 'rp'
-=======
-let pitchType='sp';  // current pitcher sub-view
->>>>>>> Stashed changes
 
 function showTab(nm,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -2999,7 +2874,6 @@ function showTab(nm,btn){
   document.getElementById(nm+'-panel').classList.add('active');
 }
 
-<<<<<<< Updated upstream
 function showGameLog(type, btn) {
   glType = type;
   document.querySelectorAll('.gl-btn').forEach(b=>b.classList.remove('active'));
@@ -3013,16 +2887,6 @@ function showGameLog(type, btn) {
     document.getElementById('p-rp-wrap').style.display = type==='rp' ? '' : 'none';
     filterP();
   }
-=======
-function showPitchType(type,btn){
-  pitchType=type;
-  document.querySelectorAll('#pitchers-panel .tgl-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('p-sp-wrap').style.display=type==='sp'?'':'none';
-  document.getElementById('p-rp-wrap').style.display=type==='rp'?'':'none';
-  // re-apply current search to the newly visible table
-  filterP();
->>>>>>> Stashed changes
 }
 
 function filterP(){
@@ -4633,11 +4497,8 @@ def main():
     print("\n[ 6/6 ] Season leaderboards")
     lb_data       = fetch_season_batting_leaderboard(year)
     lb_pitch_data = fetch_season_pitching_leaderboard(year)
-<<<<<<< Updated upstream
     print("\n[ 6b/6 ] Fantasy dollar values")
     fantasy_data = compute_fantasy_dollar_values(lb_data, lb_pitch_data, year)
-=======
->>>>>>> Stashed changes
 
     n_games = int(df["game_pk"].nunique())
 
@@ -4645,10 +4506,7 @@ def main():
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data)
-<<<<<<< Updated upstream
     html = inject_fantasy_tab(html, fantasy_data)
-=======
->>>>>>> Stashed changes
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
@@ -4657,7 +4515,6 @@ def main():
     print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
 
 
-<<<<<<< Updated upstream
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Fantasy Dollar-Value Engine
 #  League: 10-team H2H, $260/team, 6x6
@@ -5229,4 +5086,353 @@ def render_fantasy_tab(fdata: dict) -> str:
 
     cfg    = _FANT
     h_cats = cfg["h_cats"]
-    p_cats =
+    p_cats = cfg["p_cats"]
+
+    # ── stat display helpers ───────────────────────────────────────────────
+    def _fmt_proj(v, cat):
+        """Format a raw projected stat value for primary cell display."""
+        if v is None:
+            return ""
+        fv = float(v)
+        if cat == "OBP":
+            return f"{fv:.3f}"
+        if cat in ("ERA", "WHIP"):
+            return f"{fv:.2f}"
+        return str(int(round(fv)))
+
+    def _fmt_mval(v):
+        """Format a marginal dollar contribution as $X.X or −$X.X."""
+        fv = float(v)
+        return f"${fv:.1f}" if fv >= 0 else f"−${abs(fv):.1f}"
+
+    def _get_stat(p, cat):
+        """Return (dollar_contribution, projected_stat) for a category.
+        'K' maps to 'SO' key in player dict."""
+        key = "SO" if cat == "K" else cat
+        dollar = p.get(key)
+        proj   = p.get(key + "_p")
+        try:
+            dollar = float(dollar) if dollar is not None else None
+        except (TypeError, ValueError):
+            dollar = None
+        try:
+            proj = float(proj) if proj is not None else None
+        except (TypeError, ValueError):
+            proj = None
+        return dollar, proj
+
+    # ── build one HTML table ───────────────────────────────────────────────
+    # Columns: # | Name | Team | Proj $ | [stat cols…]
+    # Primary cell: projected stat (e.g. 48 HR); sub-text: dollar contribution
+    def _build_table(players: list, cats: list, table_id: str) -> str:
+        sort_js = f"fantSort('{table_id}',this)"
+        def _th(label, col_idx):
+            return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
+                    f'style="cursor:pointer;user-select:none;white-space:nowrap">'
+                    f'{label}&nbsp;<span class="fsi" '
+                    f'style="color:var(--muted);font-size:.65rem;opacity:.35">'
+                    f'&#9660;</span></th>')
+
+        col = 0
+        hdr_parts = ['<thead><tr>',
+                     _th('#', col),
+                     _th('Name', (col := col + 1)),
+                     _th('Team', (col := col + 1)),
+                     _th('Proj&nbsp;$', (col := col + 1))]
+        for c in cats:
+            col += 1
+            hdr_parts.append(_th(c, col))
+        hdr_parts.append('</tr></thead>')
+        hdr = "".join(hdr_parts)
+
+        rows_html = []
+        for rank, entry in enumerate(players, 1):
+            p    = entry["player"]
+            nm   = p.get("name") or p.get("PlayerName") or "–"
+            tm   = (p.get("team") or p.get("Team") or "").strip().upper()
+            role = entry.get("role", "")
+            fdol = entry["dollar"]
+            fdol_str = _fmt_dollar(fdol)
+            fdol_col = _dollar_color(fdol)
+            fdol_val = fdol
+
+            team_cell = _team_badge_py(tm)
+
+            stat_cells = ""
+            for cat in cats:
+                dollar, proj = _get_stat(p, cat)
+                if dollar is None:
+                    stat_cells += (
+                        f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
+                    )
+                else:
+                    dol_html  = (f'<div style="font-size:.9rem;line-height:1.15">'
+                                 f'{_fmt_mval(dollar)}</div>')
+                    proj_html = (f'<div style="font-size:.68rem;color:#777;'
+                                 f'line-height:1.1;margin-top:1px">'
+                                 f'({_fmt_proj(proj, cat)})</div>'
+                                 if proj is not None else '')
+                    stat_cells += (
+                        f'<td style="text-align:center;padding:3px 6px" '
+                        f'data-val="{dollar}">'
+                        f'{dol_html}{proj_html}</td>'
+                    )
+
+            rows_html.append(
+                f'<tr data-role="{role}">'
+                f'<td class="rank-col" data-val="{rank}">{rank}</td>'
+                f'<td class="name-col">{nm}</td>'
+                f'<td style="white-space:nowrap">{team_cell}</td>'
+                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
+                f' data-val="{fdol_val}">{fdol_str}</td>'
+                f'{stat_cells}'
+                f'</tr>'
+            )
+
+        return (f'<div class="table-wrap" id="{table_id}">'
+                f'<table class="stats-table"><colgroup></colgroup>'
+                f'{hdr}'
+                f'<tbody>{"".join(rows_html)}</tbody>'
+                f'</table></div>')
+
+    # ── classify pitcher role (SP vs RP) from projected IP ────────────────
+    for entry in fdata["fut_p"]:
+        ip_v = entry["player"].get("_ip")
+        ip = float(ip_v) if ip_v is not None else 0.0
+        entry["role"] = "sp" if ip >= 50 else "rp"
+
+    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
+    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
+
+    inner = f"""
+<div id="fantasy-panel" class="tab-panel">
+  <div style="padding:18px 20px 6px">
+    <h2 style="color:var(--accent);margin:0 0 6px">&#x1F4B0; Fantasy Dollar Values</h2>
+    <p style="color:var(--muted);font-size:.82rem;margin:0 0 14px">
+      10-team H2H &nbsp;&bull;&nbsp; $260/team &nbsp;&bull;&nbsp; 6&times;6
+      &nbsp;&bull;&nbsp; 35&nbsp;IP&nbsp;min
+      &nbsp;|&nbsp; <strong>$</strong>: avg(OOPSY&nbsp;DC&nbsp;RoS,&nbsp;Bat&nbsp;X&nbsp;RoS) directly from FanGraphs&nbsp;Auction&nbsp;Calculator
+      &nbsp;&bull;&nbsp; Click any column header to sort
+    </p>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button id="fant-h-btn" class="tab-btn active"
+              onclick="fantSwitch('h')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:8px 18px">
+        Hitters
+      </button>
+      <button id="fant-p-btn" class="tab-btn"
+              onclick="fantSwitch('p')"
+              style="padding:8px 18px">
+        Pitchers
+      </button>
+    </div>
+  </div>
+
+  <!-- Hitters table -->
+  <div id="fant-h-wrap">
+    <div style="padding:4px 20px 8px">
+      <input id="fant-h-search" type="text" placeholder="&#128269; Search hitters…"
+             oninput="fantSearch('fant-h-tbl', this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none">
+    </div>
+    {tbl_h}
+  </div>
+
+  <!-- Pitchers section with SP/RP sub-toggle + search -->
+  <div id="fant-p-wrap" style="display:none">
+    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:var(--muted);font-size:.8rem;margin-right:4px">Filter:</span>
+      <button id="fp-all-btn" class="tab-btn active"
+              onclick="fantPitchFilter('all')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:5px 14px;font-size:.82rem">
+        All
+      </button>
+      <button id="fp-sp-btn" class="tab-btn"
+              onclick="fantPitchFilter('sp')"
+              style="padding:5px 14px;font-size:.82rem">
+        SP
+      </button>
+      <button id="fp-rp-btn" class="tab-btn"
+              onclick="fantPitchFilter('rp')"
+              style="padding:5px 14px;font-size:.82rem">
+        RP
+      </button>
+      <input id="fant-p-search" type="text" placeholder="&#128269; Search pitchers…"
+             oninput="fantSearchPit(this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none;margin-left:12px">
+    </div>
+    {tbl_p}
+  </div>
+</div>
+
+<script>
+/* ── Hitter / Pitcher main toggle ────────────────────────────────── */
+function fantSwitch(which) {{
+  document.getElementById('fant-h-wrap').style.display = which==='h' ? '' : 'none';
+  document.getElementById('fant-p-wrap').style.display = which==='p' ? '' : 'none';
+  ['h','p'].forEach(function(w) {{
+    var btn = document.getElementById('fant-'+w+'-btn');
+    var on  = (w === which);
+    btn.style.borderBottom = on ? '3px solid var(--accent)' : 'none';
+    btn.style.color = on ? '#fff' : '';
+  }});
+}}
+
+/* ── SP / RP filter ──────────────────────────────────────────── */
+var _fpRole = 'all';
+function fantPitchFilter(role) {{
+  _fpRole = role;
+  var tbl = document.getElementById('fant-p-tbl');
+  if (!tbl) return;
+  var srch = (document.getElementById('fant-p-search') || {{}}).value || '';
+  srch = srch.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var matchRole = (role === 'all') || (tr.dataset.role === role);
+    var matchSearch = !srch || tr.textContent.toLowerCase().includes(srch);
+    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
+  }});
+  ['all','sp','rp'].forEach(function(r) {{
+    var btn = document.getElementById('fp-'+r+'-btn');
+    if (btn) {{
+      btn.style.borderBottom = (r === role) ? '3px solid var(--accent)' : 'none';
+      btn.style.color = (r === role) ? '#fff' : '';
+    }}
+  }});
+}}
+
+/* ── Text search ─────────────────────────────────────────────── */
+function fantSearch(tblId, q) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  q = q.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  }});
+}}
+function fantSearchPit(q) {{
+  var tbl = document.getElementById('fant-p-tbl');
+  if (!tbl) return;
+  q = q.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var matchRole = (_fpRole === 'all') || (tr.dataset.role === _fpRole);
+    var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
+  }});
+}}
+
+/* ── Column sort ─────────────────────────────────────────────── */
+function fantSort(tblId, th) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  var col = parseInt(th.dataset.col, 10);
+  var tbody = tbl.querySelector('tbody');
+  var rows  = Array.from(tbody.querySelectorAll('tr'));
+  // Default first click = descending (highest first)
+  var sortDesc = th.dataset.dir !== 'desc';
+  th.dataset.dir = sortDesc ? 'desc' : 'asc';
+  rows.sort(function(a, b) {{
+    var av = parseFloat(a.cells[col].dataset.val) || 0;
+    var bv = parseFloat(b.cells[col].dataset.val) || 0;
+    return sortDesc ? (bv - av) : (av - bv);
+  }});
+  rows.forEach(function(r) {{ tbody.appendChild(r); }});
+  Array.from(tbody.querySelectorAll('tr')).forEach(function(tr, i) {{
+    var rc = tr.querySelector('.rank-col');
+    if (rc) {{ rc.textContent = i + 1; rc.dataset.val = i + 1; }}
+  }});
+  // Update sort indicator arrows
+  Array.from(tbl.querySelectorAll('thead th .fsi')).forEach(function(s) {{
+    s.innerHTML = '&#9660;'; s.style.color = 'var(--muted)'; s.style.opacity = '.35';
+  }});
+  var activeInd = th.querySelector('.fsi');
+  if (activeInd) {{
+    activeInd.innerHTML = sortDesc ? '&#9660;' : '&#9650;';
+    activeInd.style.color = 'var(--accent)';
+    activeInd.style.opacity = '1';
+  }}
+  applyFantColors(tblId);
+}}
+
+/* ── Column color coding (gold leader + red→white→blue gradient) ─── */
+function applyFantColors(tblId) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  var rows = Array.from(tbl.querySelectorAll('tbody tr:not([style*="display: none"])'));
+  if (!rows.length) return;
+  var nCols = rows[0].cells.length;
+  // Color columns 3+ (skip rank=0, name=1, team=2)
+  for (var c = 3; c < nCols; c++) {{
+    var vals = [];
+    rows.forEach(function(tr) {{
+      var v = parseFloat(tr.cells[c] && tr.cells[c].dataset.val);
+      if (!isNaN(v)) vals.push(v);
+    }});
+    if (!vals.length) continue;
+    var best = Math.max.apply(null, vals);
+    rows.forEach(function(tr) {{
+      var cell = tr.cells[c];
+      if (!cell) return;
+      var v = parseFloat(cell.dataset.val);
+      if (isNaN(v)) return;
+      if (v === best) {{
+        cell.style.color = '#f0c040';
+        cell.style.fontWeight = '700';
+        return;
+      }}
+      var better = vals.filter(function(x) {{ return x > v + 0.00001; }}).length;
+      var total = vals.length;
+      if (total <= 1) return;
+      var t = better / (total - 1);
+      var r, g, b;
+      if (t < 0.5) {{
+        var s = t * 2;
+        r = Math.round(255 + (235 - 255) * s);
+        g = Math.round(60  + (235 - 60)  * s);
+        b = Math.round(50  + (235 - 50)  * s);
+      }} else {{
+        var s2 = (t - 0.5) * 2;
+        r = Math.round(235 + (50  - 235) * s2);
+        g = Math.round(235 + (110 - 235) * s2);
+        b = Math.round(235 + (255 - 235) * s2);
+      }}
+      cell.style.color = 'rgb(' + r + ',' + g + ',' + b + ')';
+      cell.style.fontWeight = '600';
+    }});
+  }}
+}}
+// Apply colors on initial load
+applyFantColors('fant-h-tbl');
+applyFantColors('fant-p-tbl');
+</script>
+"""
+    return inner
+
+
+def inject_fantasy_tab(html: str, fdata: dict) -> str:
+    """
+    Inject Fantasy tab button + panel into the rendered dashboard HTML.
+    Inserts the tab button after the compare button, and the panel before </body>.
+    """
+    if not fdata:
+        return html
+
+    btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
+    anchor   = "showTab('compare'"
+    if anchor in html:
+        idx     = html.index(anchor)
+        end_btn = html.index("</button>", idx) + len("</button>")
+        html    = html[:end_btn] + btn_html + html[end_btn:]
+    else:
+        html = html.replace('</div>', btn_html + '\n</div>', 1)
+
+    panel_html = render_fantasy_tab(fdata)
+    html       = html.replace("</body>", panel_html + "\n</body>")
+    return html
+
+
+if __name__ == "__main__":
+    main()
