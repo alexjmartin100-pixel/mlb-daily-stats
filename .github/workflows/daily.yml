@@ -2,15 +2,13 @@ name: MLB Stats Daily Update
 
 on:
   schedule:
-    # Target: ready by ~noon EDT. GitHub delays scheduled runs 2-3 hrs on free repos.
-    # Scheduling at 7:00 AM EDT (11:00 UTC) so even a 3-hr delay fires by 10 AM EDT.
     - cron: '0 11 * * *'
-  workflow_dispatch:   # lets you trigger a manual run from GitHub UI
+  workflow_dispatch:
   push:
     branches:
       - main
     paths:
-      - 'fetch_mlb_stats.py'   # only re-run when the script itself changes
+      - 'fetch_mlb_stats.py'
 
 permissions:
   contents: write
@@ -20,40 +18,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Cache pip packages
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Write FanGraphs cookie
-        run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
+      - run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
 
-      - name: Generate MLB stats dashboard
-        run: python fetch_mlb_stats.py
+      - run: python fetch_mlb_stats.py
         env:
-          SKIP_AUTO_INSTALL: "1"   # skip the Windows pip/playwright block
+          SKIP_AUTO_INSTALL: "1"
 
-      - name: Commit updated dashboard to repo
-        run: |
-          git config user.name  "github-actions[bot]"
+      - run: |
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add mlb_daily_stats.html
           git diff --cached --quiet || git commit -m "Daily stats update $(date -u +'%Y-%m-%d')"
           git push
 
-      - name: Deploy to Firebase Hosting
-        run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+      - run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
+          npm install -g firebase-tools@13 --silent
+          firebase deploy --only hosting --non-interactive --project mlb-stats-ae429
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
