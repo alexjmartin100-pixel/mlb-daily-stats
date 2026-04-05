@@ -2205,11 +2205,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
     👑 <span id="ta-team-name-tab">My Team</span> <span class="tab-count" id="ta-tc">—</span>
   </button>
-  <button class="tab-btn" onclick="showTab('hitters',this)">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
-  </button>
-  <button class="tab-btn" onclick="showTab('pitchers',this)">
-    ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
+  <button class="tab-btn" onclick="showTab('gamelog',this)">
+    ⚾ Game Log <span class="tab-count" id="gl-tc">—</span>
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
@@ -2221,111 +2218,125 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <main>
 
-<!-- ══ HITTERS ══ -->
-<div id="hitters-panel" class="tab-panel">
-  <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-    <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
-  </div>
-  <div class="controls">
-    <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
-    <span class="row-count" id="h-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
-  </div>
-  <div class="table-wrap">
-    <table id="h-tbl">
-      <thead><tr>
-        <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
-        <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
-        <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
-        <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
-        <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
-        <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
-        <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
-        <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
-        <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
-        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
-        <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
-        <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
-      </tr></thead>
-      <tbody id="h-body"></tbody>
-    </table>
-  </div>
-</div>
+<!-- ══ GAME LOG ══ -->
+<div id="gamelog-panel" class="tab-panel">
 
-<!-- ══ PITCHERS (Starters + Relievers) ══ -->
-<div id="pitchers-panel" class="tab-panel">
-  <div class="note">
-    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
-    Arsenal: game velocity <span class="vd">(season avg)</span> —
-    fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
-    <span class="gs">S+</span> = game Stuff+ for that pitch type.
-    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
-  </div>
-  <div class="legend">
-    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
-  </div>
-  <div class="toggle-group">
-    <button class="tgl-btn active" id="pitch-sp-btn" onclick="showPitchType('sp',this)">⚾ Starters <span id="p-sp-tc" style="opacity:.6;font-size:.75em"></span></button>
-    <button class="tgl-btn" id="pitch-rp-btn" onclick="showPitchType('rp',this)">🔥 Relievers <span id="p-rp-tc" style="opacity:.6;font-size:.75em"></span></button>
-  </div>
-  <div class="controls">
-    <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
-    <span class="row-count" id="p-cnt"></span>
-    <span class="sort-hint">Click headers to sort</span>
+  <!-- Sub-tabs: Hitters / Starters / Relievers -->
+  <div class="toggle-group" style="margin-bottom:16px">
+    <button class="tgl-btn active gl-btn" id="gl-h-btn" onclick="showGameLog('h',this)">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span id="h-tc" style="opacity:.6;font-size:.75em">—</span>
+    </button>
+    <button class="tgl-btn gl-btn" id="gl-sp-btn" onclick="showGameLog('sp',this)">
+      ⚾ Starters <span id="p-sp-tc" style="opacity:.6;font-size:.75em"></span>
+    </button>
+    <button class="tgl-btn gl-btn" id="gl-rp-btn" onclick="showGameLog('rp',this)">
+      🔥 Relievers <span id="p-rp-tc" style="opacity:.6;font-size:.75em"></span>
+    </button>
   </div>
 
-  <!-- Starters table -->
-  <div id="p-sp-wrap" class="table-wrap">
-    <table id="sp-tbl">
-      <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-col="team" data-k="team"          onclick="srtSP(this,'team')">Team</th>
-        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtSP(this,'hits')">H</th>
-        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtSP(this,'r')">R</th>
-        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
-        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtSP(this,'k')">K</th>
-        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtSP(this,'w')">W</th>
-        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
-        <th>Arsenal</th>
-      </tr></thead>
-      <tbody id="sp-body"></tbody>
-    </table>
+  <!-- Hitters sub-panel -->
+  <div id="gl-h-section">
+    <div class="legend">
+      <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+      <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
+    </div>
+    <div class="controls">
+      <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
+      <span class="row-count" id="h-cnt"></span>
+      <span class="sort-hint">Click headers to sort</span>
+    </div>
+    <div class="table-wrap">
+      <table id="h-tbl">
+        <thead><tr>
+          <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
+          <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
+          <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
+          <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
+          <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
+          <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
+          <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
+          <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
+          <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
+          <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
+          <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
+          <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
+          <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
+        </tr></thead>
+        <tbody id="h-body"></tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- Relievers table (hidden by default) -->
-  <div id="p-rp-wrap" class="table-wrap" style="display:none">
-    <table id="rp-tbl">
-      <thead><tr>
-        <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
-        <th class="sortable"      data-col="team" data-k="team"          onclick="srtRP(this,'team')">Team</th>
-        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
-        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
-        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtRP(this,'hits')">H</th>
-        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtRP(this,'r')">R</th>
-        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
-        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
-        <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
-        <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
-        <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
-        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
-        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
-        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
-        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
-        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
-        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
-        <th>Arsenal</th>
-      </tr></thead>
-      <tbody id="rp-body"></tbody>
-    </table>
+  <!-- Pitchers sub-panel (starters + relievers toggled by gl-btn) -->
+  <div id="gl-pit-section" style="display:none">
+    <div class="note">
+      ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
+      Arsenal: game velocity <span class="vd">(season avg)</span> —
+      fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
+      <span class="gs">S+</span> = game Stuff+ for that pitch type.
+      <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
+    </div>
+    <div class="legend">
+      <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+    </div>
+    <div class="controls">
+      <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
+      <span class="row-count" id="p-cnt"></span>
+      <span class="sort-hint">Click headers to sort</span>
+    </div>
+
+    <!-- Starters table -->
+    <div id="p-sp-wrap" class="table-wrap">
+      <table id="sp-tbl">
+        <thead><tr>
+          <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
+          <th class="sortable"      data-col="team" data-k="team"          onclick="srtSP(this,'team')">Team</th>
+          <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
+          <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
+          <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtSP(this,'hits')">H</th>
+          <th class="sortable r"    data-col="r" data-k="r"             onclick="srtSP(this,'r')">R</th>
+          <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
+          <th class="sortable r"    data-col="k" data-k="k"             onclick="srtSP(this,'k')">K</th>
+          <th class="sortable r"    data-col="w" data-k="w"             onclick="srtSP(this,'w')">W</th>
+          <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
+          <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
+          <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
+          <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
+          <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
+          <th>Arsenal</th>
+        </tr></thead>
+        <tbody id="sp-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Relievers table (hidden until RP sub-tab selected) -->
+    <div id="p-rp-wrap" class="table-wrap" style="display:none">
+      <table id="rp-tbl">
+        <thead><tr>
+          <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
+          <th class="sortable"      data-col="team" data-k="team"          onclick="srtRP(this,'team')">Team</th>
+          <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
+          <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
+          <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtRP(this,'hits')">H</th>
+          <th class="sortable r"    data-col="r" data-k="r"             onclick="srtRP(this,'r')">R</th>
+          <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
+          <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
+          <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
+          <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
+          <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
+          <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
+          <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
+          <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
+          <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
+          <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
+          <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
+          <th>Arsenal</th>
+        </tr></thead>
+        <tbody id="rp-body"></tbody>
+      </table>
+    </div>
   </div>
+
 </div>
 
 <!-- ══ TEAM ALEX ══ -->
@@ -2846,14 +2857,15 @@ const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.
 // Inverted-sort columns (lower = better): first click → ascending
 const LB_INV_SORT=new Set(['k_pct','chase_pct','whiff_pct','so']);
 
-// Pitchers tab counts
-document.getElementById('p-tc').textContent=STARTERS.length+RELIEVERS.length;
+// Game Log tab + sub-tab counts
+document.getElementById('gl-tc').textContent=HITTERS.length+STARTERS.length+RELIEVERS.length;
 document.getElementById('p-sp-tc').textContent=STARTERS.length;
 document.getElementById('p-rp-tc').textContent=RELIEVERS.length;
 
 let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
-let pitchType='sp';  // current pitcher sub-view
+let pitchType='sp';  // current pitcher sub-view: 'sp' or 'rp'
+let glType='h';      // current game log sub-tab: 'h', 'sp', or 'rp'
 
 function showTab(nm,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -2862,14 +2874,19 @@ function showTab(nm,btn){
   document.getElementById(nm+'-panel').classList.add('active');
 }
 
-function showPitchType(type,btn){
-  pitchType=type;
-  document.querySelectorAll('#pitchers-panel .tgl-btn').forEach(b=>b.classList.remove('active'));
+function showGameLog(type, btn) {
+  glType = type;
+  document.querySelectorAll('.gl-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('p-sp-wrap').style.display=type==='sp'?'':'none';
-  document.getElementById('p-rp-wrap').style.display=type==='rp'?'':'none';
-  // re-apply current search to the newly visible table
-  filterP();
+  const isH = type === 'h';
+  document.getElementById('gl-h-section').style.display   = isH ? '' : 'none';
+  document.getElementById('gl-pit-section').style.display = isH ? 'none' : '';
+  if (!isH) {
+    pitchType = type;
+    document.getElementById('p-sp-wrap').style.display = type==='sp' ? '' : 'none';
+    document.getElementById('p-rp-wrap').style.display = type==='rp' ? '' : 'none';
+    filterP();
+  }
 }
 
 function filterP(){
