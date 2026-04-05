@@ -2,11 +2,15 @@ name: MLB Stats Daily Update
 
 on:
   schedule:
+    # Target: ready by ~noon EDT. GitHub delays scheduled runs 2-3 hrs on free repos.
+    # Scheduling at 7:00 AM EDT (11:00 UTC) so even a 3-hr delay fires by 10 AM EDT.
     - cron: '0 11 * * *'
-  workflow_dispatch:
+  workflow_dispatch:   # lets you trigger a manual run from GitHub UI
   push:
     branches:
       - main
+    paths:
+      - 'fetch_mlb_stats.py'   # only re-run when the script itself changes
 
 permissions:
   contents: write

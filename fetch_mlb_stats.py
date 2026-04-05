@@ -4498,7 +4498,6 @@ def main():
     print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
 
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Fantasy Dollar-Value Engine
 #  League: 10-team H2H, $260/team, 6x6
@@ -4790,27 +4789,13 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     """
     Compute projected fantasy dollar values for hitters and pitchers.
 
-    Dollar values come EXCLUSIVELY from the FanGraphs Auction Calculator API
-    (averaged across OOPSY DC RoS and Bat X RoS projection systems).
-    No z-score calculation is used for dollar values.
-
-    Stat columns (R, HR, RBI, etc.) come from the averaged OOPSY + Bat X
-    RoS projections fetched separately.
+    Dollar values AND stat columns come EXCLUSIVELY from the FanGraphs
+    Auction Calculator API (averaged across OOPSY DC RoS and Bat X RoS).
+    No z-score calculation and no separate projections fetch — everything
+    comes directly from the FG auction-calculator rows.
 
     Returns dict with keys: fut_h, fut_p.
     """
-
-    # ── Projected stats (OOPSY + Bat X average) ───────────────────────────
-    # Used for stat display columns (R, HR, RBI, SB, OBP, etc.).
-    print("  [FANTASY] Fetching OOPSY projections…")
-    ob = fetch_fg_projections(year, "oopsy", "bat")
-    op = fetch_fg_projections(year, "oopsy", "pit")
-    print("  [FANTASY] Fetching Bat X projections…")
-    bb = fetch_fg_projections(year, "batx",  "bat")
-    bp = fetch_fg_projections(year, "batx",  "pit")
-
-    avg_b = _avg_proj_sets(ob, bb)
-    avg_p = _avg_proj_sets(op, bp)
 
     def _pid(r):
         """Normalize playerid to str-int key."""
@@ -4822,10 +4807,6 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
         except (ValueError, TypeError):
             return str(v)
 
-    # Build projected-stat lookup by normalised playerid
-    proj_h_map = {k: r for r in (avg_b or []) if (k := _pid(r))}
-    proj_p_map = {k: r for r in (avg_p or []) if (k := _pid(r))}
-
     # ── FanGraphs Auction Calculator rows (both projection systems) ────────
     print("  [FANTASY] Fetching FG auction-calculator rows (OOPSY DC RoS + Bat X RoS)…")
     rows_oo_h = _fetch_fg_auction_full("roopsydc", "bat")
@@ -4833,13 +4814,21 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     rows_oo_p = _fetch_fg_auction_full("roopsydc", "pit")
     rows_bx_p = _fetch_fg_auction_full("rthebatx", "pit")
 
-    def _merge_auction(rows_a: list, rows_b: list,
-                       is_pitcher: bool, stat_map: dict) -> list:
+    def _raw(row, *keys):
+        """Return first non-None value from row for given keys, or None."""
+        for k in keys:
+            v = row.get(k)
+            if v is not None:
+                return v
+        return None
+
+    def _merge_auction(rows_a: list, rows_b: list, is_pitcher: bool) -> list:
         """
-        Merge two FG auction row-sets by playerid, average their Dollars,
-        and join projected stats from stat_map for display columns.
-        Returns list[{player, dollar}] sorted by dollar desc.
-        Dollar values are taken directly from FG — no z-score, no cap.
+        Merge two FG auction row-sets by playerid, average their Dollars.
+        Stat columns come directly from the auction rows — no separate
+        projections API, no z-score fallback.
+        If a stat field is absent from the auction row it is stored as None
+        (the renderer will fall back to showing the dollar value).
         """
         by_id: dict = {}
         for r in (rows_a or []):
@@ -4863,52 +4852,65 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
             else:
                 dollar = da if da is not None else db
 
-            proj = stat_map.get(fgid) or {}
-            name = (ref.get("PlayerName") or ref.get("Name")
-                    or proj.get("PlayerName") or "")
-            team = ref.get("Team") or proj.get("Team") or ""
+            name  = ref.get("PlayerName") or ref.get("Name") or ""
+            team  = ref.get("Team") or ""
             mlbam = ref.get("xMLBAMID")
+
+            def _avg_field(*keys):
+                """Average field across a/b rows; None if both absent."""
+                vals = []
+                for row in (x for x in (a, b) if x):
+                    for k in keys:
+                        v = row.get(k)
+                        if v is not None:
+                            try:
+                                vals.append(float(v))
+                            except (TypeError, ValueError):
+                                pass
+                            break
+                if not vals:
+                    return None
+                return sum(vals) / len(vals)
 
             if is_pitcher:
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    "W":    float(proj.get("W")    or ref.get("W")    or 0),
-                    "ERA":  float(proj.get("ERA")  or ref.get("ERA")  or 0),
-                    "WHIP": float(proj.get("WHIP") or ref.get("WHIP") or 0),
-                    "SO":   float(proj.get("SO")   or ref.get("SO")   or ref.get("K") or 0),
-                    "SV":   float(proj.get("SV")   or ref.get("SV")   or 0),
-                    "HLD":  float(proj.get("HLD")  or ref.get("HLD")  or 0),
-                    "IP":   float(proj.get("IP")   or ref.get("IP")   or 0),
-                    "G":    float(proj.get("G")    or ref.get("G")    or 0),
-                    "GS":   float(proj.get("GS")   or ref.get("GS")   or 0),
+                    "W":    _avg_field("W"),
+                    "ERA":  _avg_field("ERA"),
+                    "WHIP": _avg_field("WHIP"),
+                    "SO":   _avg_field("SO", "K"),
+                    "SV":   _avg_field("SV"),
+                    "HLD":  _avg_field("HLD"),
+                    "IP":   _avg_field("IP"),
+                    "G":    _avg_field("G"),
+                    "GS":   _avg_field("GS"),
                 }
             else:
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    "R":   float(proj.get("R")   or ref.get("R")   or 0),
-                    "HR":  float(proj.get("HR")  or ref.get("HR")  or 0),
-                    "RBI": float(proj.get("RBI") or ref.get("RBI") or 0),
-                    "SB":  float(proj.get("SB")  or ref.get("SB")  or 0),
-                    "SO":  float(proj.get("SO")  or ref.get("SO")  or 0),
-                    "OBP": float(proj.get("OBP") or ref.get("OBP") or 0),
-                    "PA":  float(proj.get("PA")  or ref.get("PA")  or 0),
-                    "G":   float(proj.get("G")   or ref.get("G")   or 0),
+                    "R":   _avg_field("R"),
+                    "HR":  _avg_field("HR"),
+                    "RBI": _avg_field("RBI"),
+                    "SB":  _avg_field("SB"),
+                    "SO":  _avg_field("SO"),
+                    "OBP": _avg_field("OBP"),
+                    "PA":  _avg_field("PA"),
+                    "G":   _avg_field("G"),
                 }
 
             result.append({
                 "player": player,
                 "dollar": round(float(dollar), 1),
-                # z / zc kept as stubs so downstream code doesn't break
                 "z": 0.0, "zc": {},
             })
 
         result.sort(key=lambda x: x["dollar"], reverse=True)
         return result
 
-    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False, proj_h_map)
-    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True,  proj_p_map)
+    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False)
+    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True)
 
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers "
           f"(from FG auction calc, OOPSY DC RoS + Bat X RoS avg)")
@@ -5043,13 +5045,27 @@ def render_fantasy_tab(fdata: dict) -> str:
 
     # ── stat display helpers ───────────────────────────────────────────────
     def _stat_fmt(v, cat):
-        if v is None:
-            return "–"
+        """Format a stat value; v must not be None."""
         if cat == "OBP":
             return f"{float(v):.3f}"
         if cat in ("ERA", "WHIP"):
             return f"{float(v):.2f}"
         return str(int(round(float(v))))
+
+    def _get_stat(p, cat):
+        """Return raw float stat from player dict, or None if absent."""
+        if cat == "K":
+            v = p.get("SO") if p.get("SO") is not None else p.get("K")
+        elif cat == "HLD":
+            v = p.get("HLD") if p.get("HLD") is not None else p.get("holds")
+        else:
+            v = p.get(cat)
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
 
     # ── build one HTML table ───────────────────────────────────────────────
     # Columns: # | Name | Team | Proj $ | [stat cols…]
@@ -5088,11 +5104,18 @@ def render_fantasy_tab(fdata: dict) -> str:
 
             stat_cells = ""
             for cat in cats:
-                v = _fant_stat(p, cat)
-                stat_cells += (
-                    f'<td style="text-align:center" data-val="{v}">'
-                    f'{_stat_fmt(v, cat)}</td>'
-                )
+                v = _get_stat(p, cat)
+                if v is None:
+                    # Stat absent from FG auction row — show dollar value instead
+                    stat_cells += (
+                        f'<td style="text-align:center;opacity:.7" data-val="{fdol_val}">'
+                        f'{fdol_str}</td>'
+                    )
+                else:
+                    stat_cells += (
+                        f'<td style="text-align:center" data-val="{v}">'
+                        f'{_stat_fmt(v, cat)}</td>'
+                    )
 
             rows_html.append(
                 f'<tr data-role="{role}">'
@@ -5113,7 +5136,9 @@ def render_fantasy_tab(fdata: dict) -> str:
 
     # ── classify pitcher role (SP vs RP) from projected GS ────────────────
     for entry in fdata["fut_p"]:
-        gs = float(entry["player"].get("GS") or entry["player"].get("gs") or 0)
+        gs_v = entry["player"].get("GS") if entry["player"].get("GS") is not None \
+               else entry["player"].get("gs")
+        gs = float(gs_v) if gs_v is not None else 0.0
         entry["role"] = "sp" if gs >= 3 else "rp"
 
     tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
@@ -5192,141 +5217,73 @@ function fantSwitch(which) {{
   ['h','p'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     var on  = (w === which);
-    btn.classList.toggle('active', on);    btn.style.borderBottom = on ? '3px solid var(--accent)' : '3px solid transparent';
-    btn.style.color        = on ? '#fff' : '';
+    btn.style.borderBottom = on ? '3px solid var(--accent)' : 'none';
+    btn.style.color = on ? '#fff' : '';
   }});
 }}
 
-/* ── Player search (hitters) ────────────────────────────────────── */
-function fantSearch(tblId, text) {{
-  var q    = text.trim().toLowerCase();
-  var wrap = document.getElementById(tblId);
-  if (!wrap) return;
-  var rows = wrap.querySelectorAll('tbody tr');
-  var rank = 1;
-  rows.forEach(function(r) {{
-    var nm   = (r.querySelector('.name-col') || {{}}).textContent || '';
-    var show = !q || nm.toLowerCase().indexOf(q) >= 0;
-    r.style.display = show ? '' : 'none';
-    if (show) {{
-      var rc = r.querySelector('.rank-col');
-      if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
-      rank++;
-    }}
-  }});
-}}
-
-/* ── Player search (pitchers – respects current SP/RP filter) ───── */
-var _fantPitRole = 'all';
-function fantSearchPit(text) {{
-  var q    = text.trim().toLowerCase();
-  var wrap = document.getElementById('fant-p-tbl');
-  if (!wrap) return;
-  var rows = wrap.querySelectorAll('tbody tr');
-  var rank = 1;
-  rows.forEach(function(r) {{
-    var nm        = (r.querySelector('.name-col') || {{}}).textContent || '';
-    var nameMatch = !q || nm.toLowerCase().indexOf(q) >= 0;
-    var roleMatch = (_fantPitRole === 'all') || (r.getAttribute('data-role') === _fantPitRole);
-    var show = nameMatch && roleMatch;
-    r.style.display = show ? '' : 'none';
-    if (show) {{
-      var rc = r.querySelector('.rank-col');
-      if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
-      rank++;
-    }}
-  }});
-}}
-
-/* ── SP / RP / All pitcher sub-filter ───────────────────────────── */
+/* ── SP / RP filter ──────────────────────────────────────────── */
+var _fpRole = 'all';
 function fantPitchFilter(role) {{
-  _fantPitRole = role;
-  var searchEl = document.getElementById('fant-p-search');
-  var text = searchEl ? searchEl.value : '';
-  var q    = text.trim().toLowerCase();
-  var tbl  = document.querySelector('#fant-p-tbl tbody');
+  _fpRole = role;
+  var tbl = document.getElementById('fant-p-tbl');
   if (!tbl) return;
-  var rows = tbl.querySelectorAll('tr');
-  var rank = 1;
-  rows.forEach(function(r) {{
-    var nm        = (r.querySelector('.name-col') || {{}}).textContent || '';
-    var nameMatch = !q || nm.toLowerCase().indexOf(q) >= 0;
-    var roleMatch = (role === 'all') || (r.getAttribute('data-role') === role);
-    var show = nameMatch && roleMatch;
-    r.style.display = show ? '' : 'none';
-    if (show) {{
-      var rc = r.querySelector('.rank-col');
-      if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
-      rank++;
-    }}
+  var srch = (document.getElementById('fant-p-search') || {{}}).value || '';
+  srch = srch.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var matchRole = (role === 'all') || (tr.dataset.role === role);
+    var matchSearch = !srch || tr.textContent.toLowerCase().includes(srch);
+    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
   }});
-  ['all','sp','rp'].forEach(function(f) {{
-    var btn = document.getElementById('fp-'+f+'-btn');
-    if (!btn) return;
-    var on = (f === role);
-    btn.classList.toggle('active', on);
-    btn.style.borderBottom = on ? '3px solid var(--accent)' : '3px solid transparent';
-    btn.style.color        = on ? '#fff' : '';
+  ['all','sp','rp'].forEach(function(r) {{
+    var btn = document.getElementById('fp-'+r+'-btn');
+    if (btn) {{
+      btn.style.borderBottom = (r === role) ? '3px solid var(--accent)' : 'none';
+      btn.style.color = (r === role) ? '#fff' : '';
+    }}
   }});
 }}
 
-/* ── Sortable column headers ─────────────────────────────────────── */
-var _fantSortState = {{}};
+/* ── Text search ─────────────────────────────────────────────── */
+function fantSearch(tblId, q) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  q = q.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  }});
+}}
+function fantSearchPit(q) {{
+  var tbl = document.getElementById('fant-p-tbl');
+  if (!tbl) return;
+  q = q.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var matchRole = (_fpRole === 'all') || (tr.dataset.role === _fpRole);
+    var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
+  }});
+}}
+
+/* ── Column sort ─────────────────────────────────────────────── */
 function fantSort(tblId, th) {{
-  var col   = parseInt(th.getAttribute('data-col'));
-  var wrap  = document.getElementById(tblId);
-  var tbody = wrap.querySelector('tbody');
-  var rows  = Array.from(tbody.querySelectorAll('tr:not([style*="display: none"])'));
-  var asc   = !(_fantSortState[tblId+col]);
-  _fantSortState[tblId+col] = asc;
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  var col = parseInt(th.dataset.col, 10);
+  var tbody = tbl.querySelector('tbody');
+  var rows  = Array.from(tbody.querySelectorAll('tr'));
+  var asc   = th.dataset.dir !== 'asc';
+  th.dataset.dir = asc ? 'asc' : 'desc';
   rows.sort(function(a, b) {{
-    var av = a.cells[col].getAttribute('data-val');
-    var bv = b.cells[col].getAttribute('data-val');
-    var an = parseFloat(av), bn = parseFloat(bv);
-    if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
-    return asc ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||'');
+    var av = parseFloat(a.cells[col].dataset.val) || 0;
+    var bv = parseFloat(b.cells[col].dataset.val) || 0;
+    return asc ? (av - bv) : (bv - av);
   }});
   rows.forEach(function(r) {{ tbody.appendChild(r); }});
-  var rank = 1;
-  tbody.querySelectorAll('tr').forEach(function(r) {{
-    if (r.style.display === 'none') return;
-    var rc = r.querySelector('.rank-col');
-    if (rc) {{ rc.textContent = rank; rc.setAttribute('data-val', rank); }}
-    rank++;
-  }});
-  var allTh = wrap.querySelectorAll('th');
-  allTh.forEach(function(h) {{
-    var sp = h.querySelector('span');
-    if (sp) sp.innerHTML = parseInt(h.getAttribute('data-col'))===col
-      ? (asc ? '&#9650;' : '&#9660;') : '&#9660;';
+  Array.from(tbody.querySelectorAll('tr')).forEach(function(tr, i) {{
+    var rc = tr.querySelector('.rank-col');
+    if (rc) {{ rc.textContent = i + 1; rc.dataset.val = i + 1; }}
   }});
 }}
 </script>
 """
     return inner
-
-
-def inject_fantasy_tab(html: str, fdata: dict) -> str:
-    """
-    Inject Fantasy tab button + panel into the rendered dashboard HTML.
-    Inserts the tab button after the compare button, and the panel before </body>.
-    """
-    if not fdata:
-        return html
-
-    btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
-    anchor   = "showTab('compare'"
-    if anchor in html:
-        idx     = html.index(anchor)
-        end_btn = html.index("</button>", idx) + len("</button>")
-        html    = html[:end_btn] + btn_html + html[end_btn:]
-    else:
-        html = html.replace('</div>', btn_html + '\n</div>', 1)
-
-    panel_html = render_fantasy_tab(fdata)
-    html       = html.replace("</body>", panel_html + "\n</body>")
-    return html
-
-
-if __name__ == "__main__":
-    main()
