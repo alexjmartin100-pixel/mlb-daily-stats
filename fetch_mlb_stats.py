@@ -4827,27 +4827,32 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
 
     # ── Projected raw stats (OOPSY DC RoS + Bat X RoS average) ────────────
     # Used ONLY for display (e.g. "48 HR"). Dollar values come from auction calc.
-    print("  [FANTASY] Fetching projected stats (roopsydc + rthebatx)…")
+    print("  [FANTASY] Fetching projected stats (roopsydc + rthebatx + steamerr)…")
     ob = fetch_fg_projections(year, "roopsydc", "bat")
     bb = fetch_fg_projections(year, "rthebatx", "bat")
+    sb = fetch_fg_projections(year, "steamerr",  "bat")
     op = fetch_fg_projections(year, "roopsydc", "pit")
     bp = fetch_fg_projections(year, "rthebatx", "pit")
-    avg_b = _avg_proj_sets(ob, bb)
-    avg_p = _avg_proj_sets(op, bp)
+    sp = fetch_fg_projections(year, "steamerr",  "pit")
+    avg_b = _avg_proj_sets(_avg_proj_sets(ob, bb), sb)
+    avg_p = _avg_proj_sets(_avg_proj_sets(op, bp), sp)
     proj_h_map = {k: r for r in (avg_b or []) if (k := _pid(r))}
     proj_p_map = {k: r for r in (avg_p or []) if (k := _pid(r))}
 
     # ── FanGraphs Auction Calculator rows (both projection systems) ────────
-    print("  [FANTASY] Fetching FG auction-calculator rows (OOPSY DC RoS + Bat X RoS)…")
+    print("  [FANTASY] Fetching FG auction-calculator rows (OOPSY DC RoS + Bat X RoS + Steamer RoS)…")
     rows_oo_h = _fetch_fg_auction_full("roopsydc", "bat")
     rows_bx_h = _fetch_fg_auction_full("rthebatx", "bat")
+    rows_st_h = _fetch_fg_auction_full("steamerr",  "bat")
     rows_oo_p = _fetch_fg_auction_full("roopsydc", "pit")
     rows_bx_p = _fetch_fg_auction_full("rthebatx", "pit")
+    rows_st_p = _fetch_fg_auction_full("steamerr",  "pit")
 
     def _merge_auction(rows_a: list, rows_b: list,
-                       is_pitcher: bool, proj_stat_map: dict) -> list:
+                       is_pitcher: bool, proj_stat_map: dict,
+                       rows_c: list = None) -> list:
         """
-        Merge two FG auction row-sets by playerid, average their Dollars.
+        Merge two or three FG auction row-sets by playerid, average their Dollars.
         m* fields → per-category dollar contributions (for color coding / sort).
         proj_stat_map → raw projected stats (for primary cell display).
         """
@@ -4860,18 +4865,19 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
             k = _pid(r)
             if k:
                 by_id.setdefault(k, {})["b"] = r
+        for r in (rows_c or []):
+            k = _pid(r)
+            if k:
+                by_id.setdefault(k, {})["c"] = r
 
         result = []
         for fgid, ab in by_id.items():
             a   = ab.get("a")
             b   = ab.get("b")
-            ref = a or b
-            da  = float(a.get("Dollars", 0)) if a else None
-            db  = float(b.get("Dollars", 0)) if b else None
-            if da is not None and db is not None:
-                dollar = (da + db) / 2.0
-            else:
-                dollar = da if da is not None else db
+            c   = ab.get("c")
+            ref = a or b or c
+            ds  = [float(x.get("Dollars", 0)) for x in (a, b, c) if x is not None]
+            dollar = sum(ds) / len(ds) if ds else 0.0
 
             name  = ref.get("PlayerName") or ref.get("Name") or ""
             team  = ref.get("Team") or ""
@@ -4879,9 +4885,9 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
             proj  = proj_stat_map.get(fgid) or {}
 
             def _avg_field(*keys):
-                """Average field across a/b rows; None if both absent."""
+                """Average field across a/b/c rows; None if all absent."""
                 vals = []
-                for row in (x for x in (a, b) if x):
+                for row in (x for x in (a, b, c) if x):
                     for k in keys:
                         v = row.get(k)
                         if v is not None:
@@ -4954,11 +4960,11 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
         result.sort(key=lambda x: x["dollar"], reverse=True)
         return result
 
-    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False, proj_h_map)
-    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True,  proj_p_map)
+    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False, proj_h_map, rows_st_h)
+    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True,  proj_p_map, rows_st_p)
 
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers "
-          f"(from FG auction calc, OOPSY DC RoS + Bat X RoS avg)")
+          f"(from FG auction calc, OOPSY DC RoS + Bat X RoS + Steamer RoS avg)")
 
     return {"fut_h": fut_h, "fut_p": fut_p}
 
