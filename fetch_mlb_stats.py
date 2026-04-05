@@ -5168,7 +5168,7 @@ def render_fantasy_tab(fdata: dict) -> str:
                 else:
                     dol_html  = (f'<div style="font-size:.9rem;line-height:1.15">'
                                  f'{_fmt_mval(dollar)}</div>')
-                    proj_html = (f'<div style="font-size:.68rem;color:#777;'
+                    proj_html = (f'<div style="font-size:.68rem;color:#777;font-weight:400;'
                                  f'line-height:1.1;margin-top:1px">'
                                  f'({_fmt_proj(proj, cat)})</div>'
                                  if proj is not None else '')
@@ -5404,6 +5404,7 @@ function fantPitchFilter(role) {{
       btn.style.color = (r === role) ? '#fff' : '';
     }}
   }});
+  applyFantColors('fant-p-tbl');
 }}
 
 /* ── Text search ─────────────────────────────────────────────── */
@@ -5414,6 +5415,7 @@ function fantSearch(tblId, q) {{
   Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
     tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
   }});
+  applyFantColors(tblId);
 }}
 function fantSearchPit(q) {{
   var tbl = document.getElementById('fant-p-tbl');
@@ -5424,6 +5426,7 @@ function fantSearchPit(q) {{
     var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
     tr.style.display = (matchRole && matchSearch) ? '' : 'none';
   }});
+  applyFantColors('fant-p-tbl');
 }}
 
 /* ── Column sort ─────────────────────────────────────────────── */
