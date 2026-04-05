@@ -5296,7 +5296,7 @@ def render_fantasy_tab(fdata: dict) -> str:
                     padding:6px 12px;border-radius:6px;font-size:.85rem;
                     width:240px;outline:none;margin-left:12px">
     </div>
-    {{tbl_p}}
+    {tbl_p}
   </div>
 </div>
 
