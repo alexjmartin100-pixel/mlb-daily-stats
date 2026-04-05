@@ -5534,7 +5534,7 @@ function tradeSearch(side, q) {{
       return '<div data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
         + ' onmousedown="tradeAdd(this.dataset.side,this.dataset.name)"'
         + ' style="padding:7px 12px;cursor:pointer;border-bottom:1px solid #252525;font-size:.83rem"'
-        + '>
+        + '>'
         + '<span style="font-weight:600">' + p.name + '</span>'
         + '<span style="opacity:.55;font-size:.77rem;margin-left:7px">' + meta + '</span>'
         + '</div>';
