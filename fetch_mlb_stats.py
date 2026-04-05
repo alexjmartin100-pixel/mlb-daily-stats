@@ -5733,41 +5733,41 @@ function _tradeCalc() {{
     var rDolCol = recvWins ? '#4caf50' : '#888';
 
     boxes +=
-      '<div style="background:#161616;border:1px solid #2a2a2a;border-radius:7px;'
-    + 'margin-bottom:6px;overflow:hidden">'
+      '<div style="background:#161616;border:1px solid #2a2a2a;border-radius:5px;'
+    + 'margin-bottom:4px;overflow:hidden">'
 
     // Cat header bar
-    + '<div style="background:#1e1e1e;padding:3px 8px;display:flex;justify-content:space-between;align-items:center">'
-    +   '<span style="font-size:.72rem;font-weight:800;color:#ccc;letter-spacing:.04em">' + cat + '</span>'
-    +   '<span style="font-size:.62rem;color:' + dolDiffCol + ';font-weight:700">' + dolDiffStr + '</span>'
+    + '<div style="background:#1e1e1e;padding:2px 6px;display:flex;justify-content:space-between;align-items:center">'
+    +   '<span style="font-size:.65rem;font-weight:800;color:#ccc;letter-spacing:.04em">' + cat + '</span>'
+    +   '<span style="font-size:.6rem;color:' + dolDiffCol + ';font-weight:700">' + dolDiffStr + '</span>'
     + '</div>'
 
     // Main row: send | arrow | recv
-    + '<div style="display:grid;grid-template-columns:1fr 48px 1fr;align-items:center;padding:7px 6px 4px;gap:2px">'
+    + '<div style="display:grid;grid-template-columns:1fr 36px 1fr;align-items:center;padding:4px 5px 3px;gap:2px">'
 
     // Send side
     +   '<div style="text-align:center">'
-    +     '<div style="font-size:1.05rem;font-weight:800;color:#ddd">' + fmtProj(cat, sProj) + '</div>'
-    +     '<div style="font-size:.68rem;color:' + sDolCol + ';margin-top:1px">' + dolFmt(sDol) + '</div>'
+    +     '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + fmtProj(cat, sProj) + '</div>'
+    +     '<div style="font-size:.6rem;color:' + sDolCol + ';margin-top:1px">' + dolFmt(sDol) + '</div>'
     +   '</div>'
 
     // Arrow
     +   '<div style="text-align:center">'
-    +     '<div style="font-size:1.2rem;color:' + arrowCol + ';line-height:1;letter-spacing:-3px">' + arrowBody + '</div>'
+    +     '<div style="font-size:1rem;color:' + arrowCol + ';line-height:1;letter-spacing:-3px">' + arrowBody + '</div>'
     +   '</div>'
 
     // Recv side
     +   '<div style="text-align:center">'
-    +     '<div style="font-size:1.05rem;font-weight:800;color:#ddd">' + fmtProj(cat, rProj) + '</div>'
-    +     '<div style="font-size:.68rem;color:' + rDolCol + ';margin-top:1px">' + dolFmt(rDol) + '</div>'
+    +     '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + fmtProj(cat, rProj) + '</div>'
+    +     '<div style="font-size:.6rem;color:' + rDolCol + ';margin-top:1px">' + dolFmt(rDol) + '</div>'
     +   '</div>'
 
     + '</div>'
 
     // Delta footer
-    + '<div style="padding:2px 8px 5px;text-align:center">'
-    +   '<span style="font-size:.68rem;color:' + dolDiffCol + ';font-weight:700">' + projDiffStr + '</span>'
-    +   (lowerBetter[cat] ? '<span style="font-size:.58rem;color:var(--muted);margin-left:3px">(lower=better)</span>' : '')
+    + '<div style="padding:1px 6px 4px;text-align:center">'
+    +   '<span style="font-size:.6rem;color:' + dolDiffCol + ';font-weight:700">' + projDiffStr + '</span>'
+    +   (lowerBetter[cat] ? '<span style="font-size:.55rem;color:var(--muted);margin-left:3px">(lower=better)</span>' : '')
     + '</div>'
 
     + '</div>';
