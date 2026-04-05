@@ -4791,8 +4791,9 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
 
     Dollar values AND stat columns come EXCLUSIVELY from the FanGraphs
     Auction Calculator API (averaged across OOPSY DC RoS and Bat X RoS).
-    No z-score calculation and no separate projections fetch — everything
-    comes directly from the FG auction-calculator rows.
+    Dollar values are strictly from FG auction calc.
+    Projected stat values (R, HR, RBI …) come from the FG projections API
+    using the same RoS projection systems, purely for display purposes.
 
     Returns dict with keys: fut_h, fut_p.
     """
@@ -4807,6 +4808,18 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
         except (ValueError, TypeError):
             return str(v)
 
+    # ── Projected raw stats (OOPSY DC RoS + Bat X RoS average) ────────────
+    # Used ONLY for display (e.g. "48 HR"). Dollar values come from auction calc.
+    print("  [FANTASY] Fetching projected stats (roopsydc + rthebatx)…")
+    ob = fetch_fg_projections(year, "roopsydc", "bat")
+    bb = fetch_fg_projections(year, "rthebatx", "bat")
+    op = fetch_fg_projections(year, "roopsydc", "pit")
+    bp = fetch_fg_projections(year, "rthebatx", "pit")
+    avg_b = _avg_proj_sets(ob, bb)
+    avg_p = _avg_proj_sets(op, bp)
+    proj_h_map = {k: r for r in (avg_b or []) if (k := _pid(r))}
+    proj_p_map = {k: r for r in (avg_p or []) if (k := _pid(r))}
+
     # ── FanGraphs Auction Calculator rows (both projection systems) ────────
     print("  [FANTASY] Fetching FG auction-calculator rows (OOPSY DC RoS + Bat X RoS)…")
     rows_oo_h = _fetch_fg_auction_full("roopsydc", "bat")
@@ -4814,21 +4827,12 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
     rows_oo_p = _fetch_fg_auction_full("roopsydc", "pit")
     rows_bx_p = _fetch_fg_auction_full("rthebatx", "pit")
 
-    def _raw(row, *keys):
-        """Return first non-None value from row for given keys, or None."""
-        for k in keys:
-            v = row.get(k)
-            if v is not None:
-                return v
-        return None
-
-    def _merge_auction(rows_a: list, rows_b: list, is_pitcher: bool) -> list:
+    def _merge_auction(rows_a: list, rows_b: list,
+                       is_pitcher: bool, proj_stat_map: dict) -> list:
         """
         Merge two FG auction row-sets by playerid, average their Dollars.
-        Stat columns come directly from the auction rows — no separate
-        projections API, no z-score fallback.
-        If a stat field is absent from the auction row it is stored as None
-        (the renderer will fall back to showing the dollar value).
+        m* fields → per-category dollar contributions (for color coding / sort).
+        proj_stat_map → raw projected stats (for primary cell display).
         """
         by_id: dict = {}
         for r in (rows_a or []):
@@ -4855,6 +4859,7 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
             name  = ref.get("PlayerName") or ref.get("Name") or ""
             team  = ref.get("Team") or ""
             mlbam = ref.get("xMLBAMID")
+            proj  = proj_stat_map.get(fgid) or {}
 
             def _avg_field(*keys):
                 """Average field across a/b rows; None if both absent."""
@@ -4872,31 +4877,55 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                     return None
                 return sum(vals) / len(vals)
 
+            def _ps(key):
+                """Return projected stat float from proj dict, or None."""
+                v = proj.get(key)
+                if v is None:
+                    return None
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return None
+
             if is_pitcher:
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    # Marginal dollar contributions per category (from FG auction calc)
+                    # Marginal dollar contributions (FG auction calc) — sort/color
                     "W":    _avg_field("mW"),
                     "ERA":  _avg_field("mERA"),
                     "WHIP": _avg_field("mWHIP"),
                     "SO":   _avg_field("mSO"),
                     "SV":   _avg_field("mSV"),
                     "HLD":  _avg_field("mHLD"),
-                    # Structural fields (not displayed as stat cols)
-                    "_ip":  _avg_field("IP"),   # used for SP/RP classification
+                    # Projected raw stats (projections API) — primary display
+                    "W_p":    _ps("W"),
+                    "ERA_p":  _ps("ERA"),
+                    "WHIP_p": _ps("WHIP"),
+                    "SO_p":   _ps("SO"),
+                    "SV_p":   _ps("SV"),
+                    "HLD_p":  _ps("HLD"),
+                    # Structural (not displayed)
+                    "_ip":  _avg_field("IP"),   # SP/RP classification
                 }
             else:
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
-                    # Marginal dollar contributions per category (from FG auction calc)
+                    # Marginal dollar contributions (FG auction calc) — sort/color
                     "R":   _avg_field("mR"),
                     "HR":  _avg_field("mHR"),
                     "RBI": _avg_field("mRBI"),
                     "SB":  _avg_field("mSB"),
-                    "SO":  _avg_field("mSO"),   # negative = hurts (K is bad for hitter)
+                    "SO":  _avg_field("mSO"),
                     "OBP": _avg_field("mOBP"),
+                    # Projected raw stats (projections API) — primary display
+                    "R_p":   _ps("R"),
+                    "HR_p":  _ps("HR"),
+                    "RBI_p": _ps("RBI"),
+                    "SB_p":  _ps("SB"),
+                    "SO_p":  _ps("SO"),
+                    "OBP_p": _ps("OBP"),
                 }
 
             result.append({
@@ -4908,8 +4937,8 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
         result.sort(key=lambda x: x["dollar"], reverse=True)
         return result
 
-    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False)
-    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True)
+    fut_h = _merge_auction(rows_oo_h, rows_bx_h, False, proj_h_map)
+    fut_p = _merge_auction(rows_oo_p, rows_bx_p, True,  proj_p_map)
 
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers "
           f"(from FG auction calc, OOPSY DC RoS + Bat X RoS avg)")
@@ -5043,33 +5072,49 @@ def render_fantasy_tab(fdata: dict) -> str:
     p_cats = cfg["p_cats"]
 
     # ── stat display helpers ───────────────────────────────────────────────
-    def _stat_fmt(v, cat):
-        """Format a marginal dollar value; v must not be None.
-        All stat columns are now per-category dollar contributions from FG auction calc."""
+    def _fmt_proj(v, cat):
+        """Format a raw projected stat value for primary cell display."""
+        if v is None:
+            return ""
+        fv = float(v)
+        if cat == "OBP":
+            return f"{fv:.3f}"
+        if cat in ("ERA", "WHIP"):
+            return f"{fv:.2f}"
+        return str(int(round(fv)))
+
+    def _fmt_mval(v):
+        """Format a marginal dollar contribution as $X.X or −$X.X."""
         fv = float(v)
         return f"${fv:.1f}" if fv >= 0 else f"−${abs(fv):.1f}"
 
     def _get_stat(p, cat):
-        """Return marginal dollar float for cat from player dict, or None if absent.
-        cat 'K' maps to 'SO' key in player dict."""
+        """Return (dollar_contribution, projected_stat) for a category.
+        'K' maps to 'SO' key in player dict."""
         key = "SO" if cat == "K" else cat
-        v = p.get(key)
-        if v is None:
-            return None
+        dollar = p.get(key)
+        proj   = p.get(key + "_p")
         try:
-            return float(v)
+            dollar = float(dollar) if dollar is not None else None
         except (TypeError, ValueError):
-            return None
+            dollar = None
+        try:
+            proj = float(proj) if proj is not None else None
+        except (TypeError, ValueError):
+            proj = None
+        return dollar, proj
 
     # ── build one HTML table ───────────────────────────────────────────────
     # Columns: # | Name | Team | Proj $ | [stat cols…]
-    # Dollar values come directly from FG auction calc (no YTD $ column).
+    # Primary cell: projected stat (e.g. 48 HR); sub-text: dollar contribution
     def _build_table(players: list, cats: list, table_id: str) -> str:
         sort_js = f"fantSort('{table_id}',this)"
         def _th(label, col_idx):
             return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
-                    f'style="cursor:pointer;user-select:none">'
-                    f'{label} <span style="opacity:.45;font-size:.7rem">&#9660;</span></th>')
+                    f'style="cursor:pointer;user-select:none;white-space:nowrap">'
+                    f'{label}&nbsp;<span class="fsi" '
+                    f'style="color:var(--muted);font-size:.65rem;opacity:.35">'
+                    f'&#9660;</span></th>')
 
         col = 0
         hdr_parts = ['<thead><tr>',
@@ -5098,17 +5143,22 @@ def render_fantasy_tab(fdata: dict) -> str:
 
             stat_cells = ""
             for cat in cats:
-                v = _get_stat(p, cat)
-                if v is None:
-                    # Stat absent from FG auction row — show dollar value instead
+                dollar, proj = _get_stat(p, cat)
+                if dollar is None:
                     stat_cells += (
-                        f'<td style="text-align:center;opacity:.7" data-val="{fdol_val}">'
-                        f'{fdol_str}</td>'
+                        f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
                     )
                 else:
+                    proj_html = (f'<div style="font-size:.9rem;line-height:1.15">'
+                                 f'{_fmt_proj(proj, cat)}</div>'
+                                 if proj is not None else '')
+                    dol_html  = (f'<div style="font-size:.68rem;opacity:.65;'
+                                 f'line-height:1.1;margin-top:1px">'
+                                 f'{_fmt_mval(dollar)}</div>')
                     stat_cells += (
-                        f'<td style="text-align:center" data-val="{v}">'
-                        f'{_stat_fmt(v, cat)}</td>'
+                        f'<td style="text-align:center;padding:3px 6px" '
+                        f'data-val="{dollar}">'
+                        f'{proj_html}{dol_html}</td>'
                     )
 
             rows_html.append(
@@ -5264,19 +5314,29 @@ function fantSort(tblId, th) {{
   var col = parseInt(th.dataset.col, 10);
   var tbody = tbl.querySelector('tbody');
   var rows  = Array.from(tbody.querySelectorAll('tr'));
-  var asc   = th.dataset.dir !== 'asc';
-  th.dataset.dir = asc ? 'asc' : 'desc';
+  // Default first click = descending (highest first)
+  var sortDesc = th.dataset.dir !== 'desc';
+  th.dataset.dir = sortDesc ? 'desc' : 'asc';
   rows.sort(function(a, b) {{
     var av = parseFloat(a.cells[col].dataset.val) || 0;
     var bv = parseFloat(b.cells[col].dataset.val) || 0;
-    return asc ? (av - bv) : (bv - av);
+    return sortDesc ? (bv - av) : (av - bv);
   }});
   rows.forEach(function(r) {{ tbody.appendChild(r); }});
   Array.from(tbody.querySelectorAll('tr')).forEach(function(tr, i) {{
     var rc = tr.querySelector('.rank-col');
     if (rc) {{ rc.textContent = i + 1; rc.dataset.val = i + 1; }}
   }});
-  // Re-apply colors after sort
+  // Update sort indicator arrows
+  Array.from(tbl.querySelectorAll('thead th .fsi')).forEach(function(s) {{
+    s.innerHTML = '&#9660;'; s.style.color = 'var(--muted)'; s.style.opacity = '.35';
+  }});
+  var activeInd = th.querySelector('.fsi');
+  if (activeInd) {{
+    activeInd.innerHTML = sortDesc ? '&#9660;' : '&#9650;';
+    activeInd.style.color = 'var(--accent)';
+    activeInd.style.opacity = '1';
+  }}
   applyFantColors(tblId);
 }}
 
