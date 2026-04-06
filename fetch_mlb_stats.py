@@ -1621,7 +1621,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "https://statsapi.mlb.com/api/v1/people"
                 f"?personIds={id_str}"
                 "&fields=people,id,birthDate,currentAge,height,weight,"
-                "primaryPosition,batSide,pitchHand"
+                "primaryPosition,abbreviation,batSide,code,pitchHand"
             )
             try:
                 br = requests.get(bio_url, headers=hdrs, timeout=20)
@@ -1717,12 +1717,15 @@ _TEAM_ID_MAP = {
 _TEAM_ID_MAP["ARI"] = 109
 
 
-def render_player_cards_tab(lb_data: list) -> str:
+def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     """
     Build the Player Cards tab panel HTML + JS.
     lb_data is the list returned by fetch_season_batting_leaderboard,
     with compute_hitter_percentiles already applied.
+    dollar_map is mlbam_id → RoS dollar value from fantasy tab.
     """
+    if dollar_map is None:
+        dollar_map = {}
     import json
 
     # ── Build compact player index for autocomplete ──────────────────────
@@ -1746,6 +1749,7 @@ def render_player_cards_tab(lb_data: list) -> str:
             "ht":    p.get("height"),
             "wt":    p.get("weight"),
             "qual":  p.get("qualified", False),
+            "dv":    dollar_map.get(mid),
             # standard stats
             "pa":    p.get("pa"),
             "ab":    p.get("ab"),
@@ -1885,6 +1889,18 @@ def render_player_cards_tab(lb_data: list) -> str:
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">NOT QUALIFIED</span>';
 
+    // ── Dollar value badge ───────────────────────────────────────────────
+    var dvBadge = '';
+    if (d.dv != null) {{
+      var dvCol = d.dv >= 10 ? '#f0c040' : d.dv >= 0 ? '#7ec87e' : '#e05555';
+      var dvSign = d.dv >= 0 ? '$' : '-$';
+      dvBadge = '<div style="text-align:center;flex-shrink:0;margin-left:auto;padding-left:8px">'
+        + '<div style="font-size:1.3rem;font-weight:900;color:' + dvCol + '">'
+        + dvSign + Math.abs(d.dv).toFixed(1) + '</div>'
+        + '<div style="font-size:.55rem;color:#666;letter-spacing:.04em;margin-top:1px">RoS VALUE</div>'
+        + '</div>';
+    }}
+
     // ── Header ────────────────────────────────────────────────────────────
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
@@ -1910,6 +1926,7 @@ def render_player_cards_tab(lb_data: list) -> str:
       +     age + ' · ' + ht + ' · ' + wt
       +   '</div>'
       + '</div>'
+      + dvBadge
       + '</div>';
 
     // ── Standard stats strip ──────────────────────────────────────────────
@@ -1957,12 +1974,13 @@ def render_player_cards_tab(lb_data: list) -> str:
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
       // Gradient: 0=blue (low), 50=white, 99=red (high)
-      // Color of the marker dot
+      // Color of the marker dot + text inside it
       var dotCol = '#888';
+      var dotTxt = '#111';
       if (pctDisp != null) {{
-        if (pctDisp >= 67)      dotCol = '#e05555';
-        else if (pctDisp >= 34) dotCol = '#ccc';
-        else                    dotCol = '#4287f5';
+        if (pctDisp >= 67)      {{ dotCol = '#e05555'; dotTxt = '#fff'; }}
+        else if (pctDisp >= 34) {{ dotCol = '#ccc';    dotTxt = '#111'; }}
+        else                    {{ dotCol = '#4287f5'; dotTxt = '#fff'; }}
       }}
       var markerLeft = pctDisp != null ? pctDisp : 50;
       var barHtml;
@@ -1973,25 +1991,21 @@ def render_player_cards_tab(lb_data: list) -> str:
         barHtml =
           '<div style="height:8px;border-radius:4px;'
           + 'background:linear-gradient(to right,#2563eb,#e8e8e8 50%,#c0392b);'
-          + 'position:relative;margin:6px 0 2px">'
+          + 'position:relative;margin:8px 0 4px">'
           + '<div style="position:absolute;top:50%;left:' + markerLeft + '%;'
-          + 'transform:translate(-50%,-50%);width:18px;height:18px;'
-          + 'border-radius:50%;background:' + dotCol + ';'
-          + 'border:2.5px solid #eee;box-shadow:0 0 8px rgba(255,255,255,.35), 0 0 3px rgba(0,0,0,.8)"></div>'
+          + 'transform:translate(-50%,-50%);min-width:24px;height:24px;'
+          + 'border-radius:12px;background:' + dotCol + ';'
+          + 'border:2px solid #eee;box-shadow:0 0 8px rgba(255,255,255,.35), 0 0 3px rgba(0,0,0,.8);'
+          + 'display:flex;align-items:center;justify-content:center;'
+          + 'font-size:.62rem;font-weight:800;color:' + dotTxt + ';line-height:1;padding:0 3px">'
+          + pctDisp + '</div>'
           + '</div>';
       }}
-      var pctLabel = pctDisp != null
-        ? '<span style="font-size:.78rem;font-weight:800;color:' + dotCol + ';min-width:32px;text-align:right">'
-          + pctDisp + '</span>'
-        : '<span style="font-size:.75rem;color:#555;min-width:28px;text-align:right">–</span>';
 
-      return '<div style="margin-bottom:10px">'
+      return '<div style="margin-bottom:12px">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
         +   '<span style="font-size:.72rem;color:#aaa;font-weight:600">' + label + '</span>'
-        +   '<div style="display:flex;align-items:center;gap:6px">'
-        +     '<span style="font-size:.78rem;color:#ccc">' + valStr + '</span>'
-        +     pctLabel
-        +   '</div>'
+        +   '<span style="font-size:.78rem;color:#ccc">' + valStr + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
@@ -2038,10 +2052,22 @@ def render_player_cards_tab(lb_data: list) -> str:
     return inner
 
 
-def inject_player_cards_tab(html: str, lb_data: list) -> str:
+def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None) -> str:
     """Inject Player Cards tab button and panel into the dashboard HTML."""
     if not lb_data:
         return html
+
+    # Build mlbam → dollar value lookup from fantasy hitter data
+    _dollar_map = {}
+    if fantasy_data:
+        for entry in fantasy_data.get("fut_h", []):
+            pl = entry.get("player", {})
+            mlbam = pl.get("mlbam")
+            if mlbam:
+                try:
+                    _dollar_map[int(mlbam)] = entry.get("dollar", 0)
+                except (ValueError, TypeError):
+                    pass
 
     # Tab button — insert after the Fantasy tab button
     btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('playercards',this)\">&#x1F4C8; Player Cards</button>"
@@ -2059,7 +2085,7 @@ def inject_player_cards_tab(html: str, lb_data: list) -> str:
             end_btn = html.index("</button>", idx) + len("</button>")
             html    = html[:end_btn] + btn_html + html[end_btn:]
 
-    panel_html = render_player_cards_tab(lb_data)
+    panel_html = render_player_cards_tab(lb_data, _dollar_map)
     html       = html.replace("</body>", panel_html + "\n</body>")
     return html
 
@@ -5011,7 +5037,7 @@ def main():
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data)
     lb_data = compute_hitter_percentiles(lb_data)
     html = inject_fantasy_tab(html, fantasy_data)
-    html = inject_player_cards_tab(html, lb_data)
+    html = inject_player_cards_tab(html, lb_data, fantasy_data)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
