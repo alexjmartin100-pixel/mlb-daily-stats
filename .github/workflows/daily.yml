@@ -39,15 +39,7 @@ jobs:
       - name: Write FanGraphs cookie
         run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
 
-      - name: Check if stats regeneration needed
-        id: check_py
-        run: |
-          git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q 'fetch_mlb_stats.py' && echo "run_py=true" >> $GITHUB_OUTPUT || echo "run_py=false" >> $GITHUB_OUTPUT
-          # Always regenerate on schedule or manual runs
-          if [ "${{ github.event_name }}" != "push" ]; then echo "run_py=true" >> $GITHUB_OUTPUT; fi
-
       - name: Generate MLB stats dashboard
-        if: steps.check_py.outputs.run_py == 'true'
         run: python fetch_mlb_stats.py
         env:
           SKIP_AUTO_INSTALL: "1"   # skip the Windows pip/playwright block
