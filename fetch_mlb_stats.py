@@ -1379,21 +1379,38 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "name":    str(row.get("Name", "")).strip(),
                 "team":    str(row.get("Team", "")).strip(),
                 "pa":      pa,
+                "ab":      _int(row.get("AB", 0)),
                 "qualified": pa >= qual_pa,
                 "r":       _int(row.get("R",   0)),
                 "hr":      _int(row.get("HR",  0)),
                 "rbi":     _int(row.get("RBI", 0)),
                 "sb":      sb,
                 "sba":     sb + cs,
-                "obp":     _flt(row.get("OBP"),  3),
+                "avg":     _flt(row.get("AVG"), 3),
+                "obp":     _flt(row.get("OBP"), 3),
+                "slg":     _flt(row.get("SLG"), 3),
+                "ops":     _flt(row.get("OPS"), 3),
                 "woba":    _flt(row.get("wOBA"), 3),
                 "k_pct":   _pct(row.get("K%")),
                 "bb_pct":  _pct(row.get("BB%")),
                 "so":      _int(row.get("SO", 0)),
-                "xwoba": None, "chase_pct": None, "whiff_pct": None,
+                "pull_pct":   _pct(row.get("Pull%")),
+                "center_pct": _pct(row.get("Cent%")),
+                "oppo_pct":   _pct(row.get("Oppo%")),
+                "gb_pct":     _pct(row.get("GB%")),
+                "ld_pct":     _pct(row.get("LD%")),
+                "fb_pct":     _pct(row.get("FB%")),
+                "pu_pct":     _pct(row.get("IFFB%")),
+                "xwoba": None, "xba": None, "xslg": None,
+                "chase_pct": None, "whiff_pct": None,
                 "hard_hit_pct": None, "barrel_pct": None, "barrels": None,
                 "sweet_spot_pct": None, "avg_ev": None, "max_ev": None,
-                "bat_speed": None, "sprint_speed": None,
+                "launch_angle_avg": None,
+                "bat_speed": None, "squared_up_pct": None,
+                "sprint_speed": None,
+                "bats": None, "throws": None,
+                "height": None, "weight": None,
+                "age": None, "pos": None,
                 "war":       _flt(row.get("WAR"), 1),
             }
         print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
@@ -1430,19 +1447,31 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     except Exception as e:
         print(f"  [LB] Savant EV/Barrel failed: {e}")
 
-    # ── Step 3: Savant xwOBA / Chase% / Whiff% ───────────────────────────────
-    print("  [LB] Savant xwOBA/Chase/Whiff…")
+    # ── Step 3: Savant xwOBA / xBA / xSLG / Chase% / Whiff% / Launch Angle ─
+    print("  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA…")
     try:
         r3 = requests.get(
             "https://baseballsavant.mlb.com/leaderboard/custom",
             params={"year": year, "type": "batter", "filter": "",
                     "sort": "4", "sortDir": "desc", "min": "1",
-                    "selections": "xwoba,oz_swing_percent,whiff_percent",
+                    "selections": ("xwoba,estimated_ba_using_speedangle,"
+                                   "estimated_slg_using_speedangle,"
+                                   "launch_angle_avg,"
+                                   "oz_swing_percent,whiff_percent"),
                     "csv": "true"},
             headers=hdrs, timeout=30)
         r3.raise_for_status()
         sv3 = pd.read_csv(StringIO(r3.text))
         mid_col3 = next((c for c in ["player_id", "batter"] if c in sv3.columns), None)
+        sv3_map = {
+            "xwoba":                               ("xwoba",            3),
+            "estimated_ba_using_speedangle":       ("xba",              3),
+            "estimated_slg_using_speedangle":      ("xslg",             3),
+            "launch_angle_avg":                    ("launch_angle_avg", 1),
+            "oz_swing_percent":                    ("chase_pct",        1),
+            "whiff_percent":                       ("whiff_pct",        1),
+        }
+        matched3 = 0
         for _, row in sv3.iterrows():
             if mid_col3 is None:
                 break
@@ -1453,20 +1482,16 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             if mid not in players:
                 continue
             p = players[mid]
-            try:
-                if "xwoba" in sv3.columns and pd.notna(row.get("xwoba")):
-                    p["xwoba"] = round(float(row["xwoba"]), 3)
-            except (ValueError, TypeError):
-                pass
-            for sv_col, p_key in [("oz_swing_percent", "chase_pct"), ("whiff_percent", "whiff_pct")]:
+            for sv_col, (p_key, prec) in sv3_map.items():
                 try:
                     if sv_col in sv3.columns and pd.notna(row.get(sv_col)):
-                        p[p_key] = round(float(row[sv_col]), 1)
+                        p[p_key] = round(float(row[sv_col]), prec)
                 except (ValueError, TypeError):
                     pass
-        print(f"  [LB] ✓ xwOBA/Chase/Whiff {len(sv3)} rows")
+            matched3 += 1
+        print(f"  [LB] ✓ xwOBA/xBA/xSLG/Chase/Whiff/LA {len(sv3)} rows, {matched3} matched")
     except Exception as e:
-        print(f"  [LB] Savant xwOBA/Chase/Whiff failed: {e}")
+        print(f"  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA failed: {e}")
 
     # ── Step 4: Savant bat speed ──────────────────────────────────────────────
     # Try bat-tracking leaderboard first, then fall back to custom leaderboard
@@ -1490,6 +1515,8 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 print(f"  [LB] bat speed: cols not found in {bs_url.split('/')[-1]} — got: {list(bt.columns[:10])}")
                 continue
             matched = 0
+            sq_col = next((c for c in ["squared_up_swing_rate","squared_up_percent",
+                                        "squared_up","squared_up_pct"] if c in bt.columns), None)
             for _, row in bt.iterrows():
                 try:
                     mid = int(row[mid_col4])
@@ -1503,7 +1530,16 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                     matched += 1
                 except (ValueError, TypeError):
                     pass
-            print(f"  [LB] ✓ bat speed ({bs_url.split('/')[-1]}): {len(bt)} rows, {matched} matched")
+                if sq_col:
+                    sv = row.get(sq_col)
+                    try:
+                        if pd.notna(sv):
+                            val = round(float(sv), 1)
+                            # Savant returns as fraction (0-1) or percent; normalize
+                            players[mid]["squared_up_pct"] = val if val > 1 else round(val * 100, 1)
+                    except (ValueError, TypeError):
+                        pass
+            print(f"  [LB] ✓ bat speed ({bs_url.split('/')[-1]}): {len(bt)} rows, {matched} matched, sq_col={sq_col}")
             bat_speed_ok = True
             break
         except Exception as e:
@@ -1572,11 +1608,466 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         except Exception as e:
             print(f"  [LB] sprint speed CSV fallback failed: {e}")
 
+    # ── Step 6: MLB Stats API bio (bats, throws, height, weight, age, pos) ──
+    print("  [LB] MLB API bio data…")
+    try:
+        import math
+        all_ids = list(players.keys())
+        batch_size = 150
+        bio_hits = 0
+        for i in range(0, len(all_ids), batch_size):
+            chunk = all_ids[i:i+batch_size]
+            id_str = ",".join(str(x) for x in chunk)
+            bio_url = (
+                "https://statsapi.mlb.com/api/v1/people"
+                f"?personIds={id_str}"
+                "&fields=people,id,birthDate,currentAge,height,weight,"
+                "primaryPosition,batSide,pitchHand"
+            )
+            try:
+                br = requests.get(bio_url, headers=hdrs, timeout=20)
+                br.raise_for_status()
+                for person in br.json().get("people", []):
+                    mid = int(person.get("id", 0))
+                    if mid not in players:
+                        continue
+                    p = players[mid]
+                    p["age"]    = person.get("currentAge")
+                    p["height"] = person.get("height")   # e.g. "6' 2""
+                    p["weight"] = person.get("weight")
+                    p["bats"]   = (person.get("batSide")   or {}).get("code")
+                    p["throws"] = (person.get("pitchHand") or {}).get("code")
+                    p["pos"]    = (person.get("primaryPosition") or {}).get("abbreviation")
+                    bio_hits += 1
+            except Exception as e2:
+                print(f"  [LB] bio chunk {i//batch_size} failed: {e2}")
+        print(f"  [LB] ✓ bio: {bio_hits} players")
+    except Exception as e:
+        print(f"  [LB] MLB API bio failed: {e}")
+
     out = sorted(players.values(), key=lambda x: (x.get("hr") or 0), reverse=True)
     q = sum(1 for p in out if p["qualified"])
     print(f"  [LB] Done: {len(out)} total players, {q} qualified (≥{qual_pa} PA)")
     return out
 
+
+
+def compute_hitter_percentiles(players: list) -> list:
+    """
+    Add a `pct` dict to each player with 0-99 percentile for each Statcast stat.
+    Higher percentile = better performance (already inverted for lower-is-better stats).
+    """
+    # Stats where lower raw value = better performance
+    lower_better = {"k_pct", "chase_pct", "whiff_pct"}
+
+    stat_keys = [
+        "xwoba", "xba", "xslg", "avg_ev", "max_ev",
+        "barrel_pct", "hard_hit_pct", "sweet_spot_pct",
+        "bat_speed", "squared_up_pct",
+        "chase_pct", "whiff_pct", "k_pct", "bb_pct",
+        "sprint_speed", "launch_angle_avg",
+    ]
+
+    # Build sorted value arrays per stat
+    stat_vals = {}
+    for k in stat_keys:
+        vals = sorted(
+            p[k] for p in players if p.get(k) is not None
+        )
+        stat_vals[k] = vals
+
+    def _pct_rank(vals_sorted, v, invert):
+        if not vals_sorted:
+            return None
+        lo, hi = 0, len(vals_sorted)
+        # bisect_left equivalent
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if vals_sorted[mid] < v:
+                lo = mid + 1
+            else:
+                hi = mid
+        rank = lo  # number of values strictly less than v
+        pct = round(rank / len(vals_sorted) * 99)
+        return (99 - pct) if invert else pct
+
+    for p in players:
+        pct = {}
+        for k in stat_keys:
+            v = p.get(k)
+            if v is None:
+                pct[k] = None
+                continue
+            pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+        p["pct"] = pct
+
+    return players
+
+
+# Team abbreviation → MLB team ID mapping for logos
+_TEAM_ID_MAP = {
+    "ARI":108+1, "ATL":144, "BAL":110, "BOS":111, "CHC":112,
+    "CWS":145,   "CIN":113, "CLE":114, "COL":115, "DET":116,
+    "HOU":117,   "KC":118,  "LAA":108, "LAD":119, "MIA":146,
+    "MIL":158,   "MIN":142, "NYM":121, "NYY":147, "OAK":133,
+    "PHI":143,   "PIT":134, "SD":135,  "SF":137,  "SEA":136,
+    "STL":138,   "TB":139,  "TEX":140, "TOR":141, "WSH":120,
+    "AZ":109,    "KC ":118,
+}
+# Correct ARI
+_TEAM_ID_MAP["ARI"] = 109
+
+
+def render_player_cards_tab(lb_data: list) -> str:
+    """
+    Build the Player Cards tab panel HTML + JS.
+    lb_data is the list returned by fetch_season_batting_leaderboard,
+    with compute_hitter_percentiles already applied.
+    """
+    import json
+
+    # ── Build compact player index for autocomplete ──────────────────────
+    player_index = []
+    player_data  = {}
+    for p in lb_data:
+        mid  = p.get("id")
+        name = p.get("name", "")
+        team = p.get("team", "")
+        if not mid or not name:
+            continue
+        player_index.append({"id": mid, "n": name, "t": team})
+        # Compact stat payload (only what the card needs)
+        player_data[str(mid)] = {
+            "name":  name,
+            "team":  team,
+            "pos":   p.get("pos"),
+            "bats":  p.get("bats"),
+            "throws":p.get("throws"),
+            "age":   p.get("age"),
+            "ht":    p.get("height"),
+            "wt":    p.get("weight"),
+            "qual":  p.get("qualified", False),
+            # standard stats
+            "pa":    p.get("pa"),
+            "ab":    p.get("ab"),
+            "r":     p.get("r"),
+            "hr":    p.get("hr"),
+            "rbi":   p.get("rbi"),
+            "sb":    p.get("sb"),
+            "avg":   p.get("avg"),
+            "obp":   p.get("obp"),
+            "ops":   p.get("ops"),
+            # statcast
+            "xwoba": p.get("xwoba"),
+            "xba":   p.get("xba"),
+            "xslg":  p.get("xslg"),
+            "avg_ev":p.get("avg_ev"),
+            "max_ev":p.get("max_ev"),
+            "brl":   p.get("barrel_pct"),
+            "hh":    p.get("hard_hit_pct"),
+            "la":    p.get("launch_angle_avg"),
+            "ss":    p.get("sweet_spot_pct"),
+            "bs":    p.get("bat_speed"),
+            "sq":    p.get("squared_up_pct"),
+            "ch":    p.get("chase_pct"),
+            "wh":    p.get("whiff_pct"),
+            "kp":    p.get("k_pct"),
+            "bbp":   p.get("bb_pct"),
+            "spd":   p.get("sprint_speed"),
+            # batted ball
+            "pull":  p.get("pull_pct"),
+            "cent":  p.get("center_pct"),
+            "oppo":  p.get("oppo_pct"),
+            "gb":    p.get("gb_pct"),
+            "ld":    p.get("ld_pct"),
+            "fb":    p.get("fb_pct"),
+            "pu":    p.get("pu_pct"),
+            # percentiles
+            "pct": p.get("pct", {}),
+        }
+
+    idx_json  = json.dumps(player_index, separators=(',', ':'))
+    data_json = json.dumps(player_data,  separators=(',', ':'))
+
+    inner = f"""
+<!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
+<div id="tab-playercards" style="display:none;padding:12px 8px;max-width:700px;margin:0 auto">
+
+  <!-- Search -->
+  <div style="position:relative;margin-bottom:16px">
+    <input id="pc-search" type="text" placeholder="Search hitter…"
+      autocomplete="off"
+      oninput="_pcSearch(this.value)"
+      style="width:100%;box-sizing:border-box;padding:9px 14px;
+             background:#1a1a1a;border:1px solid #333;border-radius:8px;
+             color:#eee;font-size:.95rem;outline:none"/>
+    <div id="pc-dropdown"
+      style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;
+             background:#1e1e1e;border:1px solid #333;border-radius:0 0 8px 8px;
+             max-height:220px;overflow-y:auto"></div>
+  </div>
+
+  <!-- Card area -->
+  <div id="pc-card"></div>
+
+</div>
+
+<script>
+(function(){{
+  var _pcIdx  = {idx_json};
+  var _pcData = {data_json};
+
+  var _TEAM_IDS = {{
+    ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,
+    COL:115,DET:116,HOU:117,KC:118,LAA:108,LAD:119,MIA:146,MIL:158,
+    MIN:142,NYM:121,NYY:147,OAK:133,PHI:143,PIT:134,SD:135,SF:137,
+    SEA:136,STL:138,TB:139,TEX:140,TOR:141,WSH:120,AZ:109
+  }};
+
+  // ── Search ─────────────────────────────────────────────────────────────
+  window._pcSearch = function(q) {{
+    var dd = document.getElementById('pc-dropdown');
+    q = q.trim().toLowerCase();
+    if (q.length < 2) {{ dd.style.display='none'; return; }}
+    var matches = _pcIdx.filter(function(p) {{
+      return p.n.toLowerCase().indexOf(q) !== -1
+          || (p.t||'').toLowerCase().indexOf(q) !== -1;
+    }}).slice(0,12);
+    if (!matches.length) {{ dd.style.display='none'; return; }}
+    dd.innerHTML = matches.map(function(p) {{
+      return '<div onclick="_pcShow('+p.id+')" '
+        + 'style="padding:8px 12px;cursor:pointer;font-size:.88rem;'
+        + 'border-bottom:1px solid #2a2a2a;color:#ddd" '
+        + 'onmouseover="this.style.background=\'#2a2a2a\'" '
+        + 'onmouseout="this.style.background=\'\'">'
+        + '<span style="font-weight:600">' + p.n + '</span>'
+        + '<span style="color:#888;font-size:.78rem;margin-left:8px">' + (p.t||'') + '</span>'
+        + '</div>';
+    }}).join('');
+    dd.style.display = 'block';
+  }};
+
+  // Close dropdown on outside click
+  document.addEventListener('click', function(e) {{
+    if (!e.target.closest('#pc-search') && !e.target.closest('#pc-dropdown'))
+      document.getElementById('pc-dropdown').style.display='none';
+  }});
+
+  // ── Show Card ──────────────────────────────────────────────────────────
+  window._pcShow = function(id) {{
+    document.getElementById('pc-dropdown').style.display='none';
+    var d = _pcData[String(id)];
+    if (!d) return;
+    var teamId = _TEAM_IDS[d.team] || '';
+    var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
+      + 'd_people:generic:headshot:67:current.png/w_180,q_auto:best/v1/people/'
+      + id + '/headshot/67/current';
+    var logoUrl = teamId
+      ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
+      : '';
+
+    // Bio
+    var bt = (d.bats||'?') + '/' + (d.throws||'?');
+    var ht = d.ht || '–';
+    var wt = d.wt ? d.wt + ' lbs' : '–';
+    var age = d.age ? d.age + ' yrs' : '–';
+    var pos = d.pos || '–';
+    var qual = d.qual
+      ? '<span style="background:#1b3a1b;color:#4caf50;border:1px solid #4caf50;'
+        + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
+        + 'letter-spacing:.04em">QUALIFIED</span>'
+      : '<span style="background:#2a1a1a;color:#888;border:1px solid #444;'
+        + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
+        + 'letter-spacing:.04em">NOT QUALIFIED</span>';
+
+    // ── Header ────────────────────────────────────────────────────────────
+    var header =
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
+      + '<img src="' + photoUrl + '" onerror="this.style.display=\'none\'" '
+      +   'style="width:72px;height:72px;border-radius:8px;object-fit:cover;'
+      +   'background:#1a1a1a;border:1px solid #333;flex-shrink:0"/>'
+      + '<div style="flex:1;min-width:0">'
+      +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +     '<span style="font-size:1.15rem;font-weight:800;color:#eee">' + d.name + '</span>'
+      +     qual
+      +   '</div>'
+      +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
+      +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\'none\'" '
+                     + 'style="height:20px;width:20px;object-fit:contain"/>' : '')
+      +     '<span style="font-size:.82rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
+      +     '<span style="color:#444">·</span>'
+      +     '<span style="font-size:.78rem;color:#888">' + pos + '</span>'
+      +     '<span style="color:#444">·</span>'
+      +     '<span style="font-size:.78rem;color:#888">B/T: ' + bt + '</span>'
+      +   '</div>'
+      +   '<div style="font-size:.73rem;color:#666;margin-top:3px">'
+      +     age + ' · ' + ht + ' · ' + wt
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+
+    // ── Standard stats strip ──────────────────────────────────────────────
+    function fmt3(v) {{ return v != null ? v.toFixed(3) : '–'; }}
+    function fmtN(v) {{ return v != null ? v : '–'; }}
+    var std_items = [
+      ['PA',   fmtN(d.pa)],  ['AB',  fmtN(d.ab)],
+      ['R',    fmtN(d.r)],   ['HR',  fmtN(d.hr)],  ['RBI', fmtN(d.rbi)],
+      ['SB',   fmtN(d.sb)],  ['AVG', fmt3(d.avg)],
+      ['OBP',  fmt3(d.obp)], ['OPS', fmt3(d.ops)],
+    ];
+    var std_html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">'
+      + std_items.map(function(x) {{
+          return '<div style="background:#1a1a1a;border:1px solid #2a2a2a;'
+            + 'border-radius:6px;padding:6px 10px;text-align:center;flex:1;min-width:52px">'
+            + '<div style="font-size:1rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
+            + '<div style="font-size:.6rem;color:#666;margin-top:2px;letter-spacing:.04em">' + x[0] + '</div>'
+            + '</div>';
+        }}).join('') + '</div>';
+
+    // ── Percentile bars (Savant style) ─────────────────────────────────────
+    var statRows = [
+      ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}}],
+      ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}}],
+      ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}}],
+      ['Avg EV',    d.avg_ev,d.pct.avg_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
+      ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
+      ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['LA°',       d.la,    d.pct.launch_angle_avg,function(v){{return v!=null?v.toFixed(1)+'°':null;}}],
+      ['Sweet Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
+      ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
+      ['Sprint Spd',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}}],
+    ];
+
+    function pctBar(label, rawVal, pct, fmtFn) {{
+      var valStr = fmtFn(rawVal);
+      if (valStr == null) valStr = '–';
+      var pctDisp = (pct != null) ? Math.round(pct) : null;
+      // Gradient: 0=red, 50=white, 99=blue
+      // Color of the marker dot
+      var dotCol = '#888';
+      if (pctDisp != null) {{
+        if (pctDisp >= 67)      dotCol = '#4287f5';
+        else if (pctDisp >= 34) dotCol = '#ccc';
+        else                    dotCol = '#e05555';
+      }}
+      var markerLeft = pctDisp != null ? pctDisp : 50;
+      var barHtml;
+      if (pctDisp == null) {{
+        barHtml = '<div style="height:6px;border-radius:3px;background:#2a2a2a;'
+                + 'position:relative;margin:6px 0 2px"></div>';
+      }} else {{
+        barHtml =
+          '<div style="height:6px;border-radius:3px;'
+          + 'background:linear-gradient(to right,#c0392b,#e8e8e8 50%,#2563eb);'
+          + 'position:relative;margin:6px 0 2px">'
+          + '<div style="position:absolute;top:50%;left:' + markerLeft + '%;'
+          + 'transform:translate(-50%,-50%);width:13px;height:13px;'
+          + 'border-radius:50%;background:' + dotCol + ';'
+          + 'border:2px solid #111;box-shadow:0 0 4px rgba(0,0,0,.6)"></div>'
+          + '</div>';
+      }}
+      var pctLabel = pctDisp != null
+        ? '<span style="font-size:.75rem;font-weight:800;color:' + dotCol + ';min-width:28px;text-align:right">'
+          + pctDisp + '</span>'
+        : '<span style="font-size:.75rem;color:#555;min-width:28px;text-align:right">–</span>';
+
+      return '<div style="margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
+        +   '<span style="font-size:.72rem;color:#aaa;font-weight:600">' + label + '</span>'
+        +   '<div style="display:flex;align-items:center;gap:6px">'
+        +     '<span style="font-size:.78rem;color:#ccc">' + valStr + '</span>'
+        +     pctLabel
+        +   '</div>'
+        + '</div>'
+        + barHtml
+        + '</div>';
+    }}
+
+    var bars_html =
+      '<div style="background:#111;border:1px solid #222;border-radius:8px;'
+      + 'padding:12px 14px 6px;margin-bottom:14px">'
+      + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;'
+      + 'margin-bottom:10px">STATCAST PROFILE'
+      + '<span style="float:right;font-weight:400;color:#555">Percentile rank among all hitters</span></div>'
+      + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3]);}}).join('')
+      + '</div>';
+
+    // ── Batted ball section ───────────────────────────────────────────────
+    function bbBar(label, val) {{
+      if (val == null) return '';
+      var w = Math.min(val, 100);
+      return '<div style="margin-bottom:6px">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:2px">'
+        +   '<span style="font-size:.7rem;color:#999">' + label + '</span>'
+        +   '<span style="font-size:.7rem;color:#ccc;font-weight:700">' + val.toFixed(1) + '%</span>'
+        + '</div>'
+        + '<div style="height:5px;border-radius:3px;background:#222">'
+        +   '<div style="height:100%;border-radius:3px;background:#4287f5;width:' + w + '%"></div>'
+        + '</div>'
+        + '</div>';
+    }}
+
+    var bb_html = '';
+    if (d.pull!=null || d.gb!=null) {{
+      bb_html =
+        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:12px 14px;margin-bottom:14px">'
+        + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:10px">BATTED BALL PROFILE</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">'
+        + '<div>'
+        + bbBar('Pull%',   d.pull)
+        + bbBar('Center%', d.cent)
+        + bbBar('Oppo%',   d.oppo)
+        + '</div><div>'
+        + bbBar('GB%', d.gb)
+        + bbBar('LD%', d.ld)
+        + bbBar('FB%', d.fb)
+        + bbBar('PU%', d.pu)
+        + '</div></div></div>';
+    }}
+
+    // ── Assemble card ─────────────────────────────────────────────────────
+    document.getElementById('pc-card').innerHTML =
+      '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px">'
+      + header + std_html + bars_html + bb_html
+      + '</div>';
+  }};
+
+}})();
+</script>
+"""
+    return inner
+
+
+def inject_player_cards_tab(html: str, lb_data: list) -> str:
+    """Inject Player Cards tab button and panel into the dashboard HTML."""
+    if not lb_data:
+        return html
+
+    # Tab button — insert after the Fantasy tab button
+    btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('playercards',this)\">&#x1F4C8; Player Cards</button>"
+    # Find fantasy tab button to insert after
+    fantasy_anchor = "showTab('fantasy'"
+    if fantasy_anchor in html:
+        idx     = html.index(fantasy_anchor)
+        end_btn = html.index("</button>", idx) + len("</button>")
+        html    = html[:end_btn] + btn_html + html[end_btn:]
+    else:
+        # fallback: after compare button
+        compare_anchor = "showTab('compare'"
+        if compare_anchor in html:
+            idx     = html.index(compare_anchor)
+            end_btn = html.index("</button>", idx) + len("</button>")
+            html    = html[:end_btn] + btn_html + html[end_btn:]
+
+    panel_html = render_player_cards_tab(lb_data)
+    html       = html.replace("</body>", panel_html + "\n</body>")
+    return html
 
 # ── Season Pitching Leaderboard ────────────────────────────────────────────
 def fetch_season_pitching_leaderboard(year: int) -> dict:
@@ -4506,7 +4997,9 @@ def main():
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data)
+    lb_data = compute_hitter_percentiles(lb_data)
     html = inject_fantasy_tab(html, fantasy_data)
+    html = inject_player_cards_tab(html, lb_data)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
