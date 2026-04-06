@@ -1795,18 +1795,17 @@ def render_player_cards_tab(lb_data: list) -> str:
 <div style="max-width:680px;margin:0 auto">
 
   <!-- Search -->
-  <div style="position:relative;margin-bottom:16px">
-    <input id="pc-search" type="text" placeholder="Search hitter by name or team…"
-      autocomplete="off"
-      oninput="_pcSearch(this.value)"
-      style="width:100%;box-sizing:border-box;padding:10px 14px;
-             background:#1a1a1a;border:1px solid #333;border-radius:8px;
-             color:#eee;font-size:.95rem;outline:none"/>
-    <div id="pc-dropdown"
-      style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;
-             background:#1e1e1e;border:1px solid #333;border-radius:0 0 8px 8px;
-             max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
-  </div>
+  <!-- Search -->
+  <input id="pc-search" type="text" placeholder="Search hitter by name or team…"
+    autocomplete="off"
+    oninput="_pcSearch(this.value)"
+    style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
+           background:#1a1a1a;border:1px solid #333;border-radius:8px;
+           color:#eee;font-size:.95rem;outline:none"/>
+  <div id="pc-dropdown"
+    style="display:none;background:#1e1e1e;border:1px solid #333;border-radius:8px;
+           max-height:260px;overflow-y:auto;margin-bottom:12px;
+           box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
 
   <!-- Card area -->
   <div id="pc-card"></div>
@@ -1826,10 +1825,11 @@ def render_player_cards_tab(lb_data: list) -> str:
     SEA:136,STL:138,TB:139,TEX:140,TOR:141,WSH:120,AZ:109
   }};
 
-  // ── Search ─────────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────────
   window._pcSearch = function(q) {{
     var dd = document.getElementById('pc-dropdown');
-    q = q.trim().toLowerCase();
+    if (!dd) return;
+    q = (q||'').trim().toLowerCase();
     if (q.length < 2) {{ dd.style.display='none'; return; }}
     var matches = _pcIdx.filter(function(p) {{
       return p.n.toLowerCase().indexOf(q) !== -1
@@ -1838,24 +1838,27 @@ def render_player_cards_tab(lb_data: list) -> str:
     if (!matches.length) {{ dd.style.display='none'; return; }}
     dd.innerHTML = matches.map(function(p) {{
       return '<div onclick="_pcShow('+p.id+')" '
-        + 'style="padding:8px 12px;cursor:pointer;font-size:.88rem;'
+        + 'style="padding:9px 12px;cursor:pointer;font-size:.88rem;'
         + 'border-bottom:1px solid #2a2a2a;color:#ddd" '
         + 'onmouseover="this.style.background=\'#2a2a2a\'" '
         + 'onmouseout="this.style.background=\'\'">'
-        + '<span style="font-weight:600">' + p.n + '</span>'
+        + '<span style="font-weight:700">' + p.n + '</span>'
         + '<span style="color:#888;font-size:.78rem;margin-left:8px">' + (p.t||'') + '</span>'
         + '</div>';
     }}).join('');
     dd.style.display = 'block';
   }};
 
-  // Close dropdown on outside click
+  // Clear dropdown when typing clears the box
   document.addEventListener('click', function(e) {{
-    if (!e.target.closest('#pc-search') && !e.target.closest('#pc-dropdown'))
-      document.getElementById('pc-dropdown').style.display='none';
+    var el = e.target;
+    var inSearch = el.id==='pc-search' || (el.closest && el.closest('#pc-dropdown'));
+    if (!inSearch) {{
+      var dd2 = document.getElementById('pc-dropdown');
+      if (dd2) dd2.style.display='none';
+    }}
   }});
 
-  // ── Show Card ──────────────────────────────────────────────────────────
   window._pcShow = function(id) {{
     document.getElementById('pc-dropdown').style.display='none';
     var d = _pcData[String(id)];
