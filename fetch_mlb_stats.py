@@ -9,11 +9,11 @@ Data sources:
   • MLB Stats API (statsapi)    — SB / CS box-score data
 
 Run once each morning; mlb_daily_stats.html is updated in the same folder.
-"""
+"""h
 
 import subprocess, sys, os, json, unicodedata, time
 from datetime import date, timedelta, datetime
-
+h
 # Fix Unicode output on Windows (cp1252 can't handle checkmarks etc.)
 if sys.platform == "win32":
     import io
@@ -1889,7 +1889,7 @@ def render_player_cards_tab(lb_data: list) -> str:
     // ── Header ────────────────────────────────────────────────────────────
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
-      + '<img src="' + photoUrl + '" onerror="this.style.display=\'none\'" '
+      + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
       +   'style="width:72px;height:72px;border-radius:8px;object-fit:cover;'
       +   'background:#1a1a1a;border:1px solid #333;flex-shrink:0"/>'
       + '<div style="flex:1;min-width:0">'
@@ -1898,7 +1898,7 @@ def render_player_cards_tab(lb_data: list) -> str:
       +     qual
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
-      +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\'none\'" '
+      +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\\x27none\\x27" '
                      + 'style="height:20px;width:20px;object-fit:contain"/>' : '')
       +     '<span style="font-size:.82rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
       +     '<span style="color:#444">·</span>'
@@ -2033,7 +2033,7 @@ def render_player_cards_tab(lb_data: list) -> str:
       + '</div>';
   }};
 
-}}</script>
+}})();</script>
 """
     return inner
 
