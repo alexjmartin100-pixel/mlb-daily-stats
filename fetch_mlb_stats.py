@@ -1790,6 +1790,11 @@ def render_player_cards_tab(lb_data: list) -> str:
     data_json = json.dumps(player_data,  separators=(',', ':'))
 
     inner = f"""
+<style>
+.pc-dd-item{padding:9px 12px;cursor:pointer;font-size:.88rem;
+  border-bottom:1px solid #2a2a2a;color:#ddd;transition:background .12s}
+.pc-dd-item:hover{background:#2a2a2a}
+</style>
 <!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
 <div id="playercards-panel" class="tab-panel">
 <div style="max-width:680px;margin:0 auto">
@@ -1837,11 +1842,7 @@ def render_player_cards_tab(lb_data: list) -> str:
     }}).slice(0,12);
     if (!matches.length) {{ dd.style.display='none'; return; }}
     dd.innerHTML = matches.map(function(p) {{
-      return '<div onclick="_pcShow('+p.id+')" '
-        + 'style="padding:9px 12px;cursor:pointer;font-size:.88rem;'
-        + 'border-bottom:1px solid #2a2a2a;color:#ddd" '
-        + 'onmouseover="this.style.background=\'#2a2a2a\'" '
-        + 'onmouseout="this.style.background=\'\'">'
+      return '<div class="pc-dd-item" onclick="_pcShow(' + p.id + ')">'  
         + '<span style="font-weight:700">' + p.n + '</span>'
         + '<span style="color:#888;font-size:.78rem;margin-left:8px">' + (p.t||'') + '</span>'
         + '</div>';
