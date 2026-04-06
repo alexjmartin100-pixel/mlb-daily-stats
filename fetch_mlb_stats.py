@@ -5269,7 +5269,7 @@ def render_fantasy_tab(fdata: dict) -> str:
       <button id="fant-trade-btn" class="tab-btn"
               onclick="fantSwitch('trade')"
               style="padding:8px 18px">
-        &#x1F4B1; Trade
+        &#x1F4B1; Trade Machine
       </button>
     </div>
   </div>
@@ -5348,7 +5348,7 @@ def render_fantasy_tab(fdata: dict) -> str:
     </div>
 
     <!-- ── CENTER: verdict + category breakdown ── -->
-    <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch">
+    <div style="width:240px;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch">
       <div id="trade-verdict" style="text-align:center;margin-bottom:10px">
         <span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>
       </div>
@@ -5651,9 +5651,6 @@ function _tradeCalc() {{
   var netStr = (net >= 0 ? '+$' : '−$') + Math.abs(net).toFixed(1);
   var sTotalStr = (sTotal>=0?'$':'−$')+Math.abs(sTotal).toFixed(1);
   var rTotalStr = (rTotal>=0?'$':'−$')+Math.abs(rTotal).toFixed(1);
-  // Arrow: points toward the side getting more value
-  // net>0 means recv is better → arrow points RIGHT (→)
-  // net<0 means send is better → arrow points LEFT (←)
   var arrowHtml;
   if (net > 0.5) {{
     arrowHtml = '<div style="font-size:2rem;color:#4caf50;line-height:1;letter-spacing:-4px">&#x25B6;&#x25B6;</div>'
@@ -5681,7 +5678,7 @@ function _tradeCalc() {{
     + '</div>'
     + '</div>';
 
-  // ── Per-category stat boxes ─────────────────────────────────────────────
+  // ── Per-category breakdown table ────────────────────────────────────────
   var lowerBetter = {{ERA: true, WHIP: true}};
   var allCats = ['R','HR','RBI','SB','K','OBP','W','ERA','WHIP','SV','HLD'];
 
@@ -5690,18 +5687,14 @@ function _tradeCalc() {{
     if (cat==='ERA'||cat==='WHIP') return v.toFixed(2);
     return Math.round(v).toString();
   }}
-  function fmtDiff(cat, diff) {{
-    // Positive diff = recv has more (good for counting/OBP, bad for ERA/WHIP)
+  function fmtStatDiff(cat, diff) {{
     var sign = diff >= 0 ? '+' : '−';
     var abs  = Math.abs(diff);
     var val  = (cat==='OBP') ? abs.toFixed(3) : (cat==='ERA'||cat==='WHIP') ? abs.toFixed(2) : Math.round(abs).toString();
-    return sign + val + '\u00a0' + cat;
-  }}
-  function dolFmt(v) {{
-    return (v>=0?'$':'−$') + Math.abs(v).toFixed(1);
+    return sign + val;
   }}
 
-  var boxes = '';
+  var rows = '';
   allCats.forEach(function(cat) {{
     var sDol  = S.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
     var rDol  = R.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
@@ -5710,71 +5703,57 @@ function _tradeCalc() {{
     var sProj = S.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
     var rProj = R.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
 
-    var dolDiff  = rDol  - sDol;
+    var dolDiff  = rDol - sDol;
     var projDiff = rProj - sProj;
-    // For ERA/WHIP, lower is better: invert proj diff sign for display labeling
     var projDiffDisplay = lowerBetter[cat] ? -projDiff : projDiff;
 
-    // Arrow direction: dollar-based (correctly handles ERA/WHIP)
     var recvWins = dolDiff >  0.2;
     var sendWins = dolDiff < -0.2;
-    var arrowCol  = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
-    var arrowBody;
-    if (recvWins)      arrowBody = '&#x25B6;&#x25B6;';  // ▶▶ → receiving wins
-    else if (sendWins) arrowBody = '&#x25C0;&#x25C0;';  // ◀◀ ← sending wins
-    else               arrowBody = '&#x2248;';           // ≈
+    var col = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
 
     var dolDiffStr  = (dolDiff>=0?'+$':'−$') + Math.abs(dolDiff).toFixed(1);
-    var projDiffStr = fmtDiff(cat, projDiffDisplay);
-    var dolDiffCol  = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
+    var statDiffStr = fmtStatDiff(cat, projDiffDisplay);
+    var lbTag = lowerBetter[cat] ? '<span style="color:#555;font-size:.58rem">↓</span>' : '';
 
-    // Send/recv side colors
-    var sDolCol = sendWins ? '#4caf50' : '#888';
-    var rDolCol = recvWins ? '#4caf50' : '#888';
-
-    boxes +=
-      '<div style="background:#161616;border:1px solid #2a2a2a;border-radius:5px;'
-    + 'margin-bottom:4px;overflow:hidden">'
-
-    // Cat header bar
-    + '<div style="background:#1e1e1e;padding:2px 6px;display:flex;justify-content:space-between;align-items:center">'
-    +   '<span style="font-size:.65rem;font-weight:800;color:#ccc;letter-spacing:.04em">' + cat + '</span>'
-    +   '<span style="font-size:.6rem;color:' + dolDiffCol + ';font-weight:700">' + dolDiffStr + '</span>'
-    + '</div>'
-
-    // Main row: send | arrow | recv
-    + '<div style="display:grid;grid-template-columns:1fr 36px 1fr;align-items:center;padding:4px 5px 3px;gap:2px">'
-
-    // Send side
-    +   '<div style="text-align:center">'
-    +     '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + fmtProj(cat, sProj) + '</div>'
-    +     '<div style="font-size:.6rem;color:' + sDolCol + ';margin-top:1px">' + dolFmt(sDol) + '</div>'
-    +   '</div>'
-
-    // Arrow
-    +   '<div style="text-align:center">'
-    +     '<div style="font-size:1rem;color:' + arrowCol + ';line-height:1;letter-spacing:-3px">' + arrowBody + '</div>'
-    +   '</div>'
-
-    // Recv side
-    +   '<div style="text-align:center">'
-    +     '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + fmtProj(cat, rProj) + '</div>'
-    +     '<div style="font-size:.6rem;color:' + rDolCol + ';margin-top:1px">' + dolFmt(rDol) + '</div>'
-    +   '</div>'
-
-    + '</div>'
-
-    // Delta footer
-    + '<div style="padding:1px 6px 4px;text-align:center">'
-    +   '<span style="font-size:.6rem;color:' + dolDiffCol + ';font-weight:700">' + projDiffStr + '</span>'
-    +   (lowerBetter[cat] ? '<span style="font-size:.55rem;color:var(--muted);margin-left:3px">(lower=better)</span>' : '')
-    + '</div>'
-
-    + '</div>';
+    rows +=
+      '<tr style="border-bottom:1px solid #1e1e1e">'
+      // Cat label
+      + '<td style="padding:4px 4px 4px 6px;font-size:.7rem;font-weight:700;color:#aaa;white-space:nowrap">' + cat + lbTag + '</td>'
+      // Send proj
+      + '<td style="padding:4px 3px;font-size:.72rem;color:#bbb;text-align:right">' + fmtProj(cat, sProj) + '</td>'
+      // Arrow
+      + '<td style="padding:4px 2px;text-align:center;font-size:.75rem;color:' + col + '">'
+      +   (recvWins ? '&#x25B6;' : sendWins ? '&#x25C0;' : '&#x2248;')
+      + '</td>'
+      // Recv proj
+      + '<td style="padding:4px 3px;font-size:.72rem;color:#bbb;text-align:left">' + fmtProj(cat, rProj) + '</td>'
+      // Net stat diff
+      + '<td style="padding:4px 4px 4px 3px;font-size:.7rem;font-weight:700;color:' + col + ';text-align:right;white-space:nowrap">'
+      +   statDiffStr + '&thinsp;' + cat
+      + '</td>'
+      // Dollar diff
+      + '<td style="padding:4px 6px 4px 2px;font-size:.7rem;font-weight:700;color:' + col + ';text-align:right;white-space:nowrap">'
+      +   dolDiffStr
+      + '</td>'
+      + '</tr>';
   }});
 
-  breakdownEl.innerHTML = boxes
-    || '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:12px">No shared categories</div>';
+  if (rows) {{
+    breakdownEl.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;margin-top:8px">'
+      + '<thead><tr style="border-bottom:1px solid #333">'
+      +   '<th style="padding:3px 4px 3px 6px;font-size:.62rem;color:var(--muted);text-align:left;font-weight:600">CAT</th>'
+      +   '<th style="padding:3px 3px;font-size:.62rem;color:#e05555;text-align:right;font-weight:600">SEND</th>'
+      +   '<th style="padding:3px 2px;font-size:.62rem;color:var(--muted);text-align:center;font-weight:600"></th>'
+      +   '<th style="padding:3px 3px;font-size:.62rem;color:#4caf50;text-align:left;font-weight:600">RECV</th>'
+      +   '<th style="padding:3px 3px;font-size:.62rem;color:var(--muted);text-align:right;font-weight:600">STAT</th>'
+      +   '<th style="padding:3px 6px 3px 2px;font-size:.62rem;color:var(--muted);text-align:right;font-weight:600">$</th>'
+      + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+      + '</table>';
+  }} else {{
+    breakdownEl.innerHTML = '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:12px">No shared categories</div>';
+  }}
 }}
 
 </script>
