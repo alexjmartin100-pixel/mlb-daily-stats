@@ -6141,135 +6141,86 @@ function _tradeCalc() {{
   var rTotalStr = (rTotal>=0?'$':'−$')+Math.abs(rTotal).toFixed(1);
   var arrowHtml;
   if (net > 0.5) {{
-    arrowHtml = '<div style="font-size:2rem;color:#4caf50;line-height:1;letter-spacing:-4px">&#x25B6;&#x25B6;</div>'
-              + '<div style="font-size:.62rem;color:#4caf50;font-weight:700;letter-spacing:.05em">RECEIVING WINS</div>';
+    arrowHtml = '<div style="font-size:2.4rem;color:#4caf50;line-height:1;letter-spacing:-4px">&#x25B6;&#x25B6;</div>'
+              + '<div style="font-size:.65rem;color:#4caf50;font-weight:800;letter-spacing:.07em;margin-top:3px">YOU WIN</div>';
   }} else if (net < -0.5) {{
-    arrowHtml = '<div style="font-size:2rem;color:#e05555;line-height:1;letter-spacing:-4px">&#x25C0;&#x25C0;</div>'
-              + '<div style="font-size:.62rem;color:#e05555;font-weight:700;letter-spacing:.05em">SENDING WINS</div>';
+    arrowHtml = '<div style="font-size:2.4rem;color:#e05555;line-height:1;letter-spacing:-4px;display:inline-block;transform:rotate(180deg)">&#x25B6;&#x25B6;</div>'
+              + '<div style="font-size:.65rem;color:#e05555;font-weight:800;letter-spacing:.07em;margin-top:3px">YOU LOSE</div>';
   }} else {{
-    arrowHtml = '<div style="font-size:1.6rem;color:#888;line-height:1">&#x2248;</div>'
-              + '<div style="font-size:.62rem;color:#888;font-weight:700;letter-spacing:.05em">EVEN TRADE</div>';
+    arrowHtml = '<div style="font-size:1.8rem;color:#888;line-height:1">&#x21C6;</div>'
+              + '<div style="font-size:.65rem;color:#888;font-weight:800;letter-spacing:.07em;margin-top:3px">EVEN</div>';
   }}
+
   verdictEl.innerHTML =
-    '<div style="background:' + bgCol + ';border:1px solid ' + bdrCol + ';border-radius:8px;padding:10px 8px 8px;text-align:center">'
-    + arrowHtml
-    + '<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:.75rem">'
-    +   '<div style="text-align:left">'
-    +     '<div style="color:var(--muted);font-size:.62rem">SEND</div>'
-    +     '<div style="color:#e05555;font-weight:700">' + sTotalStr + '</div>'
+    '<div style="border:2px solid ' + bdrCol + ';border-radius:12px;background:' + bgCol + ';padding:14px 12px;margin-bottom:10px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+    +   '<div style="text-align:center;flex:1">'
+    +     '<div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">&#x1F4E4; Sending</div>'
+    +     '<div style="font-size:1.4rem;font-weight:900;color:#e05555">' + sTotalStr + '</div>'
     +   '</div>'
-    +   '<div style="color:' + col + ';font-weight:800;font-size:.95rem">' + netStr + '</div>'
-    +   '<div style="text-align:right">'
-    +     '<div style="color:var(--muted);font-size:.62rem">RECV</div>'
-    +     '<div style="color:#4caf50;font-weight:700">' + rTotalStr + '</div>'
+    +   '<div style="text-align:center;flex:0 0 auto;padding:0 10px;display:flex;flex-direction:column;align-items:center">'
+    +     arrowHtml
     +   '</div>'
+    +   '<div style="text-align:center;flex:1">'
+    +     '<div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">&#x1F4E5; Receiving</div>'
+    +     '<div style="font-size:1.4rem;font-weight:900;color:#4caf50">' + rTotalStr + '</div>'
+    +   '</div>'
+    + '</div>'
+    + '<div style="text-align:center;font-size:.88rem;font-weight:700;color:' + col + ';'
+    +   'border-top:1px solid ' + bdrCol + '33;padding-top:8px">'
+    +   'Net: <span style="font-size:1.05rem">' + netStr + '</span>'
     + '</div>'
     + '</div>';
 
-  // ── Per-category breakdown table ────────────────────────────────────────
-  var lowerBetter = {{ERA: true, WHIP: true}};
-  var allCats = ['R','HR','RBI','SB','K','OBP','W','ERA','WHIP','SV','HLD'];
-
-  function fmtProj(cat, v) {{
-    if (cat==='OBP') return v.toFixed(3);
-    if (cat==='ERA'||cat==='WHIP') return v.toFixed(2);
-    return Math.round(v).toString();
+  // ── Category breakdown ──────────────────────────────────────────────────
+  var _lowerBetter = {{ERA:true, WHIP:true}};
+  function _sumCats(players) {{
+    var t = {{}};
+    players.forEach(function(p) {{
+      if (!p.cats) return;
+      Object.keys(p.cats).forEach(function(k) {{ t[k] = (t[k]||0) + (p.cats[k]||0); }});
+    }});
+    return t;
   }}
-  function fmtStatDiff(cat, diff) {{
-    var sign = diff >= 0 ? '+' : '−';
-    var abs  = Math.abs(diff);
-    var val  = (cat==='OBP') ? abs.toFixed(3) : (cat==='ERA'||cat==='WHIP') ? abs.toFixed(2) : Math.round(abs).toString();
-    return sign + val;
-  }}
+  var sCats = _sumCats(S), rCats = _sumCats(R);
+  var _allKeys = [];
+  Object.keys(sCats).forEach(function(k){{ if (_allKeys.indexOf(k)===-1) _allKeys.push(k); }});
+  Object.keys(rCats).forEach(function(k){{ if (_allKeys.indexOf(k)===-1) _allKeys.push(k); }});
 
-  var rows = '';
-  allCats.forEach(function(cat) {{
-    var sDol  = S.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
-    var rDol  = R.reduce(function(a,p){{return a+((p.cats&&p.cats[cat])||0);}},0);
-    if (Math.abs(sDol)<0.05 && Math.abs(rDol)<0.05) return;
+  if (!_allKeys.length) {{ breakdownEl.innerHTML = ''; return; }}
 
-    var sProj = S.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
-    var rProj = R.reduce(function(a,p){{return a+((p.proj&&p.proj[cat])||0);}},0);
+  var catBoxes = _allKeys.map(function(k) {{
+    var sv = sCats[k]||0, rv = rCats[k]||0;
+    var diff = rv - sv;
+    var isLower = !!_lowerBetter[k];
+    var youWin  = isLower ? diff < -0.005 : diff > 0.005;
+    var youLose = isLower ? diff >  0.005 : diff < -0.005;
+    var c2 = youWin ? '#4caf50' : youLose ? '#e05555' : '#888';
+    var sign = diff > 0 ? '+' : '';
+    var diffStr;
+    if (Math.abs(diff) < 0.005) {{
+      diffStr = '=';
+    }} else if (k==='OBP'||k==='ERA'||k==='WHIP') {{
+      diffStr = sign + diff.toFixed(3);
+    }} else {{
+      diffStr = sign + Math.round(diff);
+    }}
+    var arrow = youWin ? '&#x25B6;' : youLose ? '&#x25C4;' : '&#x25AC;';
+    return '<div style="background:#111;border:1px solid ' + c2 + '55;border-radius:8px;'
+      + 'padding:8px 5px;text-align:center;flex:1;min-width:55px">'
+      + '<div style="font-size:.58rem;color:#777;font-weight:700;text-transform:uppercase;'
+      + 'letter-spacing:.05em;margin-bottom:4px">' + k + '</div>'
+      + '<div style="font-size:1.05rem;font-weight:900;color:' + c2 + ';line-height:1">' + diffStr + '</div>'
+      + '<div style="font-size:.95rem;color:' + c2 + ';line-height:1;margin-top:3px">' + arrow + '</div>'
+      + '</div>';
+  }}).join('');
 
-    var dolDiff  = rDol - sDol;
-    var projDiff = rProj - sProj;
-    var projDiffDisplay = lowerBetter[cat] ? -projDiff : projDiff;
-
-    var recvWins = dolDiff >  0.2;
-    var sendWins = dolDiff < -0.2;
-    var col = recvWins ? '#4caf50' : sendWins ? '#e05555' : '#888';
-
-    var dolDiffStr  = (dolDiff>=0?'+$':'−$') + Math.abs(dolDiff).toFixed(1);
-    var statDiffStr = fmtStatDiff(cat, projDiffDisplay);
-    var lbTag = lowerBetter[cat] ? '<span style="color:#555;font-size:.58rem">↓</span>' : '';
-
-    rows +=
-      '<tr style="border-bottom:1px solid #1e1e1e">'
-      // Cat label
-      + '<td style="padding:4px 4px 4px 6px;font-size:.7rem;font-weight:700;color:#aaa;white-space:nowrap">' + cat + lbTag + '</td>'
-      // Send proj
-      + '<td style="padding:4px 3px;font-size:.72rem;color:#bbb;text-align:right">' + fmtProj(cat, sProj) + '</td>'
-      // Arrow
-      + '<td style="padding:4px 2px;text-align:center;font-size:.75rem;color:' + col + '">'
-      +   (recvWins ? '&#x25B6;' : sendWins ? '&#x25C0;' : '&#x2248;')
-      + '</td>'
-      // Recv proj
-      + '<td style="padding:4px 3px;font-size:.72rem;color:#bbb;text-align:left">' + fmtProj(cat, rProj) + '</td>'
-      // Net stat diff
-      + '<td style="padding:4px 4px 4px 3px;font-size:.7rem;font-weight:700;color:' + col + ';text-align:right;white-space:nowrap">'
-      +   statDiffStr + '&thinsp;' + cat
-      + '</td>'
-      // Dollar diff
-      + '<td style="padding:4px 6px 4px 2px;font-size:.7rem;font-weight:700;color:' + col + ';text-align:right;white-space:nowrap">'
-      +   dolDiffStr
-      + '</td>'
-      + '</tr>';
-  }});
-
-  if (rows) {{
-    breakdownEl.innerHTML =
-      '<table style="width:100%;border-collapse:collapse;margin-top:8px">'
-      + '<thead><tr style="border-bottom:1px solid #333">'
-      +   '<th style="padding:3px 4px 3px 6px;font-size:.62rem;color:var(--muted);text-align:left;font-weight:600">CAT</th>'
-      +   '<th style="padding:3px 3px;font-size:.62rem;color:#e05555;text-align:right;font-weight:600">SEND</th>'
-      +   '<th style="padding:3px 2px;font-size:.62rem;color:var(--muted);text-align:center;font-weight:600"></th>'
-      +   '<th style="padding:3px 3px;font-size:.62rem;color:#4caf50;text-align:left;font-weight:600">RECV</th>'
-      +   '<th style="padding:3px 3px;font-size:.62rem;color:var(--muted);text-align:right;font-weight:600">STAT</th>'
-      +   '<th style="padding:3px 6px 3px 2px;font-size:.62rem;color:var(--muted);text-align:right;font-weight:600">$</th>'
-      + '</tr></thead>'
-      + '<tbody>' + rows + '</tbody>'
-      + '</table>';
-  }} else {{
-    breakdownEl.innerHTML = '<div style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:12px">No shared categories</div>';
-  }}
+  breakdownEl.innerHTML =
+    '<div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;text-align:center">Category Breakdown</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:5px">' + catBoxes + '</div>';
 }}
 
 </script>
 """
     return inner
 
-
-def inject_fantasy_tab(html: str, fdata: dict) -> str:
-    """
-    Inject Fantasy tab button + panel into the rendered dashboard HTML.
-    Inserts the tab button after the compare button, and the panel before </body>.
-    """
-    if not fdata:
-        return html
-
-    btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
-    anchor   = "showTab('compare'"
-    if anchor in html:
-        idx     = html.index(anchor)
-        end_btn = html.index("</button>", idx) + len("</button>")
-        html    = html[:end_btn] + btn_html + html[end_btn:]
-    else:
-        html = html.replace('</div>', btn_html + '\n</div>', 1)
-
-    panel_html = render_fantasy_tab(fdata)
-    html       = html.replace("</body>", panel_html + "\n</body>")
-    return html
-
-
-if __name__ == "__main__":
-    main()
