@@ -1791,25 +1791,27 @@ def render_player_cards_tab(lb_data: list) -> str:
 
     inner = f"""
 <!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
-<div id="tab-playercards" style="display:none;padding:12px 8px;max-width:700px;margin:0 auto">
+<div id="playercards-panel" class="tab-panel">
+<div style="max-width:680px;margin:0 auto">
 
   <!-- Search -->
   <div style="position:relative;margin-bottom:16px">
-    <input id="pc-search" type="text" placeholder="Search hitter…"
+    <input id="pc-search" type="text" placeholder="Search hitter by name or team…"
       autocomplete="off"
       oninput="_pcSearch(this.value)"
-      style="width:100%;box-sizing:border-box;padding:9px 14px;
+      style="width:100%;box-sizing:border-box;padding:10px 14px;
              background:#1a1a1a;border:1px solid #333;border-radius:8px;
              color:#eee;font-size:.95rem;outline:none"/>
     <div id="pc-dropdown"
       style="display:none;position:absolute;top:100%;left:0;right:0;z-index:50;
              background:#1e1e1e;border:1px solid #333;border-radius:0 0 8px 8px;
-             max-height:220px;overflow-y:auto"></div>
+             max-height:240px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
   </div>
 
   <!-- Card area -->
   <div id="pc-card"></div>
 
+</div>
 </div>
 
 <script>
@@ -1915,14 +1917,16 @@ def render_player_cards_tab(lb_data: list) -> str:
       ['SB',   fmtN(d.sb)],  ['AVG', fmt3(d.avg)],
       ['OBP',  fmt3(d.obp)], ['OPS', fmt3(d.ops)],
     ];
-    var std_html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">'
+    var std_html =
+      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:10px 14px;margin-bottom:14px">'
+      + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:8px">2026 STATS</div>'
+      + '<div style="display:flex;flex-wrap:wrap">'
       + std_items.map(function(x) {{
-          return '<div style="background:#1a1a1a;border:1px solid #2a2a2a;'
-            + 'border-radius:6px;padding:6px 10px;text-align:center;flex:1;min-width:52px">'
-            + '<div style="font-size:1rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
-            + '<div style="font-size:.6rem;color:#666;margin-top:2px;letter-spacing:.04em">' + x[0] + '</div>'
+          return '<div style="text-align:center;padding:4px 8px;min-width:52px;flex:1">'
+            + '<div style="font-size:.95rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
+            + '<div style="font-size:.6rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
-        }}).join('') + '</div>';
+        }}).join('') + '</div></div>';
 
     // ── Percentile bars (Savant style) ─────────────────────────────────────
     var statRows = [
@@ -1999,38 +2003,25 @@ def render_player_cards_tab(lb_data: list) -> str:
       + '</div>';
 
     // ── Batted ball section ───────────────────────────────────────────────
-    function bbBar(label, val) {{
-      if (val == null) return '';
-      var w = Math.min(val, 100);
-      return '<div style="margin-bottom:6px">'
-        + '<div style="display:flex;justify-content:space-between;margin-bottom:2px">'
-        +   '<span style="font-size:.7rem;color:#999">' + label + '</span>'
-        +   '<span style="font-size:.7rem;color:#ccc;font-weight:700">' + val.toFixed(1) + '%</span>'
-        + '</div>'
-        + '<div style="height:5px;border-radius:3px;background:#222">'
-        +   '<div style="height:100%;border-radius:3px;background:#4287f5;width:' + w + '%"></div>'
-        + '</div>'
-        + '</div>';
-    }}
-
+    function fmtPct(v) {{ return v != null ? v.toFixed(1)+'%' : '–'; }}
     var bb_html = '';
     if (d.pull!=null || d.gb!=null) {{
+      var bbItems = [
+        ['Pull%',d.pull],['Center%',d.cent],['Oppo%',d.oppo],
+        ['GB%',d.gb],['LD%',d.ld],['FB%',d.fb],['PU%',d.pu],
+      ];
       bb_html =
-        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:12px 14px;margin-bottom:14px">'
-        + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:10px">BATTED BALL PROFILE</div>'
-        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">'
-        + '<div>'
-        + bbBar('Pull%',   d.pull)
-        + bbBar('Center%', d.cent)
-        + bbBar('Oppo%',   d.oppo)
-        + '</div><div>'
-        + bbBar('GB%', d.gb)
-        + bbBar('LD%', d.ld)
-        + bbBar('FB%', d.fb)
-        + bbBar('PU%', d.pu)
-        + '</div></div></div>';
+        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:10px 14px;margin-bottom:14px">'
+        + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:8px">BATTED BALL PROFILE</div>'
+        + '<div style="display:flex;flex-wrap:wrap">'
+        + bbItems.map(function(x){{
+            return '<div style="text-align:center;padding:4px 8px;min-width:60px;flex:1">'
+              + '<div style="font-size:.92rem;font-weight:700;color:#ddd">' + fmtPct(x[1]) + '</div>'
+              + '<div style="font-size:.6rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+              + '</div>';
+          }}).join('')
+        + '</div></div>';
     }}
-
     // ── Assemble card ─────────────────────────────────────────────────────
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px">'
