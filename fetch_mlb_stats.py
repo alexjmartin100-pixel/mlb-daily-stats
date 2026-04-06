@@ -1865,7 +1865,7 @@ def render_player_cards_tab(lb_data: list) -> str:
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/w_180,q_auto:best/v1/people/'
+      + 'd_people:generic:headshot:67:current.png/c_thumb,g_face,w_240,h_240,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
@@ -1889,8 +1889,9 @@ def render_player_cards_tab(lb_data: list) -> str:
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:72px;height:72px;border-radius:8px;object-fit:cover;'
-      +   'background:#1a1a1a;border:1px solid #333;flex-shrink:0"/>'
+      +   'style="width:76px;height:76px;border-radius:50%;object-fit:cover;'
+      +   'background:#141414;border:2.5px solid #333;flex-shrink:0;'
+      +   'box-shadow:0 0 12px rgba(0,0,0,.6)"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       +     '<span style="font-size:1.15rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -1955,32 +1956,33 @@ def render_player_cards_tab(lb_data: list) -> str:
       var valStr = fmtFn(rawVal);
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
-      // Gradient: 0=red, 50=white, 99=blue
+      // Gradient: 0=blue (low), 50=white, 99=red (high)
       // Color of the marker dot
       var dotCol = '#888';
       if (pctDisp != null) {{
-        if (pctDisp >= 67)      dotCol = '#4287f5';
+        if (pctDisp >= 67)      dotCol = '#e05555';
         else if (pctDisp >= 34) dotCol = '#ccc';
-        else                    dotCol = '#e05555';
+        else                    dotCol = '#4287f5';
       }}
       var markerLeft = pctDisp != null ? pctDisp : 50;
       var barHtml;
       if (pctDisp == null) {{
-        barHtml = '<div style="height:6px;border-radius:3px;background:#2a2a2a;'
+        barHtml = '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
                 + 'position:relative;margin:6px 0 2px"></div>';
       }} else {{
         barHtml =
-          '<div style="height:6px;border-radius:3px;'
-          + 'background:linear-gradient(to right,#c0392b,#e8e8e8 50%,#2563eb);'
+          '<div style="height:8px;border-radius:4px;'
+          + 'background:linear-gradient(to right,#2563eb,#e8e8e8 50%,#c0392b);'
           + 'position:relative;margin:6px 0 2px">'
           + '<div style="position:absolute;top:50%;left:' + markerLeft + '%;'
-          + 'transform:translate(-50%,-50%);width:13px;height:13px;'
+          + 'transform:translate(-50%,-50%);width:18px;height:18px;'
           + 'border-radius:50%;background:' + dotCol + ';'
-          + 'border:2px solid #111;box-shadow:0 0 4px rgba(0,0,0,.6)"></div>'
+          + 'border:2.5px solid #eee;box-shadow:0 0 8px rgba(255,255,255,.35), 0 0 3px rgba(0,0,0,.8)"></div>'
           + '</div>';
       }}
       var pctLabel = pctDisp != null
-        ? '<span style="font-size:.75rem;font-weight:800;color:' + dotCol + ';min-width:28px;text-align:right">'
+        ? '<span style="font-size:.78rem;font-weight:800;color:' + dotCol + ';min-width:32px;text-align:right;'
+          + 'text-shadow:0 0 6px ' + dotCol + '80">'
           + pctDisp + '</span>'
         : '<span style="font-size:.75rem;color:#555;min-width:28px;text-align:right">–</span>';
 
@@ -6087,128 +6089,4 @@ function _tradePlayerRow(side, p) {{
   var dStr = (d >= 0 ? '$' : '−$') + Math.abs(d).toFixed(1);
   var dCol = d >= 10 ? '#f0c040' : d >= 0 ? '#7ec87e' : '#e05555';
   var roleTag = p.role ? '<span style="opacity:.45;font-size:.68rem;margin-left:3px">' + p.role.toUpperCase() + '</span>' : '';
-  return '<div style="display:flex;align-items:center;justify-content:space-between;'
-    + 'padding:5px 8px;background:#1a1a1a;border-radius:5px;margin-bottom:3px">'
-    + '<div><span style="font-size:.83rem;font-weight:600">' + p.name + '</span>'
-    + '<span style="font-size:.73rem;color:var(--muted);margin-left:5px">' + p.team + roleTag + '</span></div>'
-    + '<div style="display:flex;align-items:center;gap:7px">'
-    + '<span style="color:' + dCol + ';font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
-    + '<button data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
-    + ' onmousedown="tradeRemove(this.dataset.side,this.dataset.name)"'
-    + ' style="background:none;border:none;color:#888;cursor:pointer;font-size:.75rem;padding:2px 4px;line-height:1;border-radius:3px">&#x2715;</button>'
-    + '</div></div>';
-}}
-
-function _tradeSectionRows(players, isPitcher) {{
-  return players.filter(function(p) {{ return !!p.is_pitcher === isPitcher; }});
-}}
-
-function _tradeRender() {{
-  ['send','recv'].forEach(function(side) {{
-    var players = _tradeRoster[side];
-    var hitters  = _tradeSectionRows(players, false);
-    var pitchers = _tradeSectionRows(players, true);
-    var html = '';
-    if (!players.length) {{
-      html = '<div style="color:var(--muted);font-size:.79rem;font-style:italic;padding:6px 2px">No players added</div>';
-    }} else {{
-      if (hitters.length) {{
-        html += '<div style="font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
-              + 'letter-spacing:.05em;margin:6px 0 4px">&#x1F3CF; Hitters</div>';
-        hitters.forEach(function(p) {{ html += _tradePlayerRow(side, p); }});
-      }}
-      if (pitchers.length) {{
-        html += '<div style="font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;'
-              + 'letter-spacing:.05em;margin:8px 0 4px">&#x26BE; Pitchers</div>';
-        pitchers.forEach(function(p) {{ html += _tradePlayerRow(side, p); }});
-      }}
-    }}
-    document.getElementById('trade-' + side + '-list').innerHTML = html;
-    var tot = _tradeRoster[side].reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
-    var tel = document.getElementById('trade-' + side + '-total');
-    if (tel) tel.textContent = (tot >= 0 ? '$' : '\u2212$') + Math.abs(tot).toFixed(1);
-  }});
-  _tradeCalc();
-}}
-
-/* \u2500\u2500 Trade Calc: verdict + per-stat breakdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
-function _sumCats(players) {{
-  var out = {{}};
-  players.forEach(function(p) {{
-    if (!p.cats) return;
-    Object.keys(p.cats).forEach(function(k) {{
-      out[k] = (out[k] || 0) + (parseFloat(p.cats[k]) || 0);
-    }});
-  }});
-  return out;
-}}
-
-function _tradeCalc() {{
-  var send = _tradeRoster['send'];
-  var recv = _tradeRoster['recv'];
-  var verdictEl = document.getElementById('trade-verdict');
-  var breakEl   = document.getElementById('trade-cat-breakdown');
-  if (!send.length && !recv.length) {{
-    verdictEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>';
-    breakEl.innerHTML = '';
-    return;
-  }}
-  var sendTot = send.reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
-  var recvTot = recv.reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
-  var net = recvTot - sendTot;
-
-  var arrowHtml, vc;
-  if (net > 0.5) {{
-    arrowHtml = '<div style="font-size:3rem;color:#4caf50;line-height:1;margin:4px 0">&#x25B6;</div>'
-              + '<div style="font-size:.75rem;color:#4caf50;font-weight:800;letter-spacing:.06em">YOU WIN</div>';
-    vc = '#4caf50';
-  }} else if (net < -0.5) {{
-    arrowHtml = '<div style="font-size:3rem;color:#e05555;line-height:1;margin:4px 0;transform:rotate(180deg)">&#x25B6;</div>'
-              + '<div style="font-size:.75rem;color:#e05555;font-weight:800;letter-spacing:.06em">YOU LOSE</div>';
-    vc = '#e05555';
-  }} else {{
-    arrowHtml = '<div style="font-size:2.4rem;color:#aaa;line-height:1;margin:4px 0">&#x21C6;</div>'
-              + '<div style="font-size:.75rem;color:#aaa;font-weight:800;letter-spacing:.06em">EVEN</div>';
-    vc = '#aaa';
-  }}
-  var netStr = (net >= 0 ? '+$' : '\u2212$') + Math.abs(net).toFixed(1);
-  verdictEl.innerHTML = arrowHtml
-    + '<div style="font-size:1.5rem;font-weight:800;color:' + vc + ';margin:6px 0 2px">' + netStr + '</div>'
-    + '<div style="font-size:.69rem;color:var(--muted);margin-top:2px">'
-    + '<span style="color:#e05555">&#x25BE; $' + sendTot.toFixed(1) + ' sent</span>'
-    + '&nbsp;&nbsp;<span style="color:#4caf50">&#x25B4; $' + recvTot.toFixed(1) + ' recv</span>'
-    + '</div>';
-
-  var sendCats = _sumCats(send);
-  var recvCats = _sumCats(recv);
-  var seen = {{}}, allKeys = [];
-  Object.keys(sendCats).concat(Object.keys(recvCats)).forEach(function(k) {{
-    if (!seen[k]) {{ seen[k]=1; allKeys.push(k); }}
-  }});
-  var lowerBetter = {{'ERA':true,'WHIP':true}};
-  if (!allKeys.length) {{ breakEl.innerHTML=''; return; }}
-  var bHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">';
-  allKeys.forEach(function(k) {{
-    var sv = sendCats[k]||0, rv = recvCats[k]||0;
-    var rawDiff = rv - sv;
-    var adjDiff = lowerBetter[k] ? -rawDiff : rawDiff;
-    var isPos = adjDiff >  0.005;
-    var isNeg = adjDiff < -0.005;
-    var col   = isPos ? '#4caf50' : isNeg ? '#e05555' : '#888';
-    var arrow = isPos ? '&#x25B2;' : isNeg ? '&#x25BC;' : '&#x25A0;';
-    var dispDiff = (rawDiff >= 0 ? '+' : '') + rawDiff.toFixed(2).replace(/\.00$/,'');
-    bHtml += '<div style="display:flex;justify-content:space-between;align-items:center;'
-           + 'padding:5px 9px;background:#1a1a1a;border-radius:5px;border-left:3px solid ' + col + '">'
-           + '<span style="font-size:.76rem;font-weight:700;color:#ccc">' + k + '</span>'
-           + '<span style="font-size:.8rem;font-weight:700;color:' + col + '">' + arrow + ' ' + dispDiff + '</span>'
-           + '</div>';
-  }});
-  bHtml += '</div>';
-  breakEl.innerHTML = bHtml;
-}}
-</script>
-"""
-    return inner
-
-if __name__ == "__main__":
-    main()
+  return '<div style="display:flex;align-items:center;ju
