@@ -61,6 +61,8 @@ jobs:
           git push
 
       - name: Deploy to Firebase Hosting
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
           npm install -g firebase-tools@13 --silent
