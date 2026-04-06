@@ -9,11 +9,10 @@ Data sources:
   • MLB Stats API (statsapi)    — SB / CS box-score data
 
 Run once each morning; mlb_daily_stats.html is updated in the same folder.
-"""h
+"""
 
 import subprocess, sys, os, json, unicodedata, time
 from datetime import date, timedelta, datetime
-h
 # Fix Unicode output on Windows (cp1252 can't handle checkmarks etc.)
 if sys.platform == "win32":
     import io
