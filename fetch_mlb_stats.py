@@ -1791,9 +1791,9 @@ def render_player_cards_tab(lb_data: list) -> str:
 
     inner = f"""
 <style>
-.pc-dd-item{padding:9px 12px;cursor:pointer;font-size:.88rem;
-  border-bottom:1px solid #2a2a2a;color:#ddd;transition:background .12s}
-.pc-dd-item:hover{background:#2a2a2a}
+.pc-dd-item{{padding:9px 12px;cursor:pointer;font-size:.88rem;
+  border-bottom:1px solid #2a2a2a;color:#ddd;transition:background .12s}}
+.pc-dd-item:hover{{background:#2a2a2a}}
 </style>
 <!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
 <div id="playercards-panel" class="tab-panel">
