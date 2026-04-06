@@ -2033,8 +2033,7 @@ def render_player_cards_tab(lb_data: list) -> str:
       + '</div>';
   }};
 
-}})();
-</script>
+}}</script>
 """
     return inner
 
@@ -6107,4 +6106,89 @@ function _tradeRender() {{
         pitchers.forEach(function(p) {{ html += _tradePlayerRow(side, p); }});
       }}
     }}
-    document.getElementById('trade-' 
+    document.getElementById('trade-' + side + '-list').innerHTML = html;
+    var tot = _tradeRoster[side].reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
+    var tel = document.getElementById('trade-' + side + '-total');
+    if (tel) tel.textContent = (tot >= 0 ? '$' : '\u2212$') + Math.abs(tot).toFixed(1);
+  }});
+  _tradeCalc();
+}}
+
+/* \u2500\u2500 Trade Calc: verdict + per-stat breakdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+function _sumCats(players) {{
+  var out = {{}};
+  players.forEach(function(p) {{
+    if (!p.cats) return;
+    Object.keys(p.cats).forEach(function(k) {{
+      out[k] = (out[k] || 0) + (parseFloat(p.cats[k]) || 0);
+    }});
+  }});
+  return out;
+}}
+
+function _tradeCalc() {{
+  var send = _tradeRoster['send'];
+  var recv = _tradeRoster['recv'];
+  var verdictEl = document.getElementById('trade-verdict');
+  var breakEl   = document.getElementById('trade-cat-breakdown');
+  if (!send.length && !recv.length) {{
+    verdictEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>';
+    breakEl.innerHTML = '';
+    return;
+  }}
+  var sendTot = send.reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
+  var recvTot = recv.reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
+  var net = recvTot - sendTot;
+
+  var arrowHtml, vc;
+  if (net > 0.5) {{
+    arrowHtml = '<div style="font-size:3rem;color:#4caf50;line-height:1;margin:4px 0">&#x25B6;</div>'
+              + '<div style="font-size:.75rem;color:#4caf50;font-weight:800;letter-spacing:.06em">YOU WIN</div>';
+    vc = '#4caf50';
+  }} else if (net < -0.5) {{
+    arrowHtml = '<div style="font-size:3rem;color:#e05555;line-height:1;margin:4px 0;transform:rotate(180deg)">&#x25B6;</div>'
+              + '<div style="font-size:.75rem;color:#e05555;font-weight:800;letter-spacing:.06em">YOU LOSE</div>';
+    vc = '#e05555';
+  }} else {{
+    arrowHtml = '<div style="font-size:2.4rem;color:#aaa;line-height:1;margin:4px 0">&#x21C6;</div>'
+              + '<div style="font-size:.75rem;color:#aaa;font-weight:800;letter-spacing:.06em">EVEN</div>';
+    vc = '#aaa';
+  }}
+  var netStr = (net >= 0 ? '+$' : '\u2212$') + Math.abs(net).toFixed(1);
+  verdictEl.innerHTML = arrowHtml
+    + '<div style="font-size:1.5rem;font-weight:800;color:' + vc + ';margin:6px 0 2px">' + netStr + '</div>'
+    + '<div style="font-size:.69rem;color:var(--muted);margin-top:2px">'
+    + '<span style="color:#e05555">&#x25BE; $' + sendTot.toFixed(1) + ' sent</span>'
+    + '&nbsp;&nbsp;<span style="color:#4caf50">&#x25B4; $' + recvTot.toFixed(1) + ' recv</span>'
+    + '</div>';
+
+  var sendCats = _sumCats(send);
+  var recvCats = _sumCats(recv);
+  var seen = {{}}, allKeys = [];
+  Object.keys(sendCats).concat(Object.keys(recvCats)).forEach(function(k) {{
+    if (!seen[k]) {{ seen[k]=1; allKeys.push(k); }}
+  }});
+  var lowerBetter = {{'ERA':true,'WHIP':true}};
+  if (!allKeys.length) {{ breakEl.innerHTML=''; return; }}
+  var bHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">';
+  allKeys.forEach(function(k) {{
+    var sv = sendCats[k]||0, rv = recvCats[k]||0;
+    var rawDiff = rv - sv;
+    var adjDiff = lowerBetter[k] ? -rawDiff : rawDiff;
+    var isPos = adjDiff >  0.005;
+    var isNeg = adjDiff < -0.005;
+    var col   = isPos ? '#4caf50' : isNeg ? '#e05555' : '#888';
+    var arrow = isPos ? '&#x25B2;' : isNeg ? '&#x25BC;' : '&#x25A0;';
+    var dispDiff = (rawDiff >= 0 ? '+' : '') + rawDiff.toFixed(2).replace(/\.00$/,'');
+    bHtml += '<div style="display:flex;justify-content:space-between;align-items:center;'
+           + 'padding:5px 9px;background:#1a1a1a;border-radius:5px;border-left:3px solid ' + col + '">'
+           + '<span style="font-size:.76rem;font-weight:700;color:#ccc">' + k + '</span>'
+           + '<span style="font-size:.8rem;font-weight:700;color:' + col + '">' + arrow + ' ' + dispDiff + '</span>'
+           + '</div>';
+  }});
+  bHtml += '</div>';
+  breakEl.innerHTML = bHtml;
+}}
+</script>
+"""
+    return inner
