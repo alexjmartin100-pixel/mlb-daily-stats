@@ -1864,7 +1864,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,
     COL:115,DET:116,HOU:117,KC:118,LAA:108,LAD:119,MIA:146,MIL:158,
     MIN:142,NYM:121,NYY:147,OAK:133,PHI:143,PIT:134,SD:135,SF:137,
-    SEA:136,STL:138,TB:139,TEX:140,TOR:141,WSH:120,AZ:109
+    SEA:136,STL:138,TB:139,TBR:139,TEX:140,TOR:141,WSH:120,AZ:109
   }};
 
   // ── Search ────────────────────────────────────────────────────────────────────
@@ -1943,14 +1943,25 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ctx.drawImage(imgEl, 0, 0);
       var imgData = ctx.getImageData(0, 0, c.width, c.height);
       var px = imgData.data;
+      // Sample corners to detect bg color
+      var samples = [];
+      var w = c.width, h = c.height;
+      [[0,0],[w-1,0],[0,h-1],[w-1,h-1],[Math.floor(w/2),0],[Math.floor(w/2),h-1]].forEach(function(pt){{
+        var idx = (pt[1]*w + pt[0])*4;
+        samples.push([px[idx],px[idx+1],px[idx+2]]);
+      }});
+      var bgR=0,bgG=0,bgB=0;
+      samples.forEach(function(s){{ bgR+=s[0]; bgG+=s[1]; bgB+=s[2]; }});
+      bgR = Math.round(bgR/samples.length);
+      bgG = Math.round(bgG/samples.length);
+      bgB = Math.round(bgB/samples.length);
       for (var i = 0; i < px.length; i += 4) {{
         var r = px[i], g = px[i+1], b = px[i+2];
-        var bright = (r + g + b) / 3;
-        var saturation = Math.max(r, g, b) - Math.min(r, g, b);
-        if (bright > 180 && saturation < 40) {{
+        var dist = Math.sqrt((r-bgR)*(r-bgR)+(g-bgG)*(g-bgG)+(b-bgB)*(b-bgB));
+        if (dist < 35) {{
           px[i+3] = 0;
-        }} else if (bright > 150 && saturation < 30) {{
-          px[i+3] = Math.round(px[i+3] * 0.3);
+        }} else if (dist < 60) {{
+          px[i+3] = Math.round(255 * ((dist - 35) / 25));
         }}
       }}
       ctx.putImageData(imgData, 0, 0);
@@ -2049,10 +2060,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       if (pctDisp == null) {{
         barHtml = '<div style="display:flex;align-items:center;gap:6px">'
                 + '<div style="flex:1;height:8px;border-radius:4px;background:#2a2a2a"></div>'
-                + '<span style="font-size:.68rem;color:#555;min-width:58px;text-align:right">–</span>'
+                + '<span style="font-size:.68rem;color:#555;min-width:62px;text-align:right">–</span>'
                 + '</div>';
       }} else {{
-        var col = isGold ? '#f0c040' : pctColor(pctDisp);
+        var col = pctColor(pctDisp);
         var fillW = Math.min(Math.max(pctDisp, 3), 100);
         barHtml =
           '<div style="display:flex;align-items:center;gap:6px">'
@@ -2062,11 +2073,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
           + '<div style="position:absolute;top:50%;left:' + fillW + '%;'
           + 'transform:translate(-50%,-50%);width:28px;height:28px;'
           + 'border-radius:14px;background:' + col + ';'
+          + 'border:1.5px solid rgba(255,255,255,.7);'
           + 'display:flex;align-items:center;justify-content:center;'
-          + 'font-size:.82rem;font-weight:800;color:#fff;line-height:1">'
+          + 'font-size:.9rem;font-weight:800;color:#fff;line-height:1">'
           + pctDisp + '</div>'
           + '</div>'
-          + '<span style="font-size:.68rem;font-weight:600;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:58px;text-align:right">' + valStr + '</span>'
+          + '<span style="font-size:.7rem;font-weight:700;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:62px;text-align:right">' + valStr + '</span>'
           + '</div>';
       }}
       var labelCol = isGold ? '#f0c040' : '#aaa';
@@ -2114,7 +2126,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var logoBadge = '';
     if (logoBgUrl) {{
       logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:8px;right:8px;'
-        + 'width:110px;height:110px;object-fit:contain;opacity:.7;z-index:1" '
+        + 'width:130px;height:130px;object-fit:contain;opacity:.8;z-index:1;'
+        + 'filter:drop-shadow(0 0 6px rgba(255,255,255,.4)) drop-shadow(0 0 2px rgba(255,255,255,.6))" '
         + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
