@@ -1863,24 +1863,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
   var _TEAM_IDS = {{
     ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CHW:145,CIN:113,CLE:114,
     COL:115,DET:116,HOU:117,KC:118,KCR:118,LAA:108,LAD:119,MIA:146,MIL:158,
-    MIN:142,NYM:121,NYY:147,OAK:133,PHI:143,PIT:134,SD:135,SDP:135,SF:137,SFG:137,
+    MIN:142,NYM:121,NYY:147,OAK:133,ATH:133,PHI:143,PIT:134,SD:135,SDP:135,SF:137,SFG:137,
     SEA:136,STL:138,TB:139,TBR:139,TEX:140,TOR:141,WSH:120,WSN:120,AZ:109
-  }};
-
-  var _TEAM_COLORS = {{
-    ARI:['#A71930','#E3D4AD'],ATL:['#CE1141','#13274F'],BAL:['#DF4601','#27251F'],
-    BOS:['#BD3039','#0C2340'],CHC:['#0E3386','#CC3433'],CWS:['#27251F','#C4CED4'],
-    CHW:['#27251F','#C4CED4'],CIN:['#C6011F','#000000'],CLE:['#00385D','#E50022'],
-    COL:['#33006F','#C4CED4'],DET:['#0C2340','#FA4616'],HOU:['#002D62','#EB6E1F'],
-    KC:['#004687','#BD9B60'],KCR:['#004687','#BD9B60'],LAA:['#BA0021','#003263'],
-    LAD:['#005A9C','#EF3E42'],MIA:['#00A3E0','#EF3340'],MIL:['#FFC52F','#12284B'],
-    MIN:['#002B5C','#D31145'],NYM:['#002D72','#FF5910'],NYY:['#003087','#E4002C'],
-    OAK:['#003831','#EFB21E'],PHI:['#E81828','#002D72'],PIT:['#27251F','#FDB827'],
-    SD:['#2F241D','#FFC425'],SDP:['#2F241D','#FFC425'],SF:['#FD5A1E','#27251F'],
-    SFG:['#FD5A1E','#27251F'],SEA:['#0C2C56','#005C5C'],STL:['#C41E3A','#0C2340'],
-    TB:['#092C5C','#8FBCE6'],TBR:['#092C5C','#8FBCE6'],TEX:['#003278','#C0111F'],
-    TOR:['#134A8E','#1D2D5C'],WSH:['#AB0003','#14225A'],WSN:['#AB0003','#14225A'],
-    AZ:['#A71930','#E3D4AD']
   }};
 
   // ── Search ────────────────────────────────────────────────────────────────────
@@ -1955,7 +1939,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:130px;height:130px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent;mix-blend-mode:multiply"/>'
+      +   'style="width:120px;height:120px;object-fit:cover;object-position:center 20%;flex-shrink:0;border-radius:50%;background:#222;border:2px solid rgba(255,255,255,.15)"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -1963,13 +1947,13 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       +     dvBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
-      +     '<span style="font-size:.78rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
-      +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.74rem;color:#888">' + pos + '</span>'
-      +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.74rem;color:#888">B/T: ' + bt + '</span>'
+      +     '<span style="font-size:.78rem;color:#fff;font-weight:600">' + (d.team||'–') + '</span>'
+      +     '<span style="color:#888">·</span>'
+      +     '<span style="font-size:.74rem;color:#eee">' + pos + '</span>'
+      +     '<span style="color:#888">·</span>'
+      +     '<span style="font-size:.74rem;color:#eee">B/T: ' + bt + '</span>'
       +   '</div>'
-      +   '<div style="font-size:.68rem;color:#666;margin-top:2px">'
+      +   '<div style="font-size:.68rem;color:#ddd;margin-top:2px">'
       +     age + ' · ' + ht + ' · ' + wt
       +   '</div>'
       + '</div>'
@@ -2111,10 +2095,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + 'filter:drop-shadow(0 0 6px rgba(255,255,255,.4)) drop-shadow(0 0 2px rgba(255,255,255,.6))" '
         + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
-    var tc = _TEAM_COLORS[d.team] || ['#141414','#141414'];
-    var cardBg = 'linear-gradient(135deg, ' + tc[0] + ' 0%, ' + tc[1] + ' 100%)';
     document.getElementById('pc-card').innerHTML =
-      '<div style="background:' + cardBg + ';border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:16px;'
+      '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
       + 'position:relative;overflow:hidden">'
       + logoBadge
       + header + std_html + bars_html + bb_html
