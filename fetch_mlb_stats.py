@@ -1823,8 +1823,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     inner = f"""
 <style>
 .pc-dd-item{{padding:9px 12px;cursor:pointer;font-size:.88rem;
-  border-bottom:1px solid #2a2a2a;color:#ddd;transition:background .12s}}
-.pc-dd-item:hover{{background:#2a2a2a}}
+  border-bottom:1px solid #f0f0f0;color:#222;transition:background .12s}}
+.pc-dd-item:hover{{background:#f5f5f5}}
 </style>
 <!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
 <div id="playercards-panel" class="tab-panel">
@@ -1836,12 +1836,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     autocomplete="off"
     oninput="_pcSearch(this.value)"
     style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
-           background:#1a1a1a;border:1px solid #333;border-radius:8px;
-           color:#eee;font-size:.95rem;outline:none"/>
+           background:#fff;border:1px solid #d1d5db;border-radius:8px;
+           color:#222;font-size:.95rem;outline:none"/>
   <div id="pc-dropdown"
-    style="display:none;background:#1e1e1e;border:1px solid #333;border-radius:8px;
+    style="display:none;background:#fff;border:1px solid #d1d5db;border-radius:8px;
            max-height:260px;overflow-y:auto;margin-bottom:12px;
-           box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
+           box-shadow:0 4px 16px rgba(0,0,0,.1)"></div>
 
   <!-- Card area -->
   <div id="pc-card"></div>
@@ -1898,7 +1898,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/c_thumb,g_face,w_300,h_300,q_auto:best/v1/people/'
+      + 'd_people:generic:headshot:67:current.png/e_background_removal/c_thumb,g_face,w_300,h_300,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
@@ -1914,43 +1914,43 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var age = d.age ? d.age + ' yrs' : '–';
     var pos = d.pos || '–';
     var qual = d.qual
-      ? '<span style="background:#1b3a1b;color:#4caf50;border:1px solid #4caf50;'
+      ? '<span style="background:#d1fae5;color:#15803d;border:1px solid #86efac;'
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">QUALIFIED</span>'
-      : '<span style="background:#2a1a1a;color:#888;border:1px solid #444;'
+      : '<span style="background:#f3f4f6;color:#888;border:1px solid #d1d5db;'
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">NOT QUALIFIED</span>';
 
     // ── Dollar value badge (right of qualified marker) ─────────────────────
     var dvBadge = '';
     if (d.dv != null) {{
-      var dvCol = d.dv >= 10 ? '#f0c040' : d.dv >= 0 ? '#7ec87e' : '#e05555';
       var dvSign = d.dv >= 0 ? '$' : '-$';
-      dvBadge = '<span style="font-size:1.05rem;font-weight:900;color:' + dvCol
-        + ';margin-left:8px">' + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
+      dvBadge = '<span style="font-size:1.15rem;font-weight:900;color:#15803d;'
+        + 'background:#d1fae5;padding:1px 8px;border-radius:6px;margin-left:8px">'
+        + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
     // ── Header ────────────────────────────────────────────────────────────
     var header =
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:72px;height:72px;object-fit:cover;flex-shrink:0;border-radius:0;background:transparent;mix-blend-mode:multiply"/>'
+      +   'style="width:72px;height:72px;object-fit:cover;flex-shrink:0;border-radius:0;background:transparent"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-      +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
+      +     '<span style="font-size:1.05rem;font-weight:800;color:#111">' + d.name + '</span>'
       +     qual
       +     dvBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
       +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\\x27none\\x27" '
                      + 'style="height:18px;width:18px;object-fit:contain"/>' : '')
-      +     '<span style="font-size:.78rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
-      +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.74rem;color:#888">' + pos + '</span>'
-      +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.74rem;color:#888">B/T: ' + bt + '</span>'
+      +     '<span style="font-size:.78rem;color:#555;font-weight:600">' + (d.team||'–') + '</span>'
+      +     '<span style="color:#ccc">·</span>'
+      +     '<span style="font-size:.74rem;color:#666">' + pos + '</span>'
+      +     '<span style="color:#ccc">·</span>'
+      +     '<span style="font-size:.74rem;color:#666">B/T: ' + bt + '</span>'
       +   '</div>'
-      +   '<div style="font-size:.68rem;color:#666;margin-top:2px">'
+      +   '<div style="font-size:.68rem;color:#999;margin-top:2px">'
       +     age + ' · ' + ht + ' · ' + wt
       +   '</div>'
       + '</div>'
@@ -1959,7 +1959,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Standard stats strip ──────────────────────────────────────────────
     function fmt3(v) {{ return v != null ? v.toFixed(3) : '–'; }}
     function fmtN(v) {{ return v != null ? v : '–'; }}
-    var myLeaders = _pcLeaders[String(id)] || [];
+    var myLeaders = (d.qual && _pcLeaders[String(id)]) ? _pcLeaders[String(id)] : [];
     var leaderMap = {{}};
     myLeaders.forEach(function(k){{ leaderMap[k]=true; }});
     var std_items = [
@@ -1970,14 +1970,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ['OBP', fmt3(d.obp), !!leaderMap.obp], ['OPS', fmt3(d.ops), !!leaderMap.ops],
     ];
     var std_html =
-      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
-      + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">2026 STATS</div>'
+      '<div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+      + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:6px">2026 STATS</div>'
       + '<div style="display:flex;flex-wrap:wrap">'
       + std_items.map(function(x) {{
-          var col = x[2] ? '#f0c040' : '#ddd';
+          var col = x[2] ? '#b8860b' : '#222';
           return '<div style="text-align:center;padding:3px 6px;min-width:44px;flex:1">'
             + '<div style="font-size:.85rem;font-weight:800;color:' + col + '">' + x[1] + '</div>'
-            + '<div style="font-size:.55rem;color:' + (x[2]?'#b8982e':'#555') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+            + '<div style="font-size:.55rem;color:' + (x[2]?'#b8860b':'#999') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
         }}).join('') + '</div></div>';
 
@@ -2001,8 +2001,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     ];
 
     function pctColor(p) {{
-      // Interpolate: 0=deep blue, 50=grey, 100=deep red, 100=gold
-      if (p >= 100) return '#f0c040';
+      if (p >= 100) return '#b8860b';
       if (p >= 90) {{ var t=(p-90)/10; return 'rgb('+Math.round(180+44*t)+','+Math.round(60-10*t)+','+Math.round(60-10*t)+')'; }}
       if (p >= 50) {{ var t=(p-50)/40; return 'rgb('+Math.round(120+60*t)+','+Math.round(120-60*t)+','+Math.round(120-60*t)+')'; }}
       if (p >= 10) {{ var t=(p-10)/40; return 'rgb('+Math.round(40+80*t)+','+Math.round(80+40*t)+','+Math.round(200-80*t)+')'; }}
@@ -2015,38 +2014,47 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       var isGold = pctDisp >= 100;
       var barHtml;
       if (pctDisp == null) {{
-        barHtml = '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
-                + 'position:relative;margin:6px 0 2px"></div>';
+        barHtml = '<div style="height:8px;border-radius:4px;background:#e5e7eb;'
+                + 'position:relative;margin:8px 0 4px"></div>';
       }} else {{
         var col = pctColor(pctDisp);
         var fillW = Math.max(pctDisp, 3);
+        var dotCol = col;
+        var dotTxt = (pctDisp >= 34 && pctDisp < 67) ? '#111' : '#fff';
+        if (isGold) {{ dotCol = '#b8860b'; dotTxt = '#fff'; }}
         barHtml =
-          '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
-          + 'position:relative;margin:6px 0 2px;overflow:hidden">'
+          '<div style="height:8px;border-radius:4px;background:#e5e7eb;'
+          + 'position:relative;margin:8px 0 4px;overflow:visible">'
           + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + ';'
-          + (isGold?'box-shadow:0 0 8px rgba(240,192,64,.5);':'')
-          + '"></div></div>';
+          + (isGold?'box-shadow:0 0 8px rgba(184,134,11,.5);':'')
+          + '"></div>'
+          + '<div style="position:absolute;top:50%;left:' + fillW + '%;'
+          + 'transform:translate(-50%,-50%);min-width:24px;height:24px;'
+          + 'border-radius:12px;background:' + dotCol + ';'
+          + 'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);'
+          + 'display:flex;align-items:center;justify-content:center;'
+          + 'font-size:.62rem;font-weight:800;color:' + dotTxt + ';line-height:1;padding:0 3px">'
+          + pctDisp + '</div>'
+          + '</div>';
       }}
-      var labelCol = isGold ? '#f0c040' : '#aaa';
-      var valCol = isGold ? '#f0c040' : '#ccc';
-      var pctLabel = pctDisp != null ? ('<span style="font-size:.62rem;font-weight:800;color:'
-        + (isGold?'#f0c040':'#888') + ';margin-left:6px">' + pctDisp + '</span>') : '';
+      var labelCol = isGold ? '#b8860b' : '#555';
+      var valCol = isGold ? '#b8860b' : '#333';
 
       return '<div style="margin-bottom:8px">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
         +   '<span style="font-size:.68rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
-        +   '<span style="font-size:.72rem;color:' + valCol + '">' + valStr + pctLabel + '</span>'
+        +   '<span style="font-size:.72rem;color:' + valCol + '">' + valStr + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
     }}
 
     var bars_html =
-      '<div style="background:#111;border:1px solid #222;border-radius:8px;'
+      '<div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;'
       + 'padding:10px 12px 4px;margin-bottom:10px">'
-      + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;'
+      + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em;'
       + 'margin-bottom:8px">STATCAST PROFILE'
-      + '<span style="float:right;font-weight:400;color:#555">Percentile rank among all hitters</span></div>'
+      + '<span style="float:right;font-weight:400;color:#bbb">Percentile rank among all hitters</span></div>'
       + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3]);}}).join('')
       + '</div>';
 
@@ -2061,24 +2069,24 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         ['GB%',fmtPct(d.gb)],['LD%',fmtPct(d.ld)],['FB%',fmtPct(d.fb)],['PU%',fmtPct(d.pu)],
       ];
       bb_html =
-        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
-        + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">BATTED BALL PROFILE</div>'
+        '<div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+        + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:6px">BATTED BALL PROFILE</div>'
         + '<div style="display:flex;flex-wrap:wrap">'
         + bbItems.map(function(x){{
             return '<div style="text-align:center;padding:3px 6px;min-width:52px;flex:1">'
-              + '<div style="font-size:.82rem;font-weight:700;color:#ddd">' + x[1] + '</div>'
-              + '<div style="font-size:.55rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+              + '<div style="font-size:.82rem;font-weight:700;color:#222">' + x[1] + '</div>'
+              + '<div style="font-size:.55rem;color:#999;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
               + '</div>';
           }}).join('')
         + '</div></div>';
     }}
     // ── Assemble card ─────────────────────────────────────────────────────
     var cardBg = logoBgUrl
-      ? 'background:#141414 url(' + logoBgUrl + ') no-repeat right 16px top 16px / 120px auto;'
-      : 'background:#141414;';
+      ? 'background:#ffffff url(' + logoBgUrl + ') no-repeat right 16px top 16px / 100px auto;'
+      : 'background:#ffffff;';
     document.getElementById('pc-card').innerHTML =
-      '<div style="' + cardBg + 'border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
-      + 'position:relative;overflow:hidden">'
+      '<div style="' + cardBg + 'border:1px solid #e5e7eb;border-radius:10px;padding:16px;'
+      + 'position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)">'
       + (logoBgUrl ? '<div style="position:absolute;top:0;right:0;width:180px;height:180px;'
         + 'background:url(' + logoBgUrl + ') no-repeat center/contain;opacity:.07;pointer-events:none"></div>' : '')
       + header + std_html + bars_html + bb_html
