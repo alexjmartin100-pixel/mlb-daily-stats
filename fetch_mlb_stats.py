@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
+<<<<<<< Updated upstream
 MLB Daily Stats Dashboard Generator  v3.1
+=======
+MLB Daily Stats Dashboard Generator  v3
+>>>>>>> Stashed changes
 =========================================
 Data sources:
   • Baseball Savant (Statcast)  — pitch-by-pitch game data
@@ -13,6 +17,10 @@ Run once each morning; mlb_daily_stats.html is updated in the same folder.
 
 import subprocess, sys, os, json, unicodedata, time
 from datetime import date, timedelta, datetime
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 # Fix Unicode output on Windows (cp1252 can't handle checkmarks etc.)
 if sys.platform == "win32":
     import io
@@ -1377,23 +1385,32 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "id":      mlbam,
                 "name":    str(row.get("Name", "")).strip(),
                 "team":    str(row.get("Team", "")).strip(),
+<<<<<<< Updated upstream
                 "g":       _int(row.get("G", 0)),
                 "pa":      pa,
                 "ab":      _int(row.get("AB", 0)),
+=======
+                "pa":      pa,
+>>>>>>> Stashed changes
                 "qualified": pa >= qual_pa,
                 "r":       _int(row.get("R",   0)),
                 "hr":      _int(row.get("HR",  0)),
                 "rbi":     _int(row.get("RBI", 0)),
                 "sb":      sb,
                 "sba":     sb + cs,
+<<<<<<< Updated upstream
                 "avg":     _flt(row.get("AVG"), 3),
                 "obp":     _flt(row.get("OBP"), 3),
                 "slg":     _flt(row.get("SLG"), 3),
                 "ops":     _flt(row.get("OPS"), 3),
+=======
+                "obp":     _flt(row.get("OBP"),  3),
+>>>>>>> Stashed changes
                 "woba":    _flt(row.get("wOBA"), 3),
                 "k_pct":   _pct(row.get("K%")),
                 "bb_pct":  _pct(row.get("BB%")),
                 "so":      _int(row.get("SO", 0)),
+<<<<<<< Updated upstream
                 "pull_pct":   _pct(row.get("Pull%")),
                 "center_pct": _pct(row.get("Cent%")),
                 "oppo_pct":   _pct(row.get("Oppo%")),
@@ -1411,6 +1428,12 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "bats": None, "throws": None,
                 "height": None, "weight": None,
                 "age": None, "pos": None,
+=======
+                "xwoba": None, "chase_pct": None, "whiff_pct": None,
+                "hard_hit_pct": None, "barrel_pct": None, "barrels": None,
+                "sweet_spot_pct": None, "avg_ev": None, "max_ev": None,
+                "bat_speed": None, "sprint_speed": None,
+>>>>>>> Stashed changes
                 "war":       _flt(row.get("WAR"), 1),
             }
         print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
@@ -1447,23 +1470,33 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     except Exception as e:
         print(f"  [LB] Savant EV/Barrel failed: {e}")
 
+<<<<<<< Updated upstream
     # ── Step 3: Savant xwOBA / xBA / xSLG / Chase% / Whiff% / Launch Angle ─
     print("  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA…")
+=======
+    # ── Step 3: Savant xwOBA / Chase% / Whiff% ───────────────────────────────
+    print("  [LB] Savant xwOBA/Chase/Whiff…")
+>>>>>>> Stashed changes
     try:
         r3 = requests.get(
             "https://baseballsavant.mlb.com/leaderboard/custom",
             params={"year": year, "type": "batter", "filter": "",
                     "sort": "4", "sortDir": "desc", "min": "1",
+<<<<<<< Updated upstream
                     "selections": ("xwoba,xba,xslg,"
                                    "estimated_ba_using_speedangle,"
                                    "estimated_slg_using_speedangle,"
                                    "launch_angle_avg,"
                                    "oz_swing_percent,whiff_percent"),
+=======
+                    "selections": "xwoba,oz_swing_percent,whiff_percent",
+>>>>>>> Stashed changes
                     "csv": "true"},
             headers=hdrs, timeout=30)
         r3.raise_for_status()
         sv3 = pd.read_csv(StringIO(r3.text))
         mid_col3 = next((c for c in ["player_id", "batter"] if c in sv3.columns), None)
+<<<<<<< Updated upstream
         # Log columns for debugging
         print(f"  [LB] Savant step3 columns: {list(sv3.columns)}")
         sv3_map = {
@@ -1477,6 +1510,8 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             "whiff_percent":                       ("whiff_pct",        1),
         }
         matched3 = 0
+=======
+>>>>>>> Stashed changes
         for _, row in sv3.iterrows():
             if mid_col3 is None:
                 break
@@ -1487,6 +1522,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             if mid not in players:
                 continue
             p = players[mid]
+<<<<<<< Updated upstream
             for sv_col, (p_key, prec) in sv3_map.items():
                 try:
                     if sv_col in sv3.columns and pd.notna(row.get(sv_col)):
@@ -1497,6 +1533,22 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         print(f"  [LB] ✓ xwOBA/xBA/xSLG/Chase/Whiff/LA {len(sv3)} rows, {matched3} matched")
     except Exception as e:
         print(f"  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA failed: {e}")
+=======
+            try:
+                if "xwoba" in sv3.columns and pd.notna(row.get("xwoba")):
+                    p["xwoba"] = round(float(row["xwoba"]), 3)
+            except (ValueError, TypeError):
+                pass
+            for sv_col, p_key in [("oz_swing_percent", "chase_pct"), ("whiff_percent", "whiff_pct")]:
+                try:
+                    if sv_col in sv3.columns and pd.notna(row.get(sv_col)):
+                        p[p_key] = round(float(row[sv_col]), 1)
+                except (ValueError, TypeError):
+                    pass
+        print(f"  [LB] ✓ xwOBA/Chase/Whiff {len(sv3)} rows")
+    except Exception as e:
+        print(f"  [LB] Savant xwOBA/Chase/Whiff failed: {e}")
+>>>>>>> Stashed changes
 
     # ── Step 4: Savant bat speed ──────────────────────────────────────────────
     # Try bat-tracking leaderboard first, then fall back to custom leaderboard
@@ -1520,8 +1572,11 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 print(f"  [LB] bat speed: cols not found in {bs_url.split('/')[-1]} — got: {list(bt.columns[:10])}")
                 continue
             matched = 0
+<<<<<<< Updated upstream
             sq_col = next((c for c in ["squared_up_per_swing","squared_up_swing_rate","squared_up_percent",
                                         "squared_up","squared_up_pct"] if c in bt.columns), None)
+=======
+>>>>>>> Stashed changes
             for _, row in bt.iterrows():
                 try:
                     mid = int(row[mid_col4])
@@ -1535,6 +1590,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                     matched += 1
                 except (ValueError, TypeError):
                     pass
+<<<<<<< Updated upstream
                 if sq_col:
                     sv = row.get(sq_col)
                     try:
@@ -1545,6 +1601,9 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                     except (ValueError, TypeError):
                         pass
             print(f"  [LB] ✓ bat speed ({bs_url.split('/')[-1]}): {len(bt)} rows, {matched} matched, sq_col={sq_col}")
+=======
+            print(f"  [LB] ✓ bat speed ({bs_url.split('/')[-1]}): {len(bt)} rows, {matched} matched")
+>>>>>>> Stashed changes
             bat_speed_ok = True
             break
         except Exception as e:
@@ -1613,6 +1672,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         except Exception as e:
             print(f"  [LB] sprint speed CSV fallback failed: {e}")
 
+<<<<<<< Updated upstream
     # ── Step 6: MLB Stats API bio (bats, throws, height, weight, age, pos) ──
     print("  [LB] MLB API bio data…")
     try:
@@ -1650,12 +1710,15 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     except Exception as e:
         print(f"  [LB] MLB API bio failed: {e}")
 
+=======
+>>>>>>> Stashed changes
     out = sorted(players.values(), key=lambda x: (x.get("hr") or 0), reverse=True)
     q = sum(1 for p in out if p["qualified"])
     print(f"  [LB] Done: {len(out)} total players, {q} qualified (≥{qual_pa} PA)")
     return out
 
 
+<<<<<<< Updated upstream
 
 def compute_hitter_percentiles(players: list) -> list:
     """
@@ -2185,6 +2248,8 @@ def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
     return html
 
 
+=======
+>>>>>>> Stashed changes
 # ── Season Pitching Leaderboard ────────────────────────────────────────────
 def fetch_season_pitching_leaderboard(year: int) -> dict:
     """
@@ -2587,7 +2652,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<<<<<<< Updated upstream
 <meta name="viewport" content="width=760,minimum-scale=0.3,maximum-scale=5">
+=======
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.1,maximum-scale=10">
+>>>>>>> Stashed changes
 <title>MLB Daily Stats · __DATE_DISPLAY__</title>
 
 <!-- PWA: installable as app icon on iOS & Android -->
@@ -2812,8 +2881,16 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn ta-btn active" onclick="showTab('teamalex',this)">
     👑 <span id="ta-team-name-tab">My Team</span> <span class="tab-count" id="ta-tc">—</span>
   </button>
+<<<<<<< Updated upstream
   <button class="tab-btn" onclick="showTab('gamelog',this)">
     ⚾ Game Log <span class="tab-count" id="gl-tc">—</span>
+=======
+  <button class="tab-btn" onclick="showTab('hitters',this)">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters <span class="tab-count" id="h-tc">—</span>
+  </button>
+  <button class="tab-btn" onclick="showTab('pitchers',this)">
+    ⚾ Pitchers <span class="tab-count" id="p-tc">—</span>
+>>>>>>> Stashed changes
   </button>
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
@@ -2825,6 +2902,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <main>
 
+<<<<<<< Updated upstream
 <!-- ══ GAME LOG ══ -->
 <div id="gamelog-panel" class="tab-panel">
 
@@ -2944,6 +3022,113 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     </div>
   </div>
 
+=======
+<!-- ══ HITTERS ══ -->
+<div id="hitters-panel" class="tab-panel">
+  <div class="legend">
+    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+    <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
+  </div>
+  <div class="controls">
+    <input id="h-search" type="text" placeholder="Search player or team…" oninput="filterH()">
+    <span class="row-count" id="h-cnt"></span>
+    <span class="sort-hint">Click headers to sort</span>
+  </div>
+  <div class="table-wrap">
+    <table id="h-tbl">
+      <thead><tr>
+        <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
+        <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
+        <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
+        <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
+        <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
+        <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
+        <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
+        <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
+        <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
+        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
+        <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
+        <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
+      </tr></thead>
+      <tbody id="h-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ PITCHERS (Starters + Relievers) ══ -->
+<div id="pitchers-panel" class="tab-panel">
+  <div class="note">
+    ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
+    Arsenal: game velocity <span class="vd">(season avg)</span> —
+    fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
+    <span class="gs">S+</span> = game Stuff+ for that pitch type.
+    <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
+  </div>
+  <div class="legend">
+    <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
+  </div>
+  <div class="toggle-group">
+    <button class="tgl-btn active" id="pitch-sp-btn" onclick="showPitchType('sp',this)">⚾ Starters <span id="p-sp-tc" style="opacity:.6;font-size:.75em"></span></button>
+    <button class="tgl-btn" id="pitch-rp-btn" onclick="showPitchType('rp',this)">🔥 Relievers <span id="p-rp-tc" style="opacity:.6;font-size:.75em"></span></button>
+  </div>
+  <div class="controls">
+    <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
+    <span class="row-count" id="p-cnt"></span>
+    <span class="sort-hint">Click headers to sort</span>
+  </div>
+
+  <!-- Starters table -->
+  <div id="p-sp-wrap" class="table-wrap">
+    <table id="sp-tbl">
+      <thead><tr>
+        <th class="sortable"      data-k="name"          onclick="srtSP(this,'name')">Pitcher</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtSP(this,'team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtSP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtSP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtSP(this,'hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtSP(this,'r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtSP(this,'bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtSP(this,'k')">K</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtSP(this,'w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtSP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtSP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtSP(this,'barrels')">Barrels</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtSP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtSP(this,'location_plus')">Loc+</th>
+        <th>Arsenal</th>
+      </tr></thead>
+      <tbody id="sp-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Relievers table (hidden by default) -->
+  <div id="p-rp-wrap" class="table-wrap" style="display:none">
+    <table id="rp-tbl">
+      <thead><tr>
+        <th class="sortable"      data-k="name"          onclick="srtRP(this,'name')">Pitcher</th>
+        <th class="sortable"      data-col="team" data-k="team"          onclick="srtRP(this,'team')">Team</th>
+        <th class="sortable"      data-col="opp" data-k="opp"           onclick="srtRP(this,'opp')">Opp</th>
+        <th class="sortable r"    data-col="ip_float" data-k="ip_float"      onclick="srtRP(this,'ip_float')">IP</th>
+        <th class="sortable r"    data-col="hits" data-k="hits"          onclick="srtRP(this,'hits')">H</th>
+        <th class="sortable r"    data-col="r" data-k="r"             onclick="srtRP(this,'r')">R</th>
+        <th class="sortable r"    data-col="bb" data-k="bb"            onclick="srtRP(this,'bb')">BB</th>
+        <th class="sortable r"    data-col="k" data-k="k"             onclick="srtRP(this,'k')">K</th>
+        <th class="sortable r"    data-col="sv" data-k="sv"            onclick="srtRP(this,'sv')">SV</th>
+        <th class="sortable r"    data-col="hld" data-k="hld"           onclick="srtRP(this,'hld')">HLD</th>
+        <th class="sortable r"    data-col="bs" data-k="bs"            onclick="srtRP(this,'bs')">BS</th>
+        <th class="sortable r"    data-col="w" data-k="w"             onclick="srtRP(this,'w')">W</th>
+        <th class="sortable r"    data-col="whiffs" data-k="whiffs"        onclick="srtRP(this,'whiffs')">Whiffs</th>
+        <th class="sortable r"    data-col="hard_hits" data-k="hard_hits"     onclick="srtRP(this,'hard_hits')">Hard Hits</th>
+        <th class="sortable r"    data-col="barrels" data-k="barrels"       onclick="srtRP(this,'barrels')">Barrels</th>
+        <th class="sortable r sc" data-col="stuff_plus" data-k="stuff_plus"    onclick="srtRP(this,'stuff_plus')">Stuff+</th>
+        <th class="sortable r sc" data-col="location_plus" data-k="location_plus" onclick="srtRP(this,'location_plus')">Loc+</th>
+        <th>Arsenal</th>
+      </tr></thead>
+      <tbody id="rp-body"></tbody>
+    </table>
+  </div>
+>>>>>>> Stashed changes
 </div>
 
 <!-- ══ TEAM ALEX ══ -->
@@ -3464,15 +3649,24 @@ const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.
 // Inverted-sort columns (lower = better): first click → ascending
 const LB_INV_SORT=new Set(['k_pct','chase_pct','whiff_pct','so']);
 
+<<<<<<< Updated upstream
 // Game Log tab + sub-tab counts
 document.getElementById('gl-tc').textContent=HITTERS.length+STARTERS.length+RELIEVERS.length;
+=======
+// Pitchers tab counts
+document.getElementById('p-tc').textContent=STARTERS.length+RELIEVERS.length;
+>>>>>>> Stashed changes
 document.getElementById('p-sp-tc').textContent=STARTERS.length;
 document.getElementById('p-rp-tc').textContent=RELIEVERS.length;
 
 let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
+<<<<<<< Updated upstream
 let pitchType='sp';  // current pitcher sub-view: 'sp' or 'rp'
 let glType='h';      // current game log sub-tab: 'h', 'sp', or 'rp'
+=======
+let pitchType='sp';  // current pitcher sub-view
+>>>>>>> Stashed changes
 
 function showTab(nm,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -3481,6 +3675,7 @@ function showTab(nm,btn){
   document.getElementById(nm+'-panel').classList.add('active');
 }
 
+<<<<<<< Updated upstream
 function showGameLog(type, btn) {
   glType = type;
   document.querySelectorAll('.gl-btn').forEach(b=>b.classList.remove('active'));
@@ -3494,6 +3689,16 @@ function showGameLog(type, btn) {
     document.getElementById('p-rp-wrap').style.display = type==='rp' ? '' : 'none';
     filterP();
   }
+=======
+function showPitchType(type,btn){
+  pitchType=type;
+  document.querySelectorAll('#pitchers-panel .tgl-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('p-sp-wrap').style.display=type==='sp'?'':'none';
+  document.getElementById('p-rp-wrap').style.display=type==='rp'?'':'none';
+  // re-apply current search to the newly visible table
+  filterP();
+>>>>>>> Stashed changes
 }
 
 function filterP(){
@@ -4923,6 +5128,23 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
   if(e.target===this) closeRosterModal();
 });
 
+<<<<<<< Updated upstream
+=======
+// ── Visual Viewport zoom fix ───────────────────────────────────────────────
+// minimum-scale=0.1 in the viewport meta allows the user to zoom out and
+// have it stay. When zoomed out the visual viewport CSS-pixel width grows;
+// we expand body so table-wraps fill that width. We never touch the meta
+// tag dynamically — that caused iOS to snap back to normal zoom.
+(function(){
+  if(!window.visualViewport) return;
+  function _vvFit(){
+    const vw=Math.ceil(window.visualViewport.width);
+    document.body.style.setProperty('min-width',vw+'px','important');
+  }
+  window.visualViewport.addEventListener('resize',_vvFit);
+  _vvFit();
+})();
+>>>>>>> Stashed changes
 </script>
 
 <!-- ══ Login Overlay ══ -->
@@ -5104,8 +5326,11 @@ def main():
     print("\n[ 6/6 ] Season leaderboards")
     lb_data       = fetch_season_batting_leaderboard(year)
     lb_pitch_data = fetch_season_pitching_leaderboard(year)
+<<<<<<< Updated upstream
     print("\n[ 6b/6 ] Fantasy dollar values")
     fantasy_data = compute_fantasy_dollar_values(lb_data, lb_pitch_data, year)
+=======
+>>>>>>> Stashed changes
 
     n_games = int(df["game_pk"].nunique())
 
@@ -5113,9 +5338,12 @@ def main():
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data)
+<<<<<<< Updated upstream
     lb_data = compute_hitter_percentiles(lb_data)
     html = inject_fantasy_tab(html, fantasy_data)
     html = inject_player_cards_tab(html, lb_data, fantasy_data)
+=======
+>>>>>>> Stashed changes
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
@@ -5124,6 +5352,7 @@ def main():
     print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
 
 
+<<<<<<< Updated upstream
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Fantasy Dollar-Value Engine
 #  League: 10-team H2H, $260/team, 6x6
@@ -6315,5 +6544,7 @@ function _tradeCalc() {{
 """
     return inner
 
+=======
+>>>>>>> Stashed changes
 if __name__ == "__main__":
     main()
