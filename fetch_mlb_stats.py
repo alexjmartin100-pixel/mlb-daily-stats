@@ -1797,18 +1797,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         }
 
     # ── Compute league leaders (among qualified hitters) ──────────────────
-    _leader_stats = ["r","hr","rbi","sb","avg","obp","ops"]
+    _higher_better = ["r","hr","rbi","sb","avg","obp","ops",
+                      "xwoba","xba","xslg","avg_ev","max_ev",
+                      "barrel_pct","hard_hit_pct","sweet_spot_pct",
+                      "bat_speed","squared_up_pct","bb_pct","sprint_speed"]
+    _lower_better = ["chase_pct","whiff_pct","k_pct"]
     _leaders = {}
-    for sk in _leader_stats:
+    for sk in _higher_better + _lower_better:
         best_val = None
         best_ids = []
+        want_low = sk in _lower_better
         for p in lb_data:
             if not p.get("qualified", False):
                 continue
             v = p.get(sk)
             if v is None:
                 continue
-            if best_val is None or v > best_val:
+            if best_val is None or (want_low and v < best_val) or (not want_low and v > best_val):
                 best_val = v
                 best_ids = [p.get("id")]
             elif v == best_val:
@@ -1898,7 +1903,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/e_background_removal/c_fill,g_face,w_600,h_600,q_auto:best/v1/people/'
+      + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
@@ -1934,7 +1939,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:110px;height:110px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent"/>'
+      +   'style="width:110px;height:110px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent;mix-blend-mode:multiply"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -1980,22 +1985,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         }}).join('') + '</div></div>';
 
     // ── Percentile bars (Savant style) ─────────────────────────────────────
+    // [label, rawVal, pctVal, fmtFn, leaderKey]
     var statRows = [
-      ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}}],
-      ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}}],
-      ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}}],
-      ['Avg EV',    d.avg_ev,d.pct.avg_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
-      ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
-      ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Sweet Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
-      ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}}],
+      ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}},'xwoba'],
+      ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}},'xba'],
+      ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}},'xslg'],
+      ['Avg EV',    d.avg_ev,d.pct.avg_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'avg_ev'],
+      ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'max_ev'],
+      ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}},'barrel_pct'],
+      ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'hard_hit_pct'],
+      ['Sweet Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'sweet_spot_pct'],
+      ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'bat_speed'],
+      ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'squared_up_pct'],
+      ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'chase_pct'],
+      ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'whiff_pct'],
+      ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}},'k_pct'],
+      ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}},'bb_pct'],
+      ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}},'sprint_speed'],
     ];
 
     function pctColor(p) {{
@@ -2008,11 +2014,11 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         return 'rgb(' + Math.round(30 + 106*t) + ',' + Math.round(63 + 73*t) + ',' + Math.round(186 - 50*t) + ')';
       }}
     }}
-    function pctBar(label, rawVal, pct, fmtFn) {{
+    function pctBar(label, rawVal, pct, fmtFn, leaderKey) {{
       var valStr = fmtFn(rawVal);
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
-      var isGold = d.qual && pctDisp >= 100;
+      var isGold = d.qual && !!leaderMap[leaderKey];
       var barHtml;
       if (pctDisp == null) {{
         barHtml = '<div style="display:flex;align-items:center;gap:6px">'
@@ -2028,11 +2034,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
           + 'position:relative;overflow:visible">'
           + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + '"></div>'
           + '<div style="position:absolute;top:50%;left:' + fillW + '%;'
-          + 'transform:translate(-50%,-50%);min-width:24px;height:24px;'
-          + 'border-radius:12px;background:' + col + ';'
-          + 'border:2px solid #333;'
+          + 'transform:translate(-50%,-50%);width:26px;height:26px;'
+          + 'border-radius:13px;background:' + col + ';'
           + 'display:flex;align-items:center;justify-content:center;'
-          + 'font-size:.62rem;font-weight:800;color:#fff;line-height:1;padding:0 3px">'
+          + 'font-size:.72rem;font-weight:800;color:#fff;line-height:1">'
           + pctDisp + '</div>'
           + '</div>'
           + '<span style="font-size:.68rem;font-weight:600;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:58px;text-align:right">' + valStr + '</span>'
@@ -2054,7 +2059,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;'
       + 'margin-bottom:8px">STATCAST PROFILE'
       + '<span style="float:right;font-weight:400;color:#555">Percentile rank among all hitters</span></div>'
-      + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3]);}}).join('')
+      + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3],r[4]);}}).join('')
       + '</div>';
 
     // ── Batted ball section ───────────────────────────────────────────────
@@ -2082,12 +2087,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<div style="position:absolute;top:12px;right:12px;width:60px;height:60px;'
-        + 'border-radius:50%;background:#1a1a1a;border:2px solid #333;'
-        + 'display:flex;align-items:center;justify-content:center;'
-        + 'box-shadow:0 2px 10px rgba(0,0,0,.5);z-index:2">'
-        + '<img src="' + logoBgUrl + '" style="width:40px;height:40px;object-fit:contain" '
-        + 'onerror="this.parentElement.style.display=\\x27none\\x27"/></div>';
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:10px;right:10px;'
+        + 'width:80px;height:80px;object-fit:contain;opacity:.85;z-index:2" '
+        + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
