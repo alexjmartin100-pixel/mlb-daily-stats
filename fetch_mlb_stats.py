@@ -1453,7 +1453,8 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             "https://baseballsavant.mlb.com/leaderboard/custom",
             params={"year": year, "type": "batter", "filter": "",
                     "sort": "4", "sortDir": "desc", "min": "1",
-                    "selections": ("xwoba,estimated_ba_using_speedangle,"
+                    "selections": ("xwoba,xba,xslg,"
+                                   "estimated_ba_using_speedangle,"
                                    "estimated_slg_using_speedangle,"
                                    "launch_angle_avg,"
                                    "oz_swing_percent,whiff_percent"),
@@ -1462,10 +1463,14 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         r3.raise_for_status()
         sv3 = pd.read_csv(StringIO(r3.text))
         mid_col3 = next((c for c in ["player_id", "batter"] if c in sv3.columns), None)
+        # Log columns for debugging
+        print(f"  [LB] Savant step3 columns: {list(sv3.columns)}")
         sv3_map = {
             "xwoba":                               ("xwoba",            3),
             "estimated_ba_using_speedangle":       ("xba",              3),
             "estimated_slg_using_speedangle":      ("xslg",             3),
+            "xba":                                 ("xba",              3),
+            "xslg":                                ("xslg",             3),
             "launch_angle_avg":                    ("launch_angle_avg", 1),
             "oz_swing_percent":                    ("chase_pct",        1),
             "whiff_percent":                       ("whiff_pct",        1),
@@ -1869,9 +1874,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/c_thumb,g_face,w_240,h_240,q_auto:best/v1/people/'
+      + 'd_people:generic:headshot:67:current.png/c_thumb,g_face,w_300,h_300,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
     var logoUrl = teamId
+      ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
+      : '';
+    var logoBgUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
 
@@ -1905,9 +1913,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:76px;height:76px;border-radius:50%;object-fit:cover;'
-      +   'background:#141414;border:2.5px solid #333;flex-shrink:0;'
-      +   'box-shadow:0 0 12px rgba(0,0,0,.6)"/>'
+      +   'style="width:88px;height:88px;border-radius:6px;object-fit:cover;'
+      +   'flex-shrink:0;mix-blend-mode:luminosity;filter:contrast(1.1) brightness(1.05)"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
       +     '<span style="font-size:1.15rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -2041,8 +2048,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + '</div></div>';
     }}
     // ── Assemble card ─────────────────────────────────────────────────────
+    var cardBg = logoBgUrl
+      ? 'background:#141414 url(' + logoBgUrl + ') no-repeat right 16px top 16px / 120px auto;'
+      : 'background:#141414;';
     document.getElementById('pc-card').innerHTML =
-      '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px">'
+      '<div style="' + cardBg + 'border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
+      + 'position:relative;overflow:hidden">'
+      + (logoBgUrl ? '<div style="position:absolute;top:0;right:0;width:180px;height:180px;'
+        + 'background:url(' + logoBgUrl + ') no-repeat center/contain;opacity:.07;pointer-events:none"></div>' : '')
       + header + std_html + bars_html + bb_html
       + '</div>';
   }};
