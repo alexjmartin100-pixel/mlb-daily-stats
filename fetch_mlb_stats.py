@@ -1796,6 +1796,27 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
             "pct": p.get("pct", {}),
         }
 
+    # ── Compute league leaders (among qualified hitters) ──────────────────
+    _leader_stats = ["r","hr","rbi","sb","avg","obp","ops"]
+    _leaders = {}
+    for sk in _leader_stats:
+        best_val = None
+        best_ids = []
+        for p in lb_data:
+            if not p.get("qualified", False):
+                continue
+            v = p.get(sk)
+            if v is None:
+                continue
+            if best_val is None or v > best_val:
+                best_val = v
+                best_ids = [p.get("id")]
+            elif v == best_val:
+                best_ids.append(p.get("id"))
+        for bid in best_ids:
+            _leaders.setdefault(str(bid), []).append(sk)
+    leaders_json = json.dumps(_leaders, separators=(',', ':'))
+
     idx_json  = json.dumps(player_index, separators=(',', ':'))
     data_json = json.dumps(player_data,  separators=(',', ':'))
 
@@ -1832,6 +1853,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
 (function(){{
   var _pcIdx  = {idx_json};
   var _pcData = {data_json};
+  var _pcLeaders = {leaders_json};
 
   var _TEAM_IDS = {{
     ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CIN:113,CLE:114,
@@ -1899,25 +1921,25 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">NOT QUALIFIED</span>';
 
-    // ── Dollar value badge (inline with name) ─────────────────────────────
+    // ── Dollar value badge (right of qualified marker) ─────────────────────
     var dvBadge = '';
     if (d.dv != null) {{
       var dvCol = d.dv >= 10 ? '#f0c040' : d.dv >= 0 ? '#7ec87e' : '#e05555';
       var dvSign = d.dv >= 0 ? '$' : '-$';
-      dvBadge = '<span style="font-size:.85rem;font-weight:800;color:' + dvCol
-        + ';margin-left:6px">' + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
+      dvBadge = '<span style="font-size:1.05rem;font-weight:900;color:' + dvCol
+        + ';margin-left:8px">' + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
     // ── Header ────────────────────────────────────────────────────────────
     var header =
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:72px;height:72px;object-fit:cover;flex-shrink:0;border-radius:0;background:transparent"/>'
+      +   'style="width:72px;height:72px;object-fit:cover;flex-shrink:0;border-radius:0;background:transparent;mix-blend-mode:multiply"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
-      +     dvBadge
       +     qual
+      +     dvBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
       +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\\x27none\\x27" '
@@ -1937,20 +1959,25 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Standard stats strip ──────────────────────────────────────────────
     function fmt3(v) {{ return v != null ? v.toFixed(3) : '–'; }}
     function fmtN(v) {{ return v != null ? v : '–'; }}
+    var myLeaders = _pcLeaders[String(id)] || [];
+    var leaderMap = {{}};
+    myLeaders.forEach(function(k){{ leaderMap[k]=true; }});
     var std_items = [
-      ['G',    fmtN(d.g)],   ['PA',  fmtN(d.pa)],  ['AB',  fmtN(d.ab)],
-      ['R',    fmtN(d.r)],   ['HR',  fmtN(d.hr)],  ['RBI', fmtN(d.rbi)],
-      ['SB',   fmtN(d.sb)],  ['AVG', fmt3(d.avg)],
-      ['OBP',  fmt3(d.obp)], ['OPS', fmt3(d.ops)],
+      ['G',   fmtN(d.g),  false],  ['PA',  fmtN(d.pa), false],  ['AB',  fmtN(d.ab), false],
+      ['R',   fmtN(d.r),  !!leaderMap.r],   ['HR',  fmtN(d.hr),  !!leaderMap.hr],
+      ['RBI', fmtN(d.rbi),!!leaderMap.rbi],  ['SB',  fmtN(d.sb),  !!leaderMap.sb],
+      ['AVG', fmt3(d.avg), !!leaderMap.avg],
+      ['OBP', fmt3(d.obp), !!leaderMap.obp], ['OPS', fmt3(d.ops), !!leaderMap.ops],
     ];
     var std_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
       + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">2026 STATS</div>'
       + '<div style="display:flex;flex-wrap:wrap">'
       + std_items.map(function(x) {{
+          var col = x[2] ? '#f0c040' : '#ddd';
           return '<div style="text-align:center;padding:3px 6px;min-width:44px;flex:1">'
-            + '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
-            + '<div style="font-size:.55rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+            + '<div style="font-size:.85rem;font-weight:800;color:' + col + '">' + x[1] + '</div>'
+            + '<div style="font-size:.55rem;color:' + (x[2]?'#b8982e':'#555') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
         }}).join('') + '</div></div>';
 
@@ -1973,43 +2000,42 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}}],
     ];
 
+    function pctColor(p) {{
+      // Interpolate: 0=deep blue, 50=grey, 100=deep red, 100=gold
+      if (p >= 100) return '#f0c040';
+      if (p >= 90) {{ var t=(p-90)/10; return 'rgb('+Math.round(180+44*t)+','+Math.round(60-10*t)+','+Math.round(60-10*t)+')'; }}
+      if (p >= 50) {{ var t=(p-50)/40; return 'rgb('+Math.round(120+60*t)+','+Math.round(120-60*t)+','+Math.round(120-60*t)+')'; }}
+      if (p >= 10) {{ var t=(p-10)/40; return 'rgb('+Math.round(40+80*t)+','+Math.round(80+40*t)+','+Math.round(200-80*t)+')'; }}
+      return 'rgb(30,70,210)';
+    }}
     function pctBar(label, rawVal, pct, fmtFn) {{
       var valStr = fmtFn(rawVal);
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
-      // Gradient: 0=blue (low), 50=white, 99=red (high)
-      // Color of the marker dot + text inside it
-      var dotCol = '#888';
-      var dotTxt = '#111';
-      if (pctDisp != null) {{
-        if (pctDisp >= 67)      {{ dotCol = '#e05555'; dotTxt = '#fff'; }}
-        else if (pctDisp >= 34) {{ dotCol = '#ccc';    dotTxt = '#111'; }}
-        else                    {{ dotCol = '#4287f5'; dotTxt = '#fff'; }}
-      }}
-      var markerLeft = pctDisp != null ? pctDisp : 50;
+      var isGold = pctDisp >= 100;
       var barHtml;
       if (pctDisp == null) {{
         barHtml = '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
                 + 'position:relative;margin:6px 0 2px"></div>';
       }} else {{
+        var col = pctColor(pctDisp);
+        var fillW = Math.max(pctDisp, 3);
         barHtml =
-          '<div style="height:8px;border-radius:4px;'
-          + 'background:linear-gradient(to right,#2563eb,#e8e8e8 50%,#c0392b);'
-          + 'position:relative;margin:8px 0 4px">'
-          + '<div style="position:absolute;top:50%;left:' + markerLeft + '%;'
-          + 'transform:translate(-50%,-50%);min-width:24px;height:24px;'
-          + 'border-radius:12px;background:' + dotCol + ';'
-          + 'border:2px solid #eee;box-shadow:0 0 8px rgba(255,255,255,.35), 0 0 3px rgba(0,0,0,.8);'
-          + 'display:flex;align-items:center;justify-content:center;'
-          + 'font-size:.62rem;font-weight:800;color:' + dotTxt + ';line-height:1;padding:0 3px">'
-          + pctDisp + '</div>'
-          + '</div>';
+          '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
+          + 'position:relative;margin:6px 0 2px;overflow:hidden">'
+          + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + ';'
+          + (isGold?'box-shadow:0 0 8px rgba(240,192,64,.5);':'')
+          + '"></div></div>';
       }}
+      var labelCol = isGold ? '#f0c040' : '#aaa';
+      var valCol = isGold ? '#f0c040' : '#ccc';
+      var pctLabel = pctDisp != null ? ('<span style="font-size:.62rem;font-weight:800;color:'
+        + (isGold?'#f0c040':'#888') + ';margin-left:6px">' + pctDisp + '</span>') : '';
 
       return '<div style="margin-bottom:8px">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
-        +   '<span style="font-size:.68rem;color:#aaa;font-weight:600">' + label + '</span>'
-        +   '<span style="font-size:.72rem;color:#ccc">' + valStr + '</span>'
+        +   '<span style="font-size:.68rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
+        +   '<span style="font-size:.72rem;color:' + valCol + '">' + valStr + pctLabel + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
