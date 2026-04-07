@@ -1650,6 +1650,49 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     except Exception as e:
         print(f"  [LB] MLB API bio failed: {e}")
 
+    # ── Step 7: Savant percentile rankings (pre-computed by Baseball Savant) ──
+    print("  [LB] Savant percentile rankings…")
+    _savant_pctile_map = {}
+    try:
+        rp = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/percentile-rankings",
+            params={"type": "batter", "year": year, "csv": "true"},
+            headers=hdrs, timeout=30)
+        rp.raise_for_status()
+        pct_df = pd.read_csv(StringIO(rp.text))
+        # Map Savant column names → our internal stat keys
+        _savant_col_map = {
+            "xwoba": "xwoba", "xba": "xba", "xslg": "xslg",
+            "exit_velocity": "avg_ev", "max_ev": "max_ev",
+            "brl_percent": "barrel_pct", "hard_hit_percent": "hard_hit_pct",
+            "k_percent": "k_pct", "bb_percent": "bb_pct",
+            "whiff_percent": "whiff_pct", "chase_percent": "chase_pct",
+            "bat_speed": "bat_speed", "squared_up_rate": "squared_up_pct",
+            "sprint_speed": "sprint_speed",
+        }
+        pid_col = "player_id"
+        for _, row in pct_df.iterrows():
+            try:
+                mid = int(row[pid_col])
+            except (ValueError, TypeError):
+                continue
+            pmap = {}
+            for sv_col, p_key in _savant_col_map.items():
+                try:
+                    v = row.get(sv_col)
+                    if pd.notna(v):
+                        pmap[p_key] = int(round(float(v)))
+                except (ValueError, TypeError):
+                    pass
+            _savant_pctile_map[mid] = pmap
+        print(f"  [LB] ✓ Savant percentiles: {len(_savant_pctile_map)} players")
+    except Exception as e:
+        print(f"  [LB] Savant percentile rankings failed: {e}")
+
+    # Attach Savant percentiles to players
+    for mid, p in players.items():
+        p["_savant_pct"] = _savant_pctile_map.get(mid, {})
+
     out = sorted(players.values(), key=lambda x: (x.get("hr") or 0), reverse=True)
     q = sum(1 for p in out if p["qualified"])
     print(f"  [LB] Done: {len(out)} total players, {q} qualified (≥{qual_pa} PA)")
@@ -1659,12 +1702,11 @@ def fetch_season_batting_leaderboard(year: int) -> list:
 
 def compute_hitter_percentiles(players: list) -> list:
     """
-    Add a `pct` dict to each player with 0-99 percentile for each Statcast stat.
-    Higher percentile = better performance (already inverted for lower-is-better stats).
+    Use pre-fetched Baseball Savant percentile rankings (1-100 scale).
+    Falls back to self-computed percentiles only for stats Savant doesn't cover.
     """
-    # Stats where lower raw value = better performance
+    # Fallback stat keys (only used if Savant data missing for a player)
     lower_better = {"k_pct", "chase_pct", "whiff_pct"}
-
     stat_keys = [
         "xwoba", "xba", "xslg", "avg_ev", "max_ev",
         "barrel_pct", "hard_hit_pct", "sweet_spot_pct",
@@ -1673,37 +1715,45 @@ def compute_hitter_percentiles(players: list) -> list:
         "sprint_speed", "launch_angle_avg",
     ]
 
-    # Build sorted value arrays per stat
+    # Build fallback sorted arrays for self-computation
     stat_vals = {}
     for k in stat_keys:
-        vals = sorted(
-            p[k] for p in players if p.get(k) is not None
-        )
+        vals = sorted(p[k] for p in players if p.get(k) is not None)
         stat_vals[k] = vals
 
     def _pct_rank(vals_sorted, v, invert):
         if not vals_sorted:
             return None
         lo, hi = 0, len(vals_sorted)
-        # bisect_left equivalent
         while lo < hi:
             mid = (lo + hi) // 2
             if vals_sorted[mid] < v:
                 lo = mid + 1
             else:
                 hi = mid
-        rank = lo  # number of values strictly less than v
-        pct = round(rank / len(vals_sorted) * 99)
-        return (99 - pct) if invert else pct
+        rank = lo
+        n = len(vals_sorted)
+        pct = round(rank / n * 100)
+        if pct < 1:
+            pct = 1
+        if pct > 100:
+            pct = 100
+        return (101 - pct) if invert else pct
 
     for p in players:
+        savant_pct = p.get("_savant_pct", {})
         pct = {}
         for k in stat_keys:
-            v = p.get(k)
-            if v is None:
-                pct[k] = None
-                continue
-            pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+            # Prefer Savant's pre-computed percentile
+            if k in savant_pct:
+                pct[k] = savant_pct[k]
+            else:
+                # Fallback: self-computed
+                v = p.get(k)
+                if v is None:
+                    pct[k] = None
+                else:
+                    pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
         p["pct"] = pct
 
     return players
@@ -1939,7 +1989,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:120px;height:120px;object-fit:cover;object-position:center 20%;flex-shrink:0;border-radius:50%;background:#222;border:2px solid rgba(255,255,255,.15)"/>'
+      +   'style="width:120px;height:120px;object-fit:contain;flex-shrink:0;border-radius:50%;background:#141414"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -2005,12 +2055,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     ];
 
     function pctColor(p) {{
-      // Vibrant: 0=deep blue #1e3fba → 50=grey #888 → 99=vibrant red #e02020
+      // Vibrant: 1=deep blue #1e3fba → 50=grey #888 → 100=vibrant red #e02020
       if (p >= 50) {{
-        var t = (p - 50) / 49;
+        var t = (p - 50) / 50;
         return 'rgb(' + Math.round(136 + 88*t) + ',' + Math.round(136 - 104*t) + ',' + Math.round(136 - 104*t) + ')';
       }} else {{
-        var t = p / 50;
+        var t = (p - 1) / 49;
         return 'rgb(' + Math.round(30 + 106*t) + ',' + Math.round(63 + 73*t) + ',' + Math.round(186 - 50*t) + ')';
       }}
     }}
@@ -2092,7 +2142,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     if (logoBgUrl) {{
       logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:8px;right:8px;'
         + 'width:130px;height:130px;object-fit:contain;opacity:.8;z-index:1;'
-        + 'filter:drop-shadow(0 0 6px rgba(255,255,255,.4)) drop-shadow(0 0 2px rgba(255,255,255,.6))" '
+        + 'filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff)" '
         + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
