@@ -1989,7 +1989,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:120px;height:120px;object-fit:contain;flex-shrink:0;border-radius:50%;background:#141414"/>'
+      +   'style="width:120px;height:120px;object-fit:contain;flex-shrink:0;border-radius:50%;background:transparent"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -3507,6 +3507,9 @@ function showTab(nm,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(nm+'-panel').classList.add('active');
+  // Hide trade machine when switching away from fantasy tab
+  var tw=document.getElementById('fant-trade-wrap');
+  if(tw && nm!=='fantasy') tw.style.display='none';
 }
 
 function showGameLog(type, btn) {
