@@ -1935,11 +1935,35 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
+    // ── Background removal via canvas ────────────────────────────────────
+    function removeBg(imgEl) {{
+      var c = document.createElement('canvas');
+      c.width = imgEl.naturalWidth; c.height = imgEl.naturalHeight;
+      var ctx = c.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0);
+      var imgData = ctx.getImageData(0, 0, c.width, c.height);
+      var px = imgData.data;
+      for (var i = 0; i < px.length; i += 4) {{
+        var r = px[i], g = px[i+1], b = px[i+2];
+        var bright = (r + g + b) / 3;
+        var saturation = Math.max(r, g, b) - Math.min(r, g, b);
+        if (bright > 180 && saturation < 40) {{
+          px[i+3] = 0;
+        }} else if (bright > 150 && saturation < 30) {{
+          px[i+3] = Math.round(px[i+3] * 0.3);
+        }}
+      }}
+      ctx.putImageData(imgData, 0, 0);
+      imgEl.src = c.toDataURL();
+    }}
+
     // ── Header ────────────────────────────────────────────────────────────
+    var pcImgId = 'pc-headshot-' + id;
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
-      + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:110px;height:110px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent;mix-blend-mode:multiply"/>'
+      + '<img id="' + pcImgId + '" crossorigin="anonymous" src="' + photoUrl + '" '
+      +   'onload="try{{removeBg(this)}}catch(e){{}}" onerror="this.style.display=\\x27none\\x27" '
+      +   'style="width:120px;height:120px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -1974,13 +1998,13 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     ];
     var std_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:6px 8px;margin-bottom:10px">'
-      + '<div style="font-size:.55rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:4px">2026 STATS</div>'
+      + '<div style="font-size:.55rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:4px">2026 STATS</div>'
       + '<div style="display:flex;flex-wrap:wrap;gap:0">'
       + std_items.map(function(x) {{
           var col = x[2] ? '#f0c040' : '#ddd';
           return '<div style="text-align:center;padding:2px 4px;min-width:36px;flex:1">'
             + '<div style="font-size:.8rem;font-weight:800;color:' + col + '">' + x[1] + '</div>'
-            + '<div style="font-size:.5rem;color:' + (x[2]?'#b8982e':'#555') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+            + '<div style="font-size:.5rem;color:' + (x[2]?'#b8982e':'#999') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
         }}).join('') + '</div></div>';
 
@@ -2019,6 +2043,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
       var isGold = d.qual && !!leaderMap[leaderKey];
+      // Leader among qualified hitters = 100th percentile
+      if (isGold && pctDisp != null) pctDisp = 100;
       var barHtml;
       if (pctDisp == null) {{
         barHtml = '<div style="display:flex;align-items:center;gap:6px">'
@@ -2027,17 +2053,17 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
                 + '</div>';
       }} else {{
         var col = isGold ? '#f0c040' : pctColor(pctDisp);
-        var fillW = Math.max(pctDisp, 3);
+        var fillW = Math.min(Math.max(pctDisp, 3), 100);
         barHtml =
           '<div style="display:flex;align-items:center;gap:6px">'
           + '<div style="flex:1;height:8px;border-radius:4px;background:#2a2a2a;'
           + 'position:relative;overflow:visible">'
           + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + '"></div>'
           + '<div style="position:absolute;top:50%;left:' + fillW + '%;'
-          + 'transform:translate(-50%,-50%);width:26px;height:26px;'
-          + 'border-radius:13px;background:' + col + ';'
+          + 'transform:translate(-50%,-50%);width:28px;height:28px;'
+          + 'border-radius:14px;background:' + col + ';'
           + 'display:flex;align-items:center;justify-content:center;'
-          + 'font-size:.72rem;font-weight:800;color:#fff;line-height:1">'
+          + 'font-size:.82rem;font-weight:800;color:#fff;line-height:1">'
           + pctDisp + '</div>'
           + '</div>'
           + '<span style="font-size:.68rem;font-weight:600;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:58px;text-align:right">' + valStr + '</span>'
@@ -2074,12 +2100,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ];
       bb_html =
         '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
-        + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">BATTED BALL PROFILE</div>'
+        + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:6px">BATTED BALL PROFILE</div>'
         + '<div style="display:flex;flex-wrap:wrap">'
         + bbItems.map(function(x){{
             return '<div style="text-align:center;padding:3px 6px;min-width:52px;flex:1">'
               + '<div style="font-size:.82rem;font-weight:700;color:#ddd">' + x[1] + '</div>'
-              + '<div style="font-size:.55rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+              + '<div style="font-size:.55rem;color:#999;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
               + '</div>';
           }}).join('')
         + '</div></div>';
@@ -2087,8 +2113,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:10px;right:10px;'
-        + 'width:80px;height:80px;object-fit:contain;opacity:.85;z-index:2" '
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:8px;right:8px;'
+        + 'width:110px;height:110px;object-fit:contain;opacity:.7;z-index:1" '
         + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
