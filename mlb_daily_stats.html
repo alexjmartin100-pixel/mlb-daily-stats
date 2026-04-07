@@ -217,7 +217,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Sunday, April 5, 2026</strong>
       &nbsp;·&nbsp; 16 game(s)
-      &nbsp;·&nbsp; Updated Apr 6, 2026 9:38 PM
+      &nbsp;·&nbsp; Updated Apr 6, 2026 9:53 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -832,7 +832,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 6, 2026 9:38 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 6, 2026 9:53 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2922,7 +2922,7 @@ function _tradeCalc() {
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/e_background_removal/c_thumb,g_face,w_400,h_400,q_auto:best/v1/people/'
+      + 'd_people:generic:headshot:67:current.png/e_background_removal/c_fill,g_face,w_600,h_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
@@ -2958,7 +2958,7 @@ function _tradeCalc() {
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\x27none\x27" '
-      +   'style="width:90px;height:90px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent"/>'
+      +   'style="width:110px;height:110px;object-fit:contain;flex-shrink:0;border-radius:0;background:transparent"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
@@ -2992,14 +2992,14 @@ function _tradeCalc() {
       ['OBP', fmt3(d.obp), !!leaderMap.obp], ['OPS', fmt3(d.ops), !!leaderMap.ops],
     ];
     var std_html =
-      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
-      + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">2026 STATS</div>'
-      + '<div style="display:flex;flex-wrap:wrap">'
+      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:6px 8px;margin-bottom:10px">'
+      + '<div style="font-size:.55rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:4px">2026 STATS</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:0">'
       + std_items.map(function(x) {
           var col = x[2] ? '#f0c040' : '#ddd';
-          return '<div style="text-align:center;padding:3px 6px;min-width:44px;flex:1">'
-            + '<div style="font-size:.85rem;font-weight:800;color:' + col + '">' + x[1] + '</div>'
-            + '<div style="font-size:.55rem;color:' + (x[2]?'#b8982e':'#555') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+          return '<div style="text-align:center;padding:2px 4px;min-width:36px;flex:1">'
+            + '<div style="font-size:.8rem;font-weight:800;color:' + col + '">' + x[1] + '</div>'
+            + '<div style="font-size:.5rem;color:' + (x[2]?'#b8982e':'#555') + ';margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
         }).join('') + '</div></div>';
 
@@ -3039,34 +3039,34 @@ function _tradeCalc() {
       var isGold = d.qual && pctDisp >= 100;
       var barHtml;
       if (pctDisp == null) {
-        barHtml = '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
-                + 'position:relative;margin:8px 0 4px"></div>';
+        barHtml = '<div style="display:flex;align-items:center;gap:6px">'
+                + '<div style="flex:1;height:8px;border-radius:4px;background:#2a2a2a"></div>'
+                + '<span style="font-size:.68rem;color:#555;min-width:58px;text-align:right">–</span>'
+                + '</div>';
       } else {
         var col = isGold ? '#f0c040' : pctColor(pctDisp);
         var fillW = Math.max(pctDisp, 3);
-        var dotCol = col;
         barHtml =
-          '<div style="height:8px;border-radius:4px;background:#2a2a2a;'
-          + 'position:relative;margin:8px 0 4px;overflow:visible">'
-          + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + ';'
-          + (isGold?'box-shadow:0 0 10px rgba(240,192,64,.5);':'')
-          + '"></div>'
+          '<div style="display:flex;align-items:center;gap:6px">'
+          + '<div style="flex:1;height:8px;border-radius:4px;background:#2a2a2a;'
+          + 'position:relative;overflow:visible">'
+          + '<div style="height:100%;width:' + fillW + '%;border-radius:4px;background:' + col + '"></div>'
           + '<div style="position:absolute;top:50%;left:' + fillW + '%;'
           + 'transform:translate(-50%,-50%);min-width:24px;height:24px;'
-          + 'border-radius:12px;background:' + dotCol + ';'
-          + 'border:2px solid #eee;box-shadow:0 0 8px rgba(255,255,255,.35), 0 0 3px rgba(0,0,0,.8);'
+          + 'border-radius:12px;background:' + col + ';'
+          + 'border:2px solid #333;'
           + 'display:flex;align-items:center;justify-content:center;'
           + 'font-size:.62rem;font-weight:800;color:#fff;line-height:1;padding:0 3px">'
           + pctDisp + '</div>'
+          + '</div>'
+          + '<span style="font-size:.68rem;font-weight:600;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:58px;text-align:right">' + valStr + '</span>'
           + '</div>';
       }
       var labelCol = isGold ? '#f0c040' : '#aaa';
-      var valCol = isGold ? '#f0c040' : '#ccc';
 
       return '<div style="margin-bottom:8px">'
-        + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
+        + '<div style="margin-bottom:2px">'
         +   '<span style="font-size:.68rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
-        +   '<span style="font-size:.72rem;color:' + valCol + '">' + valStr + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
@@ -3106,11 +3106,11 @@ function _tradeCalc() {
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {
-      logoBadge = '<div style="position:absolute;top:12px;right:12px;width:44px;height:44px;'
+      logoBadge = '<div style="position:absolute;top:12px;right:12px;width:60px;height:60px;'
         + 'border-radius:50%;background:#1a1a1a;border:2px solid #333;'
         + 'display:flex;align-items:center;justify-content:center;'
-        + 'box-shadow:0 2px 8px rgba(0,0,0,.4);z-index:2">'
-        + '<img src="' + logoBgUrl + '" style="width:28px;height:28px;object-fit:contain" '
+        + 'box-shadow:0 2px 10px rgba(0,0,0,.5);z-index:2">'
+        + '<img src="' + logoBgUrl + '" style="width:40px;height:40px;object-fit:contain" '
         + 'onerror="this.parentElement.style.display=\x27none\x27"/></div>';
     }
     document.getElementById('pc-card').innerHTML =
