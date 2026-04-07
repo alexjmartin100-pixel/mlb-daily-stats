@@ -1377,6 +1377,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "id":      mlbam,
                 "name":    str(row.get("Name", "")).strip(),
                 "team":    str(row.get("Team", "")).strip(),
+                "g":       _int(row.get("G", 0)),
                 "pa":      pa,
                 "ab":      _int(row.get("AB", 0)),
                 "qualified": pa >= qual_pa,
@@ -1519,7 +1520,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 print(f"  [LB] bat speed: cols not found in {bs_url.split('/')[-1]} — got: {list(bt.columns[:10])}")
                 continue
             matched = 0
-            sq_col = next((c for c in ["squared_up_swing_rate","squared_up_percent",
+            sq_col = next((c for c in ["squared_up_per_swing","squared_up_swing_rate","squared_up_percent",
                                         "squared_up","squared_up_pct"] if c in bt.columns), None)
             for _, row in bt.iterrows():
                 try:
@@ -1756,6 +1757,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
             "qual":  p.get("qualified", False),
             "dv":    dollar_map.get(mid),
             # standard stats
+            "g":     p.get("g"),
             "pa":    p.get("pa"),
             "ab":    p.get("ab"),
             "r":     p.get("r"),
@@ -1897,62 +1899,58 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">NOT QUALIFIED</span>';
 
-    // ── Dollar value badge ───────────────────────────────────────────────
+    // ── Dollar value badge (inline with name) ─────────────────────────────
     var dvBadge = '';
     if (d.dv != null) {{
       var dvCol = d.dv >= 10 ? '#f0c040' : d.dv >= 0 ? '#7ec87e' : '#e05555';
       var dvSign = d.dv >= 0 ? '$' : '-$';
-      dvBadge = '<div style="text-align:center;flex-shrink:0;margin-left:auto;padding-left:8px">'
-        + '<div style="font-size:1.3rem;font-weight:900;color:' + dvCol + '">'
-        + dvSign + Math.abs(d.dv).toFixed(1) + '</div>'
-        + '<div style="font-size:.55rem;color:#666;letter-spacing:.04em;margin-top:1px">RoS VALUE</div>'
-        + '</div>';
+      dvBadge = '<span style="font-size:.85rem;font-weight:800;color:' + dvCol
+        + ';margin-left:6px">' + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
     // ── Header ────────────────────────────────────────────────────────────
     var header =
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
       + '<img src="' + photoUrl + '" onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:88px;height:88px;border-radius:6px;object-fit:cover;'
-      +   'flex-shrink:0;mix-blend-mode:luminosity;filter:contrast(1.1) brightness(1.05)"/>'
+      +   'style="width:72px;height:72px;object-fit:cover;flex-shrink:0;border-radius:0;background:transparent"/>'
       + '<div style="flex:1;min-width:0">'
-      +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-      +     '<span style="font-size:1.15rem;font-weight:800;color:#eee">' + d.name + '</span>'
+      +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+      +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
+      +     dvBadge
       +     qual
       +   '</div>'
-      +   '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">'
+      +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
       +     (logoUrl ? '<img src="'+logoUrl+'" onerror="this.style.display=\\x27none\\x27" '
-                     + 'style="height:20px;width:20px;object-fit:contain"/>' : '')
-      +     '<span style="font-size:.82rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
+                     + 'style="height:18px;width:18px;object-fit:contain"/>' : '')
+      +     '<span style="font-size:.78rem;color:#aaa;font-weight:600">' + (d.team||'–') + '</span>'
       +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.78rem;color:#888">' + pos + '</span>'
+      +     '<span style="font-size:.74rem;color:#888">' + pos + '</span>'
       +     '<span style="color:#444">·</span>'
-      +     '<span style="font-size:.78rem;color:#888">B/T: ' + bt + '</span>'
+      +     '<span style="font-size:.74rem;color:#888">B/T: ' + bt + '</span>'
       +   '</div>'
-      +   '<div style="font-size:.73rem;color:#666;margin-top:3px">'
+      +   '<div style="font-size:.68rem;color:#666;margin-top:2px">'
       +     age + ' · ' + ht + ' · ' + wt
       +   '</div>'
       + '</div>'
-      + dvBadge
       + '</div>';
 
     // ── Standard stats strip ──────────────────────────────────────────────
     function fmt3(v) {{ return v != null ? v.toFixed(3) : '–'; }}
     function fmtN(v) {{ return v != null ? v : '–'; }}
     var std_items = [
-      ['PA',   fmtN(d.pa)],  ['AB',  fmtN(d.ab)],
+      ['G',    fmtN(d.g)],   ['PA',  fmtN(d.pa)],  ['AB',  fmtN(d.ab)],
       ['R',    fmtN(d.r)],   ['HR',  fmtN(d.hr)],  ['RBI', fmtN(d.rbi)],
       ['SB',   fmtN(d.sb)],  ['AVG', fmt3(d.avg)],
       ['OBP',  fmt3(d.obp)], ['OPS', fmt3(d.ops)],
     ];
     var std_html =
-      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:10px 14px;margin-bottom:14px">'
-      + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:8px">2026 STATS</div>'
+      '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+      + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">2026 STATS</div>'
       + '<div style="display:flex;flex-wrap:wrap">'
       + std_items.map(function(x) {{
-          return '<div style="text-align:center;padding:4px 8px;min-width:52px;flex:1">'
-            + '<div style="font-size:.95rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
-            + '<div style="font-size:.6rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+          return '<div style="text-align:center;padding:3px 6px;min-width:44px;flex:1">'
+            + '<div style="font-size:.85rem;font-weight:800;color:#ddd">' + x[1] + '</div>'
+            + '<div style="font-size:.55rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
             + '</div>';
         }}).join('') + '</div></div>';
 
@@ -1965,7 +1963,6 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
       ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
       ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['LA°',       d.la,    d.pct.launch_angle_avg,function(v){{return v!=null?v.toFixed(1)+'°':null;}}],
       ['Sweet Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
       ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}}],
       ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
@@ -1973,7 +1970,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
       ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
       ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}}],
-      ['Sprint Spd',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}}],
+      ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}}],
     ];
 
     function pctBar(label, rawVal, pct, fmtFn) {{
@@ -2009,10 +2006,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
           + '</div>';
       }}
 
-      return '<div style="margin-bottom:12px">'
+      return '<div style="margin-bottom:8px">'
         + '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1px">'
-        +   '<span style="font-size:.72rem;color:#aaa;font-weight:600">' + label + '</span>'
-        +   '<span style="font-size:.78rem;color:#ccc">' + valStr + '</span>'
+        +   '<span style="font-size:.68rem;color:#aaa;font-weight:600">' + label + '</span>'
+        +   '<span style="font-size:.72rem;color:#ccc">' + valStr + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
@@ -2020,29 +2017,31 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
 
     var bars_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;'
-      + 'padding:12px 14px 6px;margin-bottom:14px">'
-      + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;'
-      + 'margin-bottom:10px">STATCAST PROFILE'
+      + 'padding:10px 12px 4px;margin-bottom:10px">'
+      + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;'
+      + 'margin-bottom:8px">STATCAST PROFILE'
       + '<span style="float:right;font-weight:400;color:#555">Percentile rank among all hitters</span></div>'
       + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3]);}}).join('')
       + '</div>';
 
     // ── Batted ball section ───────────────────────────────────────────────
     function fmtPct(v) {{ return v != null ? v.toFixed(1)+'%' : '–'; }}
+    function fmtDeg(v) {{ return v != null ? v.toFixed(1)+'°' : '–'; }}
     var bb_html = '';
     if (d.pull!=null || d.gb!=null) {{
       var bbItems = [
-        ['Pull%',d.pull],['Center%',d.cent],['Oppo%',d.oppo],
-        ['GB%',d.gb],['LD%',d.ld],['FB%',d.fb],['PU%',d.pu],
+        ['Pull%',fmtPct(d.pull)],['Center%',fmtPct(d.cent)],['Oppo%',fmtPct(d.oppo)],
+        ['LA°',fmtDeg(d.la)],
+        ['GB%',fmtPct(d.gb)],['LD%',fmtPct(d.ld)],['FB%',fmtPct(d.fb)],['PU%',fmtPct(d.pu)],
       ];
       bb_html =
-        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:10px 14px;margin-bottom:14px">'
-        + '<div style="font-size:.65rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:8px">BATTED BALL PROFILE</div>'
+        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+        + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;margin-bottom:6px">BATTED BALL PROFILE</div>'
         + '<div style="display:flex;flex-wrap:wrap">'
         + bbItems.map(function(x){{
-            return '<div style="text-align:center;padding:4px 8px;min-width:60px;flex:1">'
-              + '<div style="font-size:.92rem;font-weight:700;color:#ddd">' + fmtPct(x[1]) + '</div>'
-              + '<div style="font-size:.6rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
+            return '<div style="text-align:center;padding:3px 6px;min-width:52px;flex:1">'
+              + '<div style="font-size:.82rem;font-weight:700;color:#ddd">' + x[1] + '</div>'
+              + '<div style="font-size:.55rem;color:#555;margin-top:1px;letter-spacing:.04em">' + x[0] + '</div>'
               + '</div>';
           }}).join('')
         + '</div></div>';
