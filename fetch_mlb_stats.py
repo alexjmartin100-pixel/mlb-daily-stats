@@ -262,6 +262,23 @@ def _get_pw_page():
         )
         page = ctx.new_page()
 
+        # --- Pre-seed Playwright with fg_cookie.txt cookies ---
+        try:
+            _cs = _load_fg_cookie()
+            if _cs:
+                _ck = []
+                for _p in _cs.split(';'):
+                    _p = _p.strip()
+                    if '=' in _p:
+                        _n, _v = _p.split('=', 1)
+                        _ck.append({"name": _n.strip(), "value": _v.strip(),
+                                    "domain": ".fangraphs.com", "path": "/"})
+                if _ck:
+                    ctx.add_cookies(_ck)
+                    print(f"  Pre-seeded {len(_ck)} cookie(s) from fg_cookie.txt")
+        except Exception as _ce:
+            print(f"  Cookie pre-seed skipped: {_ce}")
+
         # ── Stealth: patch JS properties that reveal headless automation ──
         try:
             from playwright_stealth import stealth_sync  # type: ignore
