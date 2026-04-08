@@ -1282,80 +1282,24 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     players = {}  # mlbam_id -> stat dict
 
-    # ── Step 1: FanGraphs batting stats (all batters ≥1 PA) ──────────────────
-    print("  [LB] FanGraphs batting stats…")
+    # ── Step 1: FanGraphs batting stats via JSON API (bypasses pybaseball) ───
+    # pybaseball scrapes FG's HTML leaderboard and breaks when FG changes column
+    # counts (e.g. "324 columns passed, passed data had 320 columns").  The JSON
+    # API is stable and returns clean dicts — no HTML parsing needed.
+    print("  [LB] FanGraphs batting stats (JSON API)…")
     qual_pa = 50  # fallback threshold
     try:
-        # Monkey-patch requests.get so pybaseball sends our cf_clearance cookie
-        # and a real User-Agent header (pybaseball sends neither by default,
-        # which causes Cloudflare to block the request on CI runners).
-        import requests as _req
-        _orig_get = _req.get
-        _fg_ck = _load_fg_cookie()
-        def _patched_get(url, **kw):
-            if "fangraphs.com" in str(url).lower() and _fg_ck:
-                h = kw.pop("headers", {}) or {}
-                h.setdefault("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                h.setdefault("Cookie", _fg_ck if isinstance(_fg_ck, str) else "; ".join(f"{k}={v}" for k, v in _fg_ck.items()))
-                kw["headers"] = h
-            return _orig_get(url, **kw)
-        _req.get = _patched_get
-        try:
-            fg = pybaseball.batting_stats(year, qual=1)
-        finally:
-            _req.get = _orig_get  # always restore
-        # Build FG playerid → MLBAM via Chadwick register
-        fg_to_mlbam = {}
-        try:
-            chad = pybaseball.chadwick_register()
-            for _, cr in chad.iterrows():
-                fgk = cr.get("key_fangraphs")
-                mk  = cr.get("key_mlbam")
-                if pd.notna(fgk) and pd.notna(mk):
-                    try:
-                        fg_to_mlbam[int(fgk)] = int(mk)
-                    except (ValueError, TypeError):
-                        pass
-        except Exception as e2:
-            print(f"  [LB] Chadwick register failed: {e2}")
-
-        # Supplement Chadwick with xMLBAMID from FanGraphs DataFrame directly
-        # (handles new/recently-promoted players not yet in the Chadwick register)
-        if "xMLBAMID" in fg.columns:
-            _pre = len(fg_to_mlbam)
-            for _, cr in fg.iterrows():
-                try:
-                    fgk = int(float(cr.get("playerid") or cr.get("IDfg") or 0))
-                    mid = int(float(cr.get("xMLBAMID") or 0))
-                    if fgk > 0 and mid > 0:
-                        fg_to_mlbam.setdefault(fgk, mid)
-                except (ValueError, TypeError):
-                    pass
-            print(f"  [LB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after xMLBAMID supplement)")
-        else:
-            # xMLBAMID not in pybaseball DataFrame — call FG API directly
-            try:
-                xmap_rows = fg_api({
-                    "pos": "all", "stats": "bat", "lg": "all", "qual": "0",
-                    "season": year, "season1": year,
-                    "month": "0", "team": "0",
-                    "pageitems": "2000", "pagenum": "1", "ind": "0",
-                    "type": "8",
-                }, "batter xMLBAMID map")
-                _pre = len(fg_to_mlbam)
-                for r2 in (xmap_rows or []):
-                    try:
-                        fgk = int(float(r2.get("playerid") or 0))
-                        mid = int(float(r2.get("xMLBAMID") or 0))
-                        if fgk > 0 and mid > 0:
-                            fg_to_mlbam.setdefault(fgk, mid)
-                    except (ValueError, TypeError):
-                        pass
-                print(f"  [LB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after FG API xMLBAMID)")
-            except Exception as e3:
-                print(f"  [LB] FG API xMLBAMID supplement failed: {e3}")
-
-        max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
+        fg_rows = fg_api({
+            "pos": "all", "stats": "bat", "lg": "all", "qual": "1",
+            "season": year, "season1": year,
+            "month": "0", "team": "0",
+            "pageitems": "2000", "pagenum": "1", "ind": "0",
+            "type": "8",
+        }, "batting leaderboard")
+        if not fg_rows:
+            raise ValueError("FG API returned no rows")
+        # JSON API rows already include xMLBAMID — no Chadwick register needed
+        max_g = max((_int(r.get("G")) for r in fg_rows), default=1)
         qual_pa = max(5, round(max_g * 3.1))
 
         def _pct(v):
@@ -1377,23 +1321,20 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             except (ValueError, TypeError):
                 return None
 
-        for _, row in fg.iterrows():
+        for row in fg_rows:
             try:
-                fg_id = int(row.get("playerid") or row.get("IDfg") or 0)
+                mlbam = int(float(row.get("xMLBAMID") or 0))
             except (ValueError, TypeError):
                 continue
-            if fg_id == 0:
-                continue
-            mlbam = fg_to_mlbam.get(fg_id)
-            if mlbam is None:
+            if mlbam == 0:
                 continue
             pa  = _int(row.get("PA", 0))
             sb  = _int(row.get("SB", 0))
             cs  = _int(row.get("CS", 0))
             players[mlbam] = {
                 "id":      mlbam,
-                "name":    str(row.get("Name", "")).strip(),
-                "team":    str(row.get("Team", "")).strip(),
+                "name":    str(row.get("PlayerName") or row.get("Name") or "").strip(),
+                "team":    str(row.get("Team") or row.get("TeamName") or "").strip(),
                 "g":       _int(row.get("G", 0)),
                 "pa":      pa,
                 "ab":      _int(row.get("AB", 0)),
@@ -1430,9 +1371,9 @@ def fetch_season_batting_leaderboard(year: int) -> list:
                 "age": None, "pos": None,
                 "war":       _flt(row.get("WAR"), 1),
             }
-        print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
+        print(f"  [LB] FG JSON API: {len(players)} hitters, qual ≥{qual_pa} PA")
     except Exception as e:
-        print(f"  [LB] FanGraphs batting stats failed: {e}")
+        print(f"  [LB] FanGraphs JSON API failed: {e}")
 
     # ── Step 1b: MLB Stats API fallback (if FanGraphs failed) ────────────────
     if not players:
