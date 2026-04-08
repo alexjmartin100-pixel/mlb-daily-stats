@@ -6,9 +6,6 @@ on:
     # Scheduling at 7:00 AM EDT (11:00 UTC) so even a 3-hr delay fires by 10 AM EDT.
     - cron: '0 11 * * *'
   workflow_dispatch:   # lets you trigger a manual run from GitHub UI
-  push:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -61,4 +58,4 @@ jobs:
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
           npm install -g firebase-tools@13 --silent
-          firebase deploy --only hosting --non-interactive --project mlb-stats-ae429
+          firebase dep
