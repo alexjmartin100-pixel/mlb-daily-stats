@@ -1329,7 +1329,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             "season": year, "season1": year,
             "month": "0", "team": "0",
             "pageitems": "2000", "pagenum": "1", "ind": "0",
-            "type": "0",
+            "type": "8",
         }, "batting leaderboard")
         if not fg_rows:
             raise ValueError("FG API returned no rows")
