@@ -1286,7 +1286,24 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     print("  [LB] FanGraphs batting stats…")
     qual_pa = 50  # fallback threshold
     try:
-        fg = pybaseball.batting_stats(year, qual=1)
+        # Monkey-patch requests.get so pybaseball sends our cf_clearance cookie
+        # and a real User-Agent header (pybaseball sends neither by default,
+        # which causes Cloudflare to block the request on CI runners).
+        import requests as _req
+        _orig_get = _req.get
+        _fg_ck = _load_fg_cookie()
+        def _patched_get(url, **kw):
+            if "fangraphs.com" in str(url).lower() and _fg_ck:
+                h = kw.pop("headers", {}) or {}
+                h.setdefault("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                h.setdefault("Cookie", _fg_ck if isinstance(_fg_ck, str) else "; ".join(f"{k}={v}" for k, v in _fg_ck.items()))
+                kw["headers"] = h
+            return _orig_get(url, **kw)
+        _req.get = _patched_get
+        try:
+            fg = pybaseball.batting_stats(year, qual=1)
+        finally:
+            _req.get = _orig_get  # always restore
         # Build FG playerid → MLBAM via Chadwick register
         fg_to_mlbam = {}
         try:
@@ -1416,6 +1433,75 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         print(f"  [LB] FG: {len(players)} hitters, qual ≥{qual_pa} PA")
     except Exception as e:
         print(f"  [LB] FanGraphs batting stats failed: {e}")
+
+    # ── Step 1b: MLB Stats API fallback (if FanGraphs failed) ────────────────
+    if not players:
+        print("  [LB] FanGraphs returned no data — trying MLB Stats API fallback…")
+        try:
+            _mlb_url = (
+                f"https://statsapi.mlb.com/api/v1/stats"
+                f"?stats=season&group=hitting&season={year}"
+                f"&sportId=1&limit=900&offset=0"
+                f"&fields=stats,splits,stat,gamesPlayed,plateAppearances,atBats,"
+                f"runs,homeRuns,rbi,stolenBases,caughtStealing,strikeOuts,"
+                f"baseOnBalls,avg,obp,slg,ops,hits,doubles,triples,"
+                f"player,id,fullName,currentTeam,abbreviation"
+            )
+            _mlb_r = requests.get(_mlb_url, headers=hdrs, timeout=30)
+            _mlb_r.raise_for_status()
+            _mlb_j = _mlb_r.json()
+            _splits = []
+            for sg in _mlb_j.get("stats", []):
+                _splits.extend(sg.get("splits", []))
+            # Compute qual PA threshold from max games played
+            _max_g = max((s.get("stat", {}).get("gamesPlayed", 0) for s in _splits), default=1)
+            qual_pa = max(5, round(_max_g * 3.1))
+            for sp in _splits:
+                st = sp.get("stat", {})
+                pid = sp.get("player", {}).get("id")
+                if not pid:
+                    continue
+                pa = int(st.get("plateAppearances", 0) or 0)
+                sb = int(st.get("stolenBases", 0) or 0)
+                cs = int(st.get("caughtStealing", 0) or 0)
+                def _f(v, p=3):
+                    try: return round(float(v), p)
+                    except (ValueError, TypeError): return None
+                players[pid] = {
+                    "id":       pid,
+                    "name":     sp.get("player", {}).get("fullName", f"Player #{pid}"),
+                    "team":     sp.get("currentTeam", {}).get("abbreviation", ""),
+                    "g":        int(st.get("gamesPlayed", 0) or 0),
+                    "pa":       pa,
+                    "ab":       int(st.get("atBats", 0) or 0),
+                    "qualified": pa >= qual_pa,
+                    "r":        int(st.get("runs", 0) or 0),
+                    "hr":       int(st.get("homeRuns", 0) or 0),
+                    "rbi":      int(st.get("rbi", 0) or 0),
+                    "sb":       sb,
+                    "sba":      sb + cs,
+                    "avg":      _f(st.get("avg"), 3),
+                    "obp":      _f(st.get("obp"), 3),
+                    "slg":      _f(st.get("slg"), 3),
+                    "ops":      _f(st.get("ops"), 3),
+                    "woba": None, "k_pct": None, "bb_pct": None, "so": int(st.get("strikeOuts", 0) or 0),
+                    "pull_pct": None, "center_pct": None, "oppo_pct": None,
+                    "gb_pct": None, "ld_pct": None, "fb_pct": None, "pu_pct": None,
+                    "xwoba": None, "xba": None, "xslg": None,
+                    "chase_pct": None, "whiff_pct": None,
+                    "hard_hit_pct": None, "barrel_pct": None, "barrels": None,
+                    "sweet_spot_pct": None, "avg_ev": None, "max_ev": None,
+                    "launch_angle_avg": None,
+                    "bat_speed": None, "squared_up_pct": None,
+                    "sprint_speed": None,
+                    "bats": None, "throws": None,
+                    "height": None, "weight": None,
+                    "age": None, "pos": None,
+                    "war": None,
+                }
+            print(f"  [LB] MLB Stats API fallback: {len(players)} hitters, qual ≥{qual_pa} PA")
+        except Exception as e2:
+            print(f"  [LB] MLB Stats API fallback also failed: {e2}")
 
     # ── Step 2: Savant EV / Barrel stats ─────────────────────────────────────
     print("  [LB] Savant EV/Barrel…")
