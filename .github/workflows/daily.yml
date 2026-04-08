@@ -33,8 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          playwright install chromium
-          sudo playwright install-deps
+          playwright install --with-deps chromium
           sudo apt-get install -y xvfb
 
       - name: Write FanGraphs cookie
