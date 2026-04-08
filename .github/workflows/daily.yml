@@ -31,7 +31,11 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps
+          sudo apt-get install -y xvfb
 
       - name: Write FanGraphs cookie
         run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
@@ -39,7 +43,7 @@ jobs:
       - name: Generate MLB stats dashboard
         env:
           SKIP_AUTO_INSTALL: "1"
-        run: python fetch_mlb_stats.py
+        run: xvfb-run python fetch_mlb_stats.py
 
       - name: Commit updated dashboard to repo
         run: |

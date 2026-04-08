@@ -295,6 +295,24 @@ def _get_pw_page():
         page.wait_for_timeout(9_000)
         cookies = [c["name"] for c in ctx.cookies()]
         print(f"  Playwright ready — cookies: {cookies}")
+
+        # ── RETRY: verify cf_clearance was obtained ──────────────────
+        if "cf_clearance" not in cookies:
+            print("  ⚠ cf_clearance NOT found — retrying with page reload…")
+            for _attempt in range(3):
+                page.reload(wait_until="load", timeout=30_000)
+                page.wait_for_timeout(12_000)  # longer wait for CF challenge
+                cookies = [c["name"] for c in ctx.cookies()]
+                print(f"  Retry {_attempt+1}/3 — cookies: {cookies}")
+                if "cf_clearance" in cookies:
+                    print("  ✓ cf_clearance obtained on retry!")
+                    break
+            else:
+                print("  ⚠ cf_clearance still missing after 3 retries — "
+                      "API calls may get 403")
+        else:
+            print("  ✓ cf_clearance present")
+
         _PW_PAGE = page   # only set here, after successful navigation
         return _PW_PAGE
     except Exception as e:
