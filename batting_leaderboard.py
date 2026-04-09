@@ -41,7 +41,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
         if not fg_rows:
             raise ValueError("FG API returned no rows")
         # JSON API rows already include xMLBAMID — no Chadwick register needed
-        max_g = max((_int(r.get("G")) for r in fg_rows), default=1)
+        max_g = max(((lambda v: (int(float(v)) if v is not None else 0))(r.get("G")) for r in fg_rows), default=1)
         qual_pa = max(5, round(max_g * 3.1))
 
         def _pct(v):
