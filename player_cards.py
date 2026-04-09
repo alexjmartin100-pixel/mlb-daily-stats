@@ -63,6 +63,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
             "wt":    p.get("weight"),
             "qual":  p.get("qualified", False),
             "dv":    dollar_map.get(mid),
+            "war":   p.get("war"),
             # standard stats
             "g":     p.get("g"),
             "pa":    p.get("pa"),
@@ -240,18 +241,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
+    // ── fWAR badge ───────────────────────────────────────────────────────
+    var warBadge = '';
+    if (d.war != null) {{
+      warBadge = '<div style="font-size:.72rem;font-weight:700;color:#8ab4f8;margin-top:3px">'
+        + d.war.toFixed(1) + ' fWAR</div>';
+    }}
+
     // ── Header ────────────────────────────────────────────────────────────
     var pcImgId = 'pc-headshot-' + id;
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.style.display=\\x27none\\x27" '
-      +   'style="width:120px;height:120px;object-fit:contain;flex-shrink:0;border-radius:50%;background:transparent"/>'
+      +   'style="width:120px;height:120px;object-fit:cover;flex-shrink:0;border-radius:50%;overflow:hidden;background:#222"/>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
       +     qual
       +     dvBadge
+      +   warBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
       +     '<span style="font-size:.78rem;color:#fff;font-weight:600">' + (d.team||'–') + '</span>'
@@ -397,9 +406,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:8px;right:8px;'
-        + 'width:130px;height:130px;object-fit:contain;opacity:.8;z-index:1;'
-        + 'filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff)" '
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:140px;height:140px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff)" '
         + 'onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
