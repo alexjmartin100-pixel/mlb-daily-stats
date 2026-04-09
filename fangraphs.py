@@ -11,7 +11,9 @@ import io
 from config import *
 from utils import *
 
-__all__ = ['_PW_INSTANCE', '_PW_BROWSER', '_PW_PAGE', '_get_pw_page', '_close_pw', '_load_fg_cookie', '_fg_session_from_cookie', '_FG_DIRECT_HEADERS', '_pw_fetch_json', 'fg_api', 'detect_per_pitch_cols', '_GL_URL', '_FG_SEARCH', '_unwrap_gl', '_gl_date_matches', '_detect_stuff_loc_cols', '_fg_search_player_id', '_call_game_log', 'fetch_fg_game_stuff', 'fetch_fg_season_velo']
+from data_fetch import _parse_fg_id
+
+__all__ = ['_FG_DIRECT_HEADERS', '_FG_SEARCH', '_GL_URL', '_PW_BROWSER', '_PW_INSTANCE', '_PW_PAGE', '_call_game_log', '_close_pw', '_detect_stuff_loc_cols', '_fg_search_player_id', '_fg_session_from_cookie', '_get_pw_page', '_gl_date_matches', '_load_fg_cookie', '_pw_fetch_json', '_unwrap_gl', 'detect_per_pitch_cols', 'fetch_fg_game_stuff', 'fetch_fg_season_velo', 'fg_api']
 
 
 _PW_INSTANCE = None

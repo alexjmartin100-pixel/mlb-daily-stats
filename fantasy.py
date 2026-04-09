@@ -12,7 +12,9 @@ from config import *
 from utils import *
 from fangraphs import *
 
-__all__ = ['fetch_fg_projections', '_avg_proj_sets', 'fetch_fg_auction_dollar_values', '_fetch_fg_auction_full', '_avg_fg_auction', '_fant_stat', '_z_to_dollars', 'compute_fantasy_dollar_values', '_team_badge_py', '_fmt_dollar', '_dollar_color', '_z_color', '_merge_players', 'render_fantasy_tab']
+from fetch_mlb_stats import _FANT, main
+
+__all__ = ['_avg_fg_auction', '_avg_proj_sets', '_dollar_color', '_fant_stat', '_fetch_fg_auction_full', '_fmt_dollar', '_merge_players', '_team_badge_py', '_z_color', '_z_to_dollars', 'compute_fantasy_dollar_values', 'fetch_fg_auction_dollar_values', 'fetch_fg_projections', 'render_fantasy_tab']
 
 
 def fetch_fg_projections(year: int, proj_type: str, stats_type: str) -> list:

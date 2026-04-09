@@ -12,7 +12,9 @@ from config import *
 from utils import *
 from fangraphs import *
 
-__all__ = ['_TEAM_ID_MAP', 'render_player_cards_tab', 'inject_player_cards_tab', 'inject_fantasy_tab']
+from fantasy import render_fantasy_tab
+
+__all__ = ['_TEAM_ID_MAP', 'inject_fantasy_tab', 'inject_player_cards_tab', 'render_player_cards_tab']
 
 
 _TEAM_ID_MAP = {
