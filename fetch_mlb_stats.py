@@ -6,7 +6,7 @@ import numpy as np
 import requests
 import statsapi            # type: ignore  (MLB-StatsAPI)
 
-    import io
+import io
 
 
 # ── Import all modules ──────────────────────────────────────────────────────
