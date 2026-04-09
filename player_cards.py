@@ -12,6 +12,9 @@ from config import *
 from utils import *
 from fangraphs import *
 
+__all__ = ['_TEAM_ID_MAP', 'render_player_cards_tab', 'inject_player_cards_tab', 'inject_fantasy_tab']
+
+
 _TEAM_ID_MAP = {
     "ARI":108+1, "ATL":144, "BAL":110, "BOS":111, "CHC":112,
     "CWS":145,   "CIN":113, "CLE":114, "COL":115, "DET":116,
