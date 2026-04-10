@@ -217,7 +217,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 9, 2026</strong>
       &nbsp;·&nbsp; 6 game(s)
-      &nbsp;·&nbsp; Updated Apr 10, 2026 5:08 PM
+      &nbsp;·&nbsp; Updated Apr 10, 2026 5:16 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -837,7 +837,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 5:08 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 5:16 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2790,15 +2790,38 @@ function _tradeRender() {
 }
 
 /* ── Trade Calc: verdict + per-stat breakdown ────────────────── */
-function _sumCats(players) {
-  var out = {};
+// Counting stats are summed; rate stats (OBP/ERA/WHIP) are averaged across the side.
+var TRADE_RATE_STATS = {'OBP':true,'ERA':true,'WHIP':true};
+var TRADE_LOWER_BETTER = {'ERA':true,'WHIP':true};
+// Stat order so hitter cats line up with sidebar order, pitcher cats too
+var TRADE_STAT_ORDER = ['R','HR','RBI','SB','OBP','W','SV','HLD','K','ERA','WHIP'];
+
+function _aggProj(players) {
+  // Returns {stat: aggregated_value} — sums for counting stats, averages for rate stats
+  var sums = {}, counts = {};
   players.forEach(function(p) {
-    if (!p.cats) return;
-    Object.keys(p.cats).forEach(function(k) {
-      out[k] = (out[k] || 0) + (parseFloat(p.cats[k]) || 0);
+    if (!p.proj) return;
+    Object.keys(p.proj).forEach(function(k) {
+      var v = parseFloat(p.proj[k]);
+      if (isNaN(v)) return;
+      sums[k] = (sums[k] || 0) + v;
+      counts[k] = (counts[k] || 0) + 1;
     });
   });
+  var out = {};
+  Object.keys(sums).forEach(function(k) {
+    out[k] = TRADE_RATE_STATS[k] ? (sums[k] / counts[k]) : sums[k];
+  });
   return out;
+}
+
+function _fmtStatDiff(k, diff) {
+  var sign = diff >= 0 ? '+' : '−';
+  var mag  = Math.abs(diff);
+  if (k === 'OBP')  return sign + mag.toFixed(3);
+  if (k === 'ERA' || k === 'WHIP') return sign + mag.toFixed(2);
+  // Counting stats — round to nearest whole number
+  return sign + Math.round(mag).toString();
 }
 
 function _tradeCalc() {
@@ -2837,24 +2860,33 @@ function _tradeCalc() {
     + '&nbsp;&nbsp;<span style="color:#4caf50">&#x25B4; $' + recvTot.toFixed(1) + ' recv</span>'
     + '</div>';
 
-  var sendCats = _sumCats(send);
-  var recvCats = _sumCats(recv);
+  // Use projected season totals (proj) for actual stat differentials
+  var sendAgg = _aggProj(send);
+  var recvAgg = _aggProj(recv);
   var seen = {}, allKeys = [];
-  Object.keys(sendCats).concat(Object.keys(recvCats)).forEach(function(k) {
+  // Order keys via canonical TRADE_STAT_ORDER first, then anything unexpected
+  TRADE_STAT_ORDER.forEach(function(k) {
+    if ((k in sendAgg) || (k in recvAgg)) { seen[k]=1; allKeys.push(k); }
+  });
+  Object.keys(sendAgg).concat(Object.keys(recvAgg)).forEach(function(k) {
     if (!seen[k]) { seen[k]=1; allKeys.push(k); }
   });
-  var lowerBetter = {'ERA':true,'WHIP':true};
   if (!allKeys.length) { breakEl.innerHTML=''; return; }
-  var bHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px">';
+  var bHtml = '<div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;'
+            + 'letter-spacing:.06em;font-weight:700;margin:8px 0 4px;text-align:center">'
+            + 'Projected Season Δ</div>'
+            + '<div style="display:flex;flex-direction:column;gap:4px">';
   allKeys.forEach(function(k) {
-    var sv = sendCats[k]||0, rv = recvCats[k]||0;
+    var sv = sendAgg[k]||0, rv = recvAgg[k]||0;
     var rawDiff = rv - sv;
-    var adjDiff = lowerBetter[k] ? -rawDiff : rawDiff;
-    var isPos = adjDiff >  0.005;
-    var isNeg = adjDiff < -0.005;
+    var adjDiff = TRADE_LOWER_BETTER[k] ? -rawDiff : rawDiff;
+    // Significance threshold depends on stat type
+    var thresh = (k === 'OBP') ? 0.0005 : (TRADE_LOWER_BETTER[k] ? 0.005 : 0.5);
+    var isPos = adjDiff >  thresh;
+    var isNeg = adjDiff < -thresh;
     var col   = isPos ? '#4caf50' : isNeg ? '#e05555' : '#888';
     var arrow = isPos ? '&#x25B2;' : isNeg ? '&#x25BC;' : '&#x25A0;';
-    var dispDiff = (rawDiff >= 0 ? '+' : '') + rawDiff.toFixed(2).replace(/\.00$/,'');
+    var dispDiff = _fmtStatDiff(k, rawDiff);
     bHtml += '<div style="display:flex;justify-content:space-between;align-items:center;'
            + 'padding:5px 9px;background:#1a1a1a;border-radius:5px;border-left:3px solid ' + col + '">'
            + '<span style="font-size:.76rem;font-weight:700;color:#ccc">' + k + '</span>'
