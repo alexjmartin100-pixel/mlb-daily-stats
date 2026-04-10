@@ -194,30 +194,33 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         for bid in best_ids:
             _leaders.setdefault(str(bid), []).append(sk)
 
-    # Pitcher leaders (among qualified pitchers)
-    # NOTE: chase% is higher-better for pitchers; siera/k_bb_pct included;
-    # stuff_plus/loc_plus included for arsenal header gold highlight
+    # Pitcher leaders — computed SEPARATELY within SP and RP subgroups, so
+    # the best starter and the best reliever in each category both get gold.
+    # NOTE: chase% is higher-better for pitchers.
     _p_higher = ["w","k","sv","hld","whiff_pct","k_pct","gb_pct","fb_velo",
                  "chase_pct","k_bb_pct","stuff_plus","loc_plus"]
     _p_lower  = ["era","whip","xera","xba","xwoba","woba","siera",
                  "bb_pct","barrel_pct","hard_hit_pct","avg_ev"]
-    for sk in _p_higher + _p_lower:
-        best_val = None
-        best_ids = []
-        want_low = sk in _p_lower
-        for p in _all_pitchers:
-            if not p.get("qualified", False):
-                continue
-            v = p.get(sk)
-            if v is None:
-                continue
-            if best_val is None or (want_low and v < best_val) or (not want_low and v > best_val):
-                best_val = v
-                best_ids = [p.get("id")]
-            elif v == best_val:
-                best_ids.append(p.get("id"))
-        for bid in best_ids:
-            _leaders.setdefault(str(bid), []).append(sk)
+    _sp_list = [p for p in _all_pitchers if p.get("is_sp", False)]
+    _rp_list = [p for p in _all_pitchers if not p.get("is_sp", False)]
+    for _pool in (_sp_list, _rp_list):
+        for sk in _p_higher + _p_lower:
+            best_val = None
+            best_ids = []
+            want_low = sk in _p_lower
+            for p in _pool:
+                if not p.get("qualified", False):
+                    continue
+                v = p.get(sk)
+                if v is None:
+                    continue
+                if best_val is None or (want_low and v < best_val) or (not want_low and v > best_val):
+                    best_val = v
+                    best_ids = [p.get("id")]
+                elif v == best_val:
+                    best_ids.append(p.get("id"))
+            for bid in best_ids:
+                _leaders.setdefault(str(bid), []).append(sk)
 
     leaders_json = json.dumps(_leaders, separators=(',', ':'))
 
@@ -457,7 +460,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'max_ev'],
       ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}},'barrel_pct'],
       ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'hard_hit_pct'],
-      ['Sweet Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'sweet_spot_pct'],
+      ['LA Sweet-Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'sweet_spot_pct'],
       ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'bat_speed'],
       ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'squared_up_pct'],
       ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'chase_pct'],
@@ -561,12 +564,11 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       var locStr = d.loc != null ? d.loc : '–';
       var stfIsGold = !!leaderMap.stuff_plus;
       var locIsGold = !!leaderMap.loc_plus;
+      // Red-to-blue gradient based on SP/RP-split percentile (matches slider colors)
       var stfCol = stfIsGold ? '#f0c040'
-                  : (d.stf != null && d.stf >= 100) ? '#4caf50'
-                  : (d.stf != null && d.stf < 95 ? '#e66' : '#ddd');
+                  : (d.stf != null && d.pct.stuff_plus != null ? pctColor(d.pct.stuff_plus) : '#ddd');
       var locCol = locIsGold ? '#f0c040'
-                  : (d.loc != null && d.loc >= 100) ? '#4caf50'
-                  : (d.loc != null && d.loc < 95 ? '#e66' : '#ddd');
+                  : (d.loc != null && d.pct.loc_plus != null ? pctColor(d.pct.loc_plus) : '#ddd');
       var stfLblCol = stfIsGold ? '#b8982e' : '#888';
       var locLblCol = locIsGold ? '#b8982e' : '#888';
       bb_html =

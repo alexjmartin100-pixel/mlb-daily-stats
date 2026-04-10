@@ -482,10 +482,13 @@ def fetch_season_batting_leaderboard(year: int) -> list:
 
 def compute_hitter_percentiles(players: list) -> list:
     """
-    Use pre-fetched Baseball Savant percentile rankings (1-100 scale).
-    Falls back to self-computed percentiles only for stats Savant doesn't cover.
+    Use pre-fetched Baseball Savant percentile rankings (1-100 scale) when
+    available. For stats not in Savant's bulk percentile-rankings CSV
+    (e.g. sweet_spot_pct), compute z-score based percentiles from the
+    qualified-player distribution (matches Savant's player-page methodology).
     """
-    # Fallback stat keys (only used if Savant data missing for a player)
+    import math
+
     lower_better = {"k_pct", "chase_pct", "whiff_pct"}
     stat_keys = [
         "xwoba", "xba", "xslg", "avg_ev", "max_ev",
@@ -495,45 +498,47 @@ def compute_hitter_percentiles(players: list) -> list:
         "sprint_speed", "launch_angle_avg",
     ]
 
-    # Build fallback sorted arrays for self-computation
-    stat_vals = {}
+    # Build population mean/stddev from qualified players only (matches Savant).
+    # This mirrors what Savant does on a player's page: z-score → normal CDF.
+    qualified = [p for p in players if p.get("qualified", False)]
+    pop_stats = {}
     for k in stat_keys:
-        vals = sorted(p[k] for p in players if p.get(k) is not None)
-        stat_vals[k] = vals
+        vals = [p[k] for p in qualified if p.get(k) is not None]
+        if len(vals) >= 2:
+            mean = sum(vals) / len(vals)
+            var  = sum((v - mean) ** 2 for v in vals) / len(vals)
+            std  = math.sqrt(var) if var > 0 else 0.0
+            pop_stats[k] = (mean, std)
+        else:
+            pop_stats[k] = (None, None)
 
-    def _pct_rank(vals_sorted, v, invert):
-        if not vals_sorted:
+    def _norm_cdf(z):
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+    def _zscore_pct(k, v, invert):
+        mean, std = pop_stats.get(k, (None, None))
+        if mean is None or std in (None, 0, 0.0):
             return None
-        lo, hi = 0, len(vals_sorted)
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if vals_sorted[mid] < v:
-                lo = mid + 1
-            else:
-                hi = mid
-        rank = lo
-        n = len(vals_sorted)
-        pct = round(rank / n * 100)
-        if pct < 1:
-            pct = 1
-        if pct > 100:
-            pct = 100
-        return (101 - pct) if invert else pct
+        z = (v - mean) / std
+        p = _norm_cdf(z) * 100.0
+        p = int(round(p))
+        if p < 1:  p = 1
+        if p > 99: p = 99
+        return (100 - p) if invert else p
 
     for p in players:
         savant_pct = p.get("_savant_pct", {})
         pct = {}
         for k in stat_keys:
-            # Prefer Savant's pre-computed percentile
+            # Prefer Savant's pre-computed percentile (bulk CSV) when present
             if k in savant_pct:
                 pct[k] = savant_pct[k]
             else:
-                # Fallback: self-computed
                 v = p.get(k)
                 if v is None:
                     pct[k] = None
                 else:
-                    pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+                    pct[k] = _zscore_pct(k, v, k in lower_better)
         p["pct"] = pct
 
     return players

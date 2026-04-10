@@ -519,6 +519,9 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
         pct_df = pd.read_csv(StringIO(rp_.text))
         print(f"  [PLB] Savant pitcher pct cols: {list(pct_df.columns[:20])}")
         # Savant column → our internal pitcher stat key
+        # NOTE: Savant's bulk percentile-rankings CSV for pitchers does NOT
+        # include gb_percent, woba, siera, k_bb_pct, stuff_plus, loc_plus —
+        # those are computed via z-score fallback in compute_pitcher_percentiles.
         _savant_col_map = {
             "xwoba":            "xwoba",
             "xba":              "xba",
@@ -530,7 +533,6 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
             "bb_percent":       "bb_pct",
             "whiff_percent":    "whiff_pct",
             "chase_percent":    "chase_pct",
-            "gb_percent":       "gb_pct",
             "fb_velocity":      "fb_velo",
         }
         pid_col = "player_id"
@@ -565,55 +567,77 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
 def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
     """
     Use pre-fetched Baseball Savant percentile rankings (1-100 scale) for
-    pitchers, mirroring compute_hitter_percentiles. Falls back to
-    self-computed percentiles only for stats Savant doesn't cover.
+    pitchers. For stats not in Savant's bulk CSV (gb_pct, siera, k_bb_pct,
+    woba, stuff_plus, loc_plus), fall back to z-score based percentiles
+    computed from the qualified-player distribution (matches Savant's
+    player-page methodology).
+
+    stuff_plus and loc_plus are computed separately within the SP group and
+    within the RP group — so a reliever's Stuff+ percentile ranks against
+    other relievers, not starters.
     """
+    import math
     if not lb_pitch_data:
         return lb_pitch_data
-    all_p = list(lb_pitch_data.get("starters", [])) + list(lb_pitch_data.get("relievers", []))
+    starters  = list(lb_pitch_data.get("starters", []))
+    relievers = list(lb_pitch_data.get("relievers", []))
+    all_p = starters + relievers
     if not all_p:
         return lb_pitch_data
 
-    # Lower is better for pitchers (self-computed fallback only; Savant's
-    # pre-computed rankings already have the right polarity).
-    # NOTE: chase% is higher-better for pitchers.
-    lower_better = {"xera", "xba", "xwoba", "woba", "avg_ev",
+    # Lower is better for pitchers. chase% is higher-better (opposite of hitters).
+    lower_better = {"xera", "xba", "xwoba", "woba", "avg_ev", "siera",
                     "hard_hit_pct", "barrel_pct", "bb_pct"}
     stat_keys = [
         "xera", "xba", "xwoba", "woba",
         "fb_velo", "avg_ev",
         "chase_pct", "whiff_pct",
-        "k_pct", "bb_pct",
+        "k_pct", "bb_pct", "k_bb_pct",
         "barrel_pct", "hard_hit_pct", "gb_pct",
+        "siera",
     ]
+    # Stats that get split SP/RP percentile pools
+    sp_rp_split_keys = ["stuff_plus", "loc_plus"]
 
-    stat_vals = {}
-    for k in stat_keys:
-        vals = sorted(p[k] for p in all_p if p.get(k) is not None)
-        stat_vals[k] = vals
-
-    def _pct_rank(vals_sorted, v, invert):
-        if not vals_sorted:
-            return None
-        lo, hi = 0, len(vals_sorted)
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if vals_sorted[mid] < v:
-                lo = mid + 1
+    def _build_pop(pool, keys):
+        stats = {}
+        qual_pool = [p for p in pool if p.get("qualified", False)]
+        # If no qualified subset (small group), fall back to full pool
+        if len(qual_pool) < 5:
+            qual_pool = pool
+        for k in keys:
+            vals = [p[k] for p in qual_pool if p.get(k) is not None]
+            if len(vals) >= 2:
+                mean = sum(vals) / len(vals)
+                var  = sum((v - mean) ** 2 for v in vals) / len(vals)
+                std  = math.sqrt(var) if var > 0 else 0.0
+                stats[k] = (mean, std)
             else:
-                hi = mid
-        rank = lo
-        n = len(vals_sorted)
-        pct = round(rank / n * 100)
-        if pct < 1: pct = 1
-        if pct > 100: pct = 100
-        return (101 - pct) if invert else pct
+                stats[k] = (None, None)
+        return stats
+
+    pop_all = _build_pop(all_p, stat_keys)
+    pop_sp  = _build_pop(starters,  sp_rp_split_keys)
+    pop_rp  = _build_pop(relievers, sp_rp_split_keys)
+
+    def _norm_cdf(z):
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+    def _zscore_pct(pop, k, v, invert):
+        mean, std = pop.get(k, (None, None))
+        if mean is None or std in (None, 0, 0.0):
+            return None
+        z = (v - mean) / std
+        p = _norm_cdf(z) * 100.0
+        p = int(round(p))
+        if p < 1:  p = 1
+        if p > 99: p = 99
+        return (100 - p) if invert else p
 
     for p in all_p:
         savant_pct = p.get("_savant_pct", {}) or {}
         pct = {}
         for k in stat_keys:
-            # Prefer Savant's pre-computed percentile (matches the Savant player page)
             if k in savant_pct:
                 pct[k] = savant_pct[k]
             else:
@@ -621,7 +645,16 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
                 if v is None:
                     pct[k] = None
                 else:
-                    pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+                    pct[k] = _zscore_pct(pop_all, k, v, k in lower_better)
+        # Stuff+ / Loc+ split by SP vs RP
+        is_sp = p.get("is_sp", False)
+        split_pop = pop_sp if is_sp else pop_rp
+        for k in sp_rp_split_keys:
+            v = p.get(k)
+            if v is None:
+                pct[k] = None
+            else:
+                pct[k] = _zscore_pct(split_pop, k, v, False)
         p["pct"] = pct
 
     return lb_pitch_data
