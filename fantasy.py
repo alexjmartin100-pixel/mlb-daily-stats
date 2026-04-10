@@ -684,26 +684,60 @@ def _render_season_projections(fdata: dict) -> str:
         for i, t in enumerate(order, start=1):
             t[rank_key] = i
 
-    head_cells = ['<th style="text-align:left;padding:8px 10px;font-size:.7rem">#</th>',
-                  '<th style="text-align:left;padding:8px 10px;font-size:.72rem">Team</th>']
+    # Sortable header builder. Each <th> gets:
+    #   onclick="projSort(this)"  data-col=N  data-default="asc"|"desc"
+    # Plus an indicator span (▼) that lights up when active.
+    _arrow = ('<span class="psi" style="color:var(--muted);font-size:.6rem;'
+              'opacity:.35;margin-left:3px">&#9660;</span>')
+    _th_base = 'cursor:pointer;user-select:none;'
+
+    def _proj_th(label, col, default, extra_style=""):
+        return (
+            f'<th onclick="projSort(this)" data-col="{col}" '
+            f'data-default="{default}" '
+            f'style="{_th_base}{extra_style}">{label}{_arrow}</th>'
+        )
+
+    head_cells = [
+        _proj_th('#',    0, 'asc',
+                 'text-align:left;padding:8px 10px;font-size:.7rem'),
+        _proj_th('Team', 1, 'asc',
+                 'text-align:left;padding:8px 10px;font-size:.72rem'),
+    ]
 
     # Hitter cats (R..OBP) → H Z subtotal → Pitcher cats (W..WHIP) → P Z subtotal → Z Total
+    col_idx = 2
     for c in h_sub:
-        head_cells.append(
-            f'<th style="text-align:center;padding:8px 6px;font-size:.7rem;'
-            f'white-space:nowrap">{PROJ_CAT_LABELS[c]}</th>'
-        )
-    head_cells.append('<th style="text-align:center;padding:8px 8px;font-size:.7rem;'
-                      'border-left:1px solid #2a2a2a">H&nbsp;Z</th>')
+        default = 'asc' if c in PROJ_LOWER_BETTER else 'desc'
+        head_cells.append(_proj_th(
+            PROJ_CAT_LABELS[c], col_idx, default,
+            'text-align:center;padding:8px 6px;font-size:.7rem;white-space:nowrap'
+        ))
+        col_idx += 1
+    head_cells.append(_proj_th(
+        'H&nbsp;Z', col_idx, 'desc',
+        'text-align:center;padding:8px 8px;font-size:.7rem;'
+        'border-left:1px solid #2a2a2a'
+    ))
+    col_idx += 1
     for c in p_sub:
-        head_cells.append(
-            f'<th style="text-align:center;padding:8px 6px;font-size:.7rem;'
-            f'white-space:nowrap">{PROJ_CAT_LABELS[c]}</th>'
-        )
-    head_cells.append('<th style="text-align:center;padding:8px 8px;font-size:.7rem;'
-                      'border-left:1px solid #2a2a2a">P&nbsp;Z</th>')
-    head_cells.append('<th style="text-align:center;padding:8px 10px;font-size:.7rem;'
-                      'border-left:1px solid #2a2a2a">Z&nbsp;Total</th>')
+        default = 'asc' if c in PROJ_LOWER_BETTER else 'desc'
+        head_cells.append(_proj_th(
+            PROJ_CAT_LABELS[c], col_idx, default,
+            'text-align:center;padding:8px 6px;font-size:.7rem;white-space:nowrap'
+        ))
+        col_idx += 1
+    head_cells.append(_proj_th(
+        'P&nbsp;Z', col_idx, 'desc',
+        'text-align:center;padding:8px 8px;font-size:.7rem;'
+        'border-left:1px solid #2a2a2a'
+    ))
+    col_idx += 1
+    head_cells.append(_proj_th(
+        'Z&nbsp;Total', col_idx, 'desc',
+        'text-align:center;padding:8px 10px;font-size:.7rem;'
+        'border-left:1px solid #2a2a2a'
+    ))
 
     section_hdr = (
         '<tr style="background:#161616;color:var(--muted);font-size:.62rem;'
@@ -717,10 +751,11 @@ def _render_season_projections(fdata: dict) -> str:
         '</tr>'
     )
 
-    def _subtotal_cell(z_val, rank):
+    def _subtotal_cell(z_val, rank, sort_val):
         color = _proj_rank_color(rank, n_teams)
         return (
-            f'<td style="text-align:center;padding:6px 8px;'
+            f'<td data-sort="{sort_val}" '
+            f'style="text-align:center;padding:6px 8px;'
             f'border-left:1px solid #2a2a2a">'
             f'<div style="font-size:.82rem;font-weight:700;color:{color};'
             f'line-height:1.1">{z_val:+.2f}</div>'
@@ -732,33 +767,40 @@ def _render_season_projections(fdata: dict) -> str:
     body_rows = []
     for row in team_rows:
         rt = row["rank_total"]
+        team_sort_key = (row["name"] or "").replace('"', '&quot;').lower()
         cells = [
-            f'<td style="padding:8px 10px;font-weight:700;color:#aaa">{rt}</td>',
-            f'<td style="padding:8px 10px;font-weight:600;color:#ddd;'
+            f'<td data-sort="{rt}" '
+            f'style="padding:8px 10px;font-weight:700;color:#aaa">{rt}</td>',
+            f'<td data-sort="{team_sort_key}" '
+            f'style="padding:8px 10px;font-weight:600;color:#ddd;'
             f'white-space:nowrap">{row["name"]}</td>',
         ]
         # Hitter category cells
         for c in h_sub:
-            stat_str = _fmt_proj_stat(c, row["stats"][c])
+            raw_val = row["stats"][c]
+            stat_str = _fmt_proj_stat(c, raw_val)
             rank = row["rank"][c]
             color = _proj_rank_color(rank, n_teams)
             cells.append(
-                f'<td style="text-align:center;padding:6px 6px">'
+                f'<td data-sort="{raw_val}" '
+                f'style="text-align:center;padding:6px 6px">'
                 f'<div style="font-size:.82rem;font-weight:700;color:{color};'
                 f'line-height:1.1">{stat_str}</div>'
                 f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
                 f'margin-top:1px">#{rank}</div>'
                 f'</td>'
             )
-        # Hitter z subtotal
-        cells.append(_subtotal_cell(row["z_hit"], row["rank_hit"]))
+        # Hitter z subtotal — sort by raw z_hit value (desc default = best at top)
+        cells.append(_subtotal_cell(row["z_hit"], row["rank_hit"], row["z_hit"]))
         # Pitcher category cells
         for c in p_sub:
-            stat_str = _fmt_proj_stat(c, row["stats"][c])
+            raw_val = row["stats"][c]
+            stat_str = _fmt_proj_stat(c, raw_val)
             rank = row["rank"][c]
             color = _proj_rank_color(rank, n_teams)
             cells.append(
-                f'<td style="text-align:center;padding:6px 6px">'
+                f'<td data-sort="{raw_val}" '
+                f'style="text-align:center;padding:6px 6px">'
                 f'<div style="font-size:.82rem;font-weight:700;color:{color};'
                 f'line-height:1.1">{stat_str}</div>'
                 f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
@@ -766,20 +808,28 @@ def _render_season_projections(fdata: dict) -> str:
                 f'</td>'
             )
         # Pitcher z subtotal
-        cells.append(_subtotal_cell(row["z_pit"], row["rank_pit"]))
+        cells.append(_subtotal_cell(row["z_pit"], row["rank_pit"], row["z_pit"]))
+        # Z Total — same gold/red→blue gradient as the other category cells
+        # (gold at #1, red→white→blue for #2..#10), with #N rank suffix.
         zt = row["z_total"]
-        zt_col = "#4caf50" if zt > 0 else ("#e05555" if zt < 0 else "#aaa")
+        zt_color = _proj_rank_color(rt, n_teams)
         zt_str = f"{zt:+.2f}"
         cells.append(
-            f'<td style="text-align:center;padding:8px 10px;font-weight:700;'
-            f'color:{zt_col};font-size:.85rem;border-left:1px solid #2a2a2a">'
-            f'{zt_str}</td>'
+            f'<td data-sort="{zt}" '
+            f'style="text-align:center;padding:6px 10px;'
+            f'border-left:1px solid #2a2a2a">'
+            f'<div style="font-size:.85rem;font-weight:700;color:{zt_color};'
+            f'line-height:1.1">{zt_str}</div>'
+            f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+            f'margin-top:1px">#{rt}</div>'
+            f'</td>'
         )
         body_rows.append('<tr style="border-bottom:1px solid #1f1f1f">' + "".join(cells) + '</tr>')
 
     table_html = (
         '<div style="overflow-x:auto;padding:0 12px 18px">'
-        '<table class="stats-table" style="width:100%;border-collapse:collapse;'
+        '<table id="proj-table" class="stats-table" '
+        'style="width:100%;border-collapse:collapse;'
         'background:#0e0e0e;border-radius:8px">'
         '<thead style="background:#1a1a1a">'
         + section_hdr
@@ -1212,6 +1262,67 @@ function fantSort(tblId, th) {{
     activeInd.style.opacity = '1';
   }}
   applyFantColors(tblId);
+}}
+
+/* ── Season Projections column sort ──────────────────────────── */
+/* Sorts the #proj-table by the clicked header's data-col, using each
+   <td>'s data-sort attribute (numeric or alphabetic). Each header has a
+   data-default direction ("asc" or "desc"); first click uses that, then
+   clicks toggle. Cell colors are baked in (per-stat rank), so we don't
+   need to recompute them — we only re-order rows. */
+function projSort(th) {{
+  var tbl = document.getElementById('proj-table');
+  if (!tbl) return;
+  var col = parseInt(th.dataset.col, 10);
+  if (isNaN(col)) return;
+  var tbody = tbl.querySelector('tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+
+  var def = th.dataset.default || 'desc';
+  var prev = th.dataset.dir || '';
+  var dir;
+  if (prev === 'asc')       dir = 'desc';
+  else if (prev === 'desc') dir = 'asc';
+  else                       dir = def;
+
+  // Clear dir on every header, then set on the active one
+  Array.from(tbl.querySelectorAll('thead th')).forEach(function(h) {{
+    delete h.dataset.dir;
+  }});
+  th.dataset.dir = dir;
+
+  function _val(tr) {{
+    var cell = tr.cells[col];
+    if (!cell) return null;
+    return cell.dataset.sort != null ? cell.dataset.sort : cell.textContent;
+  }}
+
+  rows.sort(function(a, b) {{
+    var av = _val(a), bv = _val(b);
+    var an = parseFloat(av), bn = parseFloat(bv);
+    var cmp;
+    if (!isNaN(an) && !isNaN(bn)) {{
+      cmp = an - bn;
+    }} else {{
+      cmp = String(av).localeCompare(String(bv));
+    }}
+    return dir === 'desc' ? -cmp : cmp;
+  }});
+  rows.forEach(function(r) {{ tbody.appendChild(r); }});
+
+  // Update header arrow indicators
+  Array.from(tbl.querySelectorAll('thead th .psi')).forEach(function(s) {{
+    s.innerHTML = '&#9660;';
+    s.style.color = 'var(--muted)';
+    s.style.opacity = '.35';
+  }});
+  var ind = th.querySelector('.psi');
+  if (ind) {{
+    ind.innerHTML = (dir === 'desc') ? '&#9660;' : '&#9650;';
+    ind.style.color = 'var(--accent)';
+    ind.style.opacity = '1';
+  }}
 }}
 
 /* ── Column color coding (gold leader + red→white→blue gradient) ─── */
