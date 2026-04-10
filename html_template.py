@@ -611,6 +611,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="lb-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"           onclick="srtLB(this,'name')">Player</th>
+          <th>Team</th>
           <th class="sortable r" data-col="r" data-k="r"              onclick="srtLB(this,'r')">R</th>
           <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
           <th class="sortable r" data-col="rbi" data-k="rbi"            onclick="srtLB(this,'rbi')">RBI</th>
@@ -661,6 +662,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="lb-sp-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBSP(this,'name')">Pitcher</th>
+          <th>Team</th>
           <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBSP(this,'ip_f')">IP</th>
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
           <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
@@ -712,6 +714,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="lb-rp-tbl">
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBRP(this,'name')">Pitcher</th>
+          <th>Team</th>
           <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBRP(this,'ip_f')">IP</th>
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
           <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
@@ -768,6 +771,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="cmp-h-tbl">
         <thead><tr>
           <th>Player</th>
+          <th>Team</th>
           <th class="r" data-col="r">R</th>
           <th class="r" data-col="hr">HR</th>
           <th class="r" data-col="rbi">RBI</th>
@@ -791,7 +795,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th></th>
         </tr></thead>
         <tbody id="cmp-h-body">
-          <tr><td colspan="22"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>
+          <tr><td colspan="23"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -803,6 +807,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <table id="cmp-p-tbl">
         <thead><tr>
           <th>Pitcher</th>
+          <th>Team</th>
           <th class="r" data-col="role">Role</th>
           <th class="r" data-col="ip_f">IP</th>
           <th class="r" data-col="w">W</th>
@@ -831,7 +836,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th></th>
         </tr></thead>
         <tbody id="cmp-p-body">
-          <tr><td colspan="26"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
+          <tr><td colspan="28"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
         </tbody>
       </table>
     </div>
@@ -1548,12 +1553,13 @@ function renderLB(){
   const tb=document.getElementById('lb-body');
   const ct=document.getElementById('lb-cnt');
   if(!lbD.length){
-    tb.innerHTML='<tr><td colspan="23"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="24"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
     <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
     <td class="r" data-col="rbi">${fmtInt('rbi', p.rbi)}</td>
@@ -1608,13 +1614,14 @@ function renderLBSP(){
   const tb=document.getElementById('lb-sp-body');
   const ct=document.getElementById('lb-sp-cnt');
   if(!lbSpD.length){
-    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="25"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
   const D=plCellSP;
   tb.innerHTML=lbSpD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
@@ -1666,13 +1673,14 @@ function renderLBRP(){
   const tb=document.getElementById('lb-rp-body');
   const ct=document.getElementById('lb-rp-cnt');
   if(!lbRpD.length){
-    tb.innerHTML='<tr><td colspan="25"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="27"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
   const D=plCellRP;
   tb.innerHTML=lbRpD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
@@ -1815,14 +1823,15 @@ function renderCmp(){
     const tb=document.getElementById('cmp-h-body');
     const ids=[...cmpHSet];
     if(!ids.length){
-      tb.innerHTML='<tr><td colspan="22"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>';
+      tb.innerHTML='<tr><td colspan="23"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>';
       return;
     }
     tb.innerHTML=ids.map(id=>{
       const p=LB_ALL.find(x=>x.id===id);
       if(!p) return '';
       return `<tr>
-        <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td>${p.team?tm(p.team):''}</td>
         <td class="r" data-col="r">${fmtInt('r',p.r)}</td>
         <td class="r" data-col="hr">${fmtInt('hr',p.hr)}</td>
         <td class="r" data-col="rbi">${fmtInt('rbi',p.rbi)}</td>
@@ -1851,7 +1860,7 @@ function renderCmp(){
     const tb=document.getElementById('cmp-p-body');
     const ids=[...cmpPSet];
     if(!ids.length){
-      tb.innerHTML='<tr><td colspan="26"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>';
+      tb.innerHTML='<tr><td colspan="28"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>';
       return;
     }
     const D=plCmpCell;
@@ -1862,7 +1871,8 @@ function renderCmp(){
       const roleColor=role==='SP'?'rgba(61,155,233,.25)':'rgba(232,131,42,.25)';
       const roleTxt=role==='SP'?'#3d9be9':'#e8832a';
       return `<tr>
-        <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td>${p.team?tm(p.team):''}</td>
         <td class="r" data-col="role"><span class="tm" style="background:${roleColor};color:${roleTxt};border-color:transparent;font-size:.7rem">${role}</span></td>
         <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
         <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
