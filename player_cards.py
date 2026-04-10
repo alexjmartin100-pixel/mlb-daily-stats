@@ -469,4 +469,13 @@ def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
     compare_anchor = "showTab('compare'"
     if compare_anchor in html:
         idx     = html.index(compare_anchor)
-        end_btn = html.index("</button>", idx) + len("
+        end_btn = html.index("</button>", idx) + len("</button>")
+        btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
+        html    = html[:end_btn] + btn_html + html[end_btn:]
+
+    # Inject panel before </body>
+    html = html.replace("</body>", panel_html + "\n</body>")
+    return html
+
+
+# ── Season Pitching Leaderboard ────────────────────────────────────────────
