@@ -253,11 +253,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#222">'
-      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#222">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
-      +   'style="width:100%;height:100%;object-fit:cover;object-position:top center"/>'
-      + '</div>'
+      +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
       + '</div>'
       + '<div style="flex:1;min-width:0">'
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
