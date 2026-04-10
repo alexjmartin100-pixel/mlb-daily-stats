@@ -16,7 +16,14 @@ __all__ = ['_SAVANT_PT_PREFIX', '_parse_fg_id', 'attach_fg_data', 'build_hitter_
 
 
 def fetch_mlb_sb(date_str: str) -> dict:
-    """Returns {(mlbam_id, game_pk): [sb, cs]} from official MLB box scores."""
+    """Returns {(mlbam_id, game_pk): [sb, cs, r, rbi]} from official MLB box scores.
+
+    NOTE: We use the raw game_boxscore endpoint, NOT statsapi.boxscore_data().
+    The boxscore_data() helper returns only a curated summary of batting stats
+    and strips caughtStealing entirely — so SBA was always equaling SB before
+    this fix. game_boxscore returns the full Stats API response which includes
+    caughtStealing.
+    """
     try:
         print(f"  Fetching SB data via MLB Stats API for {date_str}…")
         games  = statsapi.schedule(date=date_str)
@@ -29,25 +36,26 @@ def fetch_mlb_sb(date_str: str) -> dict:
             if "Final" not in status and "Completed" not in status:
                 continue
             try:
-                bs = statsapi.boxscore_data(int(gpk))
+                raw = statsapi.get("game_boxscore", {"gamePk": int(gpk)})
             except Exception:
                 continue
             for side in ("home", "away"):
-                for pk, pd_ in bs.get(side, {}).get("players", {}).items():
-                    if not pk.startswith("ID"):
-                        continue
+                for pk, pd_ in raw.get("teams", {}).get(side, {}).get("players", {}).items():
                     try:
                         mid = int(pd_["person"]["id"])
                     except Exception:
                         continue
                     bat = pd_.get("stats", {}).get("batting", {})
+                    if not bat:
+                        continue
                     sb  = int(bat.get("stolenBases", 0))
                     cs  = int(bat.get("caughtStealing", 0))
                     r   = int(bat.get("runs", 0))
                     rbi = int(bat.get("rbi", 0))
                     sb_map[(mid, int(gpk))] = [sb, cs, r, rbi]
-        total = sum(v[0] + v[1] for v in sb_map.values())
-        print(f"    {total} steal attempt(s) for {len(sb_map)} player(s)")
+        total_sb = sum(v[0] for v in sb_map.values())
+        total_cs = sum(v[1] for v in sb_map.values())
+        print(f"    {total_sb} SB / {total_cs} CS for {len(sb_map)} player(s)")
         return sb_map
     except Exception as e:
         print(f"  MLB Stats API SB warning: {e}")
