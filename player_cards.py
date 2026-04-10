@@ -252,7 +252,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var pcImgId = 'pc-headshot-' + id;
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
-      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#222">'
+      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#fff">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
@@ -408,7 +408,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:140px;height:140px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff)" onerror="this.style.display=\\x27none\\x27"/>';
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
@@ -469,13 +469,4 @@ def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
     compare_anchor = "showTab('compare'"
     if compare_anchor in html:
         idx     = html.index(compare_anchor)
-        end_btn = html.index("</button>", idx) + len("</button>")
-        btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
-        html    = html[:end_btn] + btn_html + html[end_btn:]
-
-    # Inject panel before </body>
-    html = html.replace("</body>", panel_html + "\n</body>")
-    return html
-
-
-# ── Season Pitching Leaderboard ────────────────────────────────────────────
+        end_btn = html.index("</button>", idx) + len("
