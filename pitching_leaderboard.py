@@ -137,6 +137,8 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "id":          mlbam,
                 "name":        str(row.get("PlayerName") or row.get("Name") or "").strip(),
                 "team":        team_clean,
+                "g":           g,
+                "gs":          gs,
                 "ip_f":        round(ip_val, 1),
                 "w":           _int(row.get("W", 0)),
                 "sv":          sv,
@@ -156,6 +158,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "is_sp":       is_sp,
                 "qualified":   ip_val >= (qual_sp_ip if is_sp else qual_rp_ip),
                 "xera":        fg_xera,
+                "xba":         None,
                 "chase_pct":   fg_chase,
                 "whiff_pct":   fg_whiff,
                 "barrel_pct":  fg_barrel,
@@ -164,6 +167,9 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "fb_velo":     fg_fbv,
                 "xwoba": None, "woba": None,
                 "war":   _flt(row.get("WAR"), 1),
+                "age": None, "height": None, "weight": None,
+                "bats": None, "throws": None, "pos": None,
+                "pitch_arsenal": [],
             }
             if is_sp:
                 starters_d[mlbam] = rec
@@ -189,7 +195,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                     "https://baseballsavant.mlb.com/leaderboard/custom",
                     params={"year": year, "type": "pitcher", "filter": "",
                             "sort": "4", "sortDir": "desc", "min": "1",
-                            "selections": "xera,xwoba,woba,oz_swing_percent,whiff_percent,"
+                            "selections": "xera,xba,xwoba,woba,oz_swing_percent,whiff_percent,"
                                           "brl_percent,ev95percent,avg_hit_speed",
                             "csv": "true"},
                     headers=hdrs, timeout=30)
@@ -208,6 +214,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
         if mid_col:
             col_map = {
                 "xera":              ("xera",         3),
+                "xba":               ("xba",          3),
                 "xwoba":             ("xwoba",        3),
                 "woba":              ("woba",         3),
                 "oz_swing_percent":  ("chase_pct",    1),
@@ -373,10 +380,192 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     if not fb_velo_ok:
         print("  [PLB] FB velo: all attempts failed")
 
+    # ── Step 4: Pitch arsenal (usage% + avg velo per pitch type) ──────────────
+    # Uses Savant custom leaderboard with formatted usage counts + avg speeds
+    print("  [PLB] Pitch arsenal (usage% + velo)…")
+    try:
+        _pt_prefixes = ["ff","si","fc","sl","st","sv","cu","kc","cs",
+                        "ch","fs","fo","kn","sc","fa","ep"]
+        _pt_code_map = {p: p.upper() for p in _pt_prefixes}
+        selections = ",".join(
+            [f"n_{p}_formatted" for p in _pt_prefixes] +
+            [f"{p}_avg_speed"   for p in _pt_prefixes]
+        )
+        r4 = None
+        for _attempt in range(4):
+            try:
+                r4 = requests.get(
+                    "https://baseballsavant.mlb.com/leaderboard/custom",
+                    params={"year": year, "type": "pitcher", "filter": "",
+                            "sort": "4", "sortDir": "desc", "min": "1",
+                            "selections": selections, "csv": "true"},
+                    headers=hdrs, timeout=30)
+                r4.raise_for_status()
+                break
+            except Exception as _retry_err:
+                if _attempt < 3:
+                    print(f"  [PLB] arsenal attempt {_attempt+1} failed ({_retry_err}), retrying in 5s…")
+                    time.sleep(5)
+                else:
+                    raise
+        sv4 = pd.read_csv(StringIO(r4.text))
+        mid_col = next((c for c in ["player_id","pitcher","id"] if c in sv4.columns), None)
+        matched = 0
+        if mid_col:
+            for _, row in sv4.iterrows():
+                try:
+                    mid = int(row[mid_col])
+                except (ValueError, TypeError):
+                    continue
+                if mid not in all_pitchers_d:
+                    continue
+                # Sum total pitch count for percentages
+                total = 0.0
+                pt_counts = {}
+                for p in _pt_prefixes:
+                    c_col = f"n_{p}_formatted"
+                    if c_col in sv4.columns and pd.notna(row.get(c_col)):
+                        try:
+                            c = float(row[c_col])
+                            if c > 0:
+                                pt_counts[p] = c
+                                total += c
+                        except (ValueError, TypeError):
+                            pass
+                if total <= 0:
+                    continue
+                arsenal = []
+                for p, cnt in pt_counts.items():
+                    velo = None
+                    v_col = f"{p}_avg_speed"
+                    if v_col in sv4.columns and pd.notna(row.get(v_col)):
+                        try:
+                            velo = round(float(row[v_col]), 1)
+                        except (ValueError, TypeError):
+                            pass
+                    arsenal.append({
+                        "code":  _pt_code_map[p],
+                        "usage": round(cnt / total * 100, 1),
+                        "velo":  velo,
+                    })
+                arsenal.sort(key=lambda x: x["usage"], reverse=True)
+                all_pitchers_d[mid]["pitch_arsenal"] = arsenal
+                # Fill fb_velo from arsenal if not set
+                if all_pitchers_d[mid].get("fb_velo") is None:
+                    for ars in arsenal:
+                        if ars["code"] in ("FF", "FA") and ars["velo"] is not None:
+                            all_pitchers_d[mid]["fb_velo"] = ars["velo"]
+                            break
+                    else:
+                        for ars in arsenal:
+                            if ars["code"] in ("SI", "FC") and ars["velo"] is not None:
+                                all_pitchers_d[mid]["fb_velo"] = ars["velo"]
+                                break
+                matched += 1
+        print(f"  [PLB] ✓ Pitch arsenal: {matched} pitchers")
+    except Exception as e:
+        print(f"  [PLB] Pitch arsenal failed: {e}")
+
+    # ── Step 5: MLB Stats API bio (age, height, weight, throws, pos) ──────────
+    print("  [PLB] MLB API bio data…")
+    try:
+        all_ids = list(all_pitchers_d.keys())
+        batch_size = 150
+        bio_hits = 0
+        for i in range(0, len(all_ids), batch_size):
+            chunk = all_ids[i:i+batch_size]
+            id_str = ",".join(str(x) for x in chunk)
+            bio_url = (
+                "https://statsapi.mlb.com/api/v1/people"
+                f"?personIds={id_str}"
+                "&fields=people,id,birthDate,currentAge,height,weight,"
+                "primaryPosition,abbreviation,batSide,code,pitchHand"
+            )
+            try:
+                br = requests.get(bio_url, headers=hdrs, timeout=20)
+                br.raise_for_status()
+                for person in br.json().get("people", []):
+                    try:
+                        mid = int(person.get("id", 0))
+                    except (ValueError, TypeError):
+                        continue
+                    if mid not in all_pitchers_d:
+                        continue
+                    p = all_pitchers_d[mid]
+                    p["age"]    = person.get("currentAge")
+                    p["height"] = person.get("height")
+                    p["weight"] = person.get("weight")
+                    p["bats"]   = (person.get("batSide")   or {}).get("code")
+                    p["throws"] = (person.get("pitchHand") or {}).get("code")
+                    p["pos"]    = (person.get("primaryPosition") or {}).get("abbreviation")
+                    bio_hits += 1
+            except Exception as e2:
+                print(f"  [PLB] bio chunk {i//batch_size} failed: {e2}")
+        print(f"  [PLB] ✓ bio: {bio_hits} pitchers")
+    except Exception as e:
+        print(f"  [PLB] MLB API bio failed: {e}")
+
     sp_out = sorted(starters_d.values(),  key=lambda x: (x.get("ip_f") or 0), reverse=True)
     rp_out = sorted(relievers_d.values(), key=lambda x: (-(x.get("era") or 99), x.get("ip_f") or 0), reverse=False)
     print(f"  [PLB] Done: {len(sp_out)} SP, {len(rp_out)} RP")
     return {"starters": sp_out, "relievers": rp_out}
+
+
+def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
+    """
+    Compute percentile rankings (1-100) across all pitchers for key stats.
+    Mutates pitcher dicts in place to add `pct` sub-dict.
+    """
+    if not lb_pitch_data:
+        return lb_pitch_data
+    all_p = list(lb_pitch_data.get("starters", [])) + list(lb_pitch_data.get("relievers", []))
+    if not all_p:
+        return lb_pitch_data
+
+    # Lower is better for pitchers
+    lower_better = {"xera", "xba", "xwoba", "woba", "avg_ev",
+                    "chase_pct", "hard_hit_pct", "barrel_pct", "bb_pct"}
+    stat_keys = [
+        "xera", "xba", "xwoba", "woba",
+        "fb_velo", "avg_ev",
+        "chase_pct", "whiff_pct",
+        "k_pct", "bb_pct",
+        "barrel_pct", "hard_hit_pct", "gb_pct",
+    ]
+
+    stat_vals = {}
+    for k in stat_keys:
+        vals = sorted(p[k] for p in all_p if p.get(k) is not None)
+        stat_vals[k] = vals
+
+    def _pct_rank(vals_sorted, v, invert):
+        if not vals_sorted:
+            return None
+        lo, hi = 0, len(vals_sorted)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if vals_sorted[mid] < v:
+                lo = mid + 1
+            else:
+                hi = mid
+        rank = lo
+        n = len(vals_sorted)
+        pct = round(rank / n * 100)
+        if pct < 1: pct = 1
+        if pct > 100: pct = 100
+        return (101 - pct) if invert else pct
+
+    for p in all_p:
+        pct = {}
+        for k in stat_keys:
+            v = p.get(k)
+            if v is None:
+                pct[k] = None
+            else:
+                pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+        p["pct"] = pct
+
+    return lb_pitch_data
 
 
 # ── HTML Template ──────────────────────────────────────────────────────────

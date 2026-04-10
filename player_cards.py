@@ -30,15 +30,18 @@ _TEAM_ID_MAP = {
 _TEAM_ID_MAP["ARI"] = 109
 
 
-def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
+def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
+                             lb_pitch_data: dict = None, p_dollar_map: dict = None) -> str:
     """
     Build the Player Cards tab panel HTML + JS.
-    lb_data is the list returned by fetch_season_batting_leaderboard,
-    with compute_hitter_percentiles already applied.
-    dollar_map is mlbam_id → RoS dollar value from fantasy tab.
+    lb_data is the hitter list (with compute_hitter_percentiles applied).
+    lb_pitch_data is {"starters":[...], "relievers":[...]} (with compute_pitcher_percentiles applied).
+    dollar_map / p_dollar_map are mlbam_id → RoS dollar value.
     """
     if dollar_map is None:
         dollar_map = {}
+    if p_dollar_map is None:
+        p_dollar_map = {}
     import json
 
     # ── Build compact player index for autocomplete ──────────────────────
@@ -50,9 +53,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         team = p.get("team", "")
         if not mid or not name:
             continue
-        player_index.append({"id": mid, "n": name, "t": team})
+        player_index.append({"id": mid, "n": name, "t": team, "k": "h"})
         # Compact stat payload (only what the card needs)
         player_data[str(mid)] = {
+            "type":  "h",
             "name":  name,
             "team":  team,
             "pos":   p.get("pos"),
@@ -104,6 +108,67 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
             "pct": p.get("pct", {}),
         }
 
+    # ── Add pitchers (starters + relievers combined) ─────────────────────
+    _all_pitchers = []
+    if lb_pitch_data:
+        _all_pitchers = (list(lb_pitch_data.get("starters", [])) +
+                         list(lb_pitch_data.get("relievers", [])))
+    for p in _all_pitchers:
+        mid  = p.get("id")
+        name = p.get("name", "")
+        team = p.get("team", "")
+        if not mid or not name:
+            continue
+        player_index.append({"id": mid, "n": name, "t": team, "k": "p"})
+        player_data[str(mid)] = {
+            "type":    "p",
+            "name":    name,
+            "team":    team,
+            "pos":     p.get("pos") or ("SP" if p.get("is_sp") else "RP"),
+            "bats":    p.get("bats"),
+            "throws":  p.get("throws"),
+            "age":     p.get("age"),
+            "ht":      p.get("height"),
+            "wt":      p.get("weight"),
+            "qual":    p.get("qualified", False),
+            "dv":      p_dollar_map.get(mid),
+            "war":     p.get("war"),
+            "is_sp":   p.get("is_sp", False),
+            # standard stats
+            "g":       p.get("g"),
+            "gs":      p.get("gs"),
+            "ip":      p.get("ip_f"),
+            "w":       p.get("w"),
+            "era":     p.get("era"),
+            "whip":    p.get("whip"),
+            "k":       p.get("k"),
+            "siera":   p.get("siera"),
+            "kbb":     p.get("k_bb_pct"),
+            "sv":      p.get("sv"),
+            "svo":     p.get("sv_opp"),
+            "hld":     p.get("hld"),
+            # percentile stats
+            "xera":    p.get("xera"),
+            "xba":     p.get("xba"),
+            "fbv":     p.get("fb_velo"),
+            "aev":     p.get("avg_ev"),
+            "woba":    p.get("woba"),
+            "xwoba":   p.get("xwoba"),
+            "ch":      p.get("chase_pct"),
+            "wh":      p.get("whiff_pct"),
+            "kp":      p.get("k_pct"),
+            "bbp":     p.get("bb_pct"),
+            "brl":     p.get("barrel_pct"),
+            "hh":      p.get("hard_hit_pct"),
+            "gb":      p.get("gb_pct"),
+            # arsenal + rate plus
+            "stf":     p.get("stuff_plus"),
+            "loc":     p.get("loc_plus"),
+            "ars":     p.get("pitch_arsenal", []),
+            # percentiles
+            "pct":     p.get("pct", {}),
+        }
+
     # ── Compute league leaders (among qualified hitters) ──────────────────
     _higher_better = ["r","hr","rbi","sb","avg","obp","ops",
                       "xwoba","xba","xslg","avg_ev","max_ev",
@@ -128,6 +193,29 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
                 best_ids.append(p.get("id"))
         for bid in best_ids:
             _leaders.setdefault(str(bid), []).append(sk)
+
+    # Pitcher leaders (among qualified pitchers)
+    _p_higher = ["w","k","sv","hld","whiff_pct","k_pct","gb_pct","fb_velo"]
+    _p_lower  = ["era","whip","xera","xba","xwoba","woba",
+                 "chase_pct","bb_pct","barrel_pct","hard_hit_pct","avg_ev"]
+    for sk in _p_higher + _p_lower:
+        best_val = None
+        best_ids = []
+        want_low = sk in _p_lower
+        for p in _all_pitchers:
+            if not p.get("qualified", False):
+                continue
+            v = p.get(sk)
+            if v is None:
+                continue
+            if best_val is None or (want_low and v < best_val) or (not want_low and v > best_val):
+                best_val = v
+                best_ids = [p.get("id")]
+            elif v == best_val:
+                best_ids.append(p.get("id"))
+        for bid in best_ids:
+            _leaders.setdefault(str(bid), []).append(sk)
+
     leaders_json = json.dumps(_leaders, separators=(',', ':'))
 
     idx_json  = json.dumps(player_index, separators=(',', ':'))
@@ -145,7 +233,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
 
   <!-- Search -->
   <!-- Search -->
-  <input id="pc-search" type="text" placeholder="Search hitter by name or team…"
+  <input id="pc-search" type="text" placeholder="Search hitter or pitcher by name or team…"
     autocomplete="off"
     oninput="_pcSearch(this.value)"
     style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
@@ -173,6 +261,19 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     COL:115,DET:116,HOU:117,KC:118,KCR:118,LAA:108,LAD:119,MIA:146,MIL:158,
     MIN:142,NYM:121,NYY:147,OAK:133,ATH:133,PHI:143,PIT:134,SD:135,SDP:135,SF:137,SFG:137,
     SEA:136,STL:138,TB:139,TBR:139,TEX:140,TOR:141,WSH:120,WSN:120,AZ:109
+  }};
+
+  var _PITCH_NAMES = {{
+    FF:'4-Seam',SI:'Sinker',FC:'Cutter',SL:'Slider',ST:'Sweeper',SV:'Slurve',
+    CH:'Change',FS:'Splitter',FO:'Fork',CU:'Curve',KC:'K-Curve',CS:'Slow Curve',
+    KN:'Knuckle',EP:'Eephus',FA:'Fastball',SC:'Screw'
+  }};
+  var _PITCH_COLORS = {{
+    FF:'#e74c3c',SI:'#c0392b',FA:'#e74c3c',FC:'#e67e22',
+    SL:'#f1c40f',ST:'#f39c12',SV:'#d35400',
+    CH:'#2ecc71',FS:'#27ae60',FO:'#16a085',
+    CU:'#3498db',KC:'#2980b9',CS:'#1abc9c',
+    KN:'#9b59b6',EP:'#8e44ad',SC:'#95a5a6'
   }};
 
   // ── Search ────────────────────────────────────────────────────────────────────
@@ -279,17 +380,37 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
 
     // ── Standard stats strip ──────────────────────────────────────────────
     function fmt3(v) {{ return v != null ? v.toFixed(3) : '–'; }}
+    function fmt2(v) {{ return v != null ? v.toFixed(2) : '–'; }}
+    function fmt1(v) {{ return v != null ? v.toFixed(1) : '–'; }}
     function fmtN(v) {{ return v != null ? v : '–'; }}
     var myLeaders = (d.qual && _pcLeaders[String(id)]) ? _pcLeaders[String(id)] : [];
     var leaderMap = {{}};
     myLeaders.forEach(function(k){{ leaderMap[k]=true; }});
-    var std_items = [
+    var std_items;
+    if (d.type === 'p') {{
+      var svStr = (d.sv != null && d.svo != null) ? (d.sv + '/' + d.svo) : fmtN(d.sv);
+      std_items = [
+        ['GP',    fmtN(d.g),    false],
+        ['GS',    fmtN(d.gs),   false],
+        ['IP',    fmt1(d.ip),   false],
+        ['W',     fmtN(d.w),    !!leaderMap.w],
+        ['ERA',   fmt2(d.era),  !!leaderMap.era],
+        ['WHIP',  fmt2(d.whip), !!leaderMap.whip],
+        ['K',     fmtN(d.k),    !!leaderMap.k],
+        ['SIERA', fmt2(d.siera),false],
+        ['K-BB%', (d.kbb!=null?d.kbb.toFixed(1)+'%':'–'), false],
+        ['SV/O',  svStr,        !!leaderMap.sv],
+        ['HLD',   fmtN(d.hld),  !!leaderMap.hld],
+      ];
+    }} else {{
+    std_items = [
       ['G',   fmtN(d.g),  false],  ['PA',  fmtN(d.pa), false],  ['AB',  fmtN(d.ab), false],
       ['R',   fmtN(d.r),  !!leaderMap.r],   ['HR',  fmtN(d.hr),  !!leaderMap.hr],
       ['RBI', fmtN(d.rbi),!!leaderMap.rbi],  ['SB',  fmtN(d.sb),  !!leaderMap.sb],
       ['AVG', fmt3(d.avg), !!leaderMap.avg],
       ['OBP', fmt3(d.obp), !!leaderMap.obp], ['OPS', fmt3(d.ops), !!leaderMap.ops],
     ];
+    }}
     var std_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:6px 8px;margin-bottom:10px">'
       + '<div style="font-size:.55rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:4px">2026 STATS</div>'
@@ -304,7 +425,28 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
 
     // ── Percentile bars (Savant style) ─────────────────────────────────────
     // [label, rawVal, pctVal, fmtFn, leaderKey]
-    var statRows = [
+    var f3  = function(v){{return v!=null?v.toFixed(3):null;}};
+    var fMph= function(v){{return v!=null?v.toFixed(1)+' mph':null;}};
+    var fPct= function(v){{return v!=null?v.toFixed(1)+'%':null;}};
+    var statRows;
+    if (d.type === 'p') {{
+      statRows = [
+        ['xERA',      d.xera,  d.pct.xera,   function(v){{return v!=null?v.toFixed(2):null;}},'xera'],
+        ['xBA',       d.xba,   d.pct.xba,    f3,'xba'],
+        ['FB Velo',   d.fbv,   d.pct.fb_velo,fMph,'fb_velo'],
+        ['Avg Exit Velo', d.aev, d.pct.avg_ev, fMph,'avg_ev'],
+        ['wOBA',      d.woba,  d.pct.woba,   f3,'woba'],
+        ['xwOBA',     d.xwoba, d.pct.xwoba,  f3,'xwoba'],
+        ['Chase%',    d.ch,    d.pct.chase_pct, fPct,'chase_pct'],
+        ['Whiff%',    d.wh,    d.pct.whiff_pct, fPct,'whiff_pct'],
+        ['K%',        d.kp,    d.pct.k_pct,     fPct,'k_pct'],
+        ['BB%',       d.bbp,   d.pct.bb_pct,    fPct,'bb_pct'],
+        ['Barrel%',   d.brl,   d.pct.barrel_pct,fPct,'barrel_pct'],
+        ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,fPct,'hard_hit_pct'],
+        ['GB%',       d.gb,    d.pct.gb_pct,    fPct,'gb_pct'],
+      ];
+    }} else {{
+    statRows = [
       ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}},'xwoba'],
       ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}},'xba'],
       ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}},'xslg'],
@@ -321,6 +463,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}},'bb_pct'],
       ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}},'sprint_speed'],
     ];
+    }}
 
     function pctColor(p) {{
       // Vibrant: 1=deep blue #1e3fba → 50=grey #888 → 100=vibrant red #e02020
@@ -374,20 +517,61 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
         + '</div>';
     }}
 
+    var _pctHdr = (d.type === 'p')
+      ? 'Percentile rank among all pitchers'
+      : 'Percentile rank among all hitters';
+    var _profHdr = (d.type === 'p') ? 'PITCHING PROFILE' : 'STATCAST PROFILE';
     var bars_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;'
       + 'padding:10px 12px 4px;margin-bottom:10px">'
       + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;'
-      + 'margin-bottom:8px">STATCAST PROFILE'
-      + '<span style="float:right;font-weight:400;color:#555">Percentile rank among all hitters</span></div>'
+      + 'margin-bottom:8px">' + _profHdr
+      + '<span style="float:right;font-weight:400;color:#555">' + _pctHdr + '</span></div>'
       + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3],r[4]);}}).join('')
       + '</div>';
 
-    // ── Batted ball section ───────────────────────────────────────────────
+    // ── Bottom section: batted ball (hitters) OR pitch arsenal (pitchers) ─
     function fmtPct(v) {{ return v != null ? v.toFixed(1)+'%' : '–'; }}
     function fmtDeg(v) {{ return v != null ? v.toFixed(1)+'°' : '–'; }}
     var bb_html = '';
-    if (d.pull!=null || d.gb!=null) {{
+    if (d.type === 'p') {{
+      var ars = d.ars || [];
+      var arsRows = '';
+      if (ars.length) {{
+        arsRows = ars.map(function(pt){{
+          var col = _PITCH_COLORS[pt.code] || '#95a5a6';
+          var nm  = _PITCH_NAMES[pt.code] || pt.code;
+          var veloStr = pt.velo != null ? pt.velo.toFixed(1) + ' mph' : '–';
+          var usageStr = pt.usage != null ? pt.usage.toFixed(1) + '%' : '–';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0">'
+            + '<div style="width:8px;height:8px;border-radius:4px;background:' + col + ';flex-shrink:0"></div>'
+            + '<div style="min-width:78px;font-size:.72rem;font-weight:700;color:#ddd">' + nm + '</div>'
+            + '<div style="flex:1;font-size:.68rem;color:#aaa">' + pt.code + '</div>'
+            + '<div style="font-size:.72rem;color:#ccc;min-width:54px;text-align:right">' + usageStr + '</div>'
+            + '<div style="font-size:.72rem;color:#ccc;min-width:70px;text-align:right">' + veloStr + '</div>'
+            + '</div>';
+        }}).join('');
+      }} else {{
+        arsRows = '<div style="font-size:.72rem;color:#666;text-align:center;padding:6px">No arsenal data</div>';
+      }}
+      var stfStr = d.stf != null ? d.stf : '–';
+      var locStr = d.loc != null ? d.loc : '–';
+      var stfCol = (d.stf != null && d.stf >= 100) ? '#4caf50' : (d.stf != null && d.stf < 95 ? '#e66' : '#ddd');
+      var locCol = (d.loc != null && d.loc >= 100) ? '#4caf50' : (d.loc != null && d.loc < 95 ? '#e66' : '#ddd');
+      bb_html =
+        '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em">PITCH ARSENAL</div>'
+        + '<div style="display:flex;gap:12px">'
+        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + stfCol + '">' + stfStr + '</div><div style="font-size:.52rem;color:#888;letter-spacing:.04em">STUFF+</div></div>'
+        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + locCol + '">' + locStr + '</div><div style="font-size:.52rem;color:#888;letter-spacing:.04em">LOC+</div></div>'
+        + '</div></div>'
+        + '<div style="display:flex;justify-content:space-between;font-size:.52rem;color:#666;letter-spacing:.04em;padding:0 0 3px;border-bottom:1px solid #222;margin-bottom:2px">'
+        +   '<span>PITCH</span><span style="margin-left:auto;margin-right:54px">USAGE</span><span>VELO</span>'
+        + '</div>'
+        + arsRows
+        + '</div>';
+    }} else if (d.pull!=null || d.gb!=null) {{
       var bbItems = [
         ['Pull%',fmtPct(d.pull)],['Center%',fmtPct(d.cent)],['Oppo%',fmtPct(d.oppo)],
         ['LA°',fmtDeg(d.la)],
@@ -423,13 +607,15 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     return inner
 
 
-def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None) -> str:
+def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
+                            lb_pitch_data: dict = None) -> str:
     """Inject Player Cards tab button and panel into the dashboard HTML."""
     if not lb_data:
         return html
 
-    # Build mlbam → dollar value lookup from fantasy hitter data
+    # Build mlbam → dollar value lookups
     _dollar_map = {}
+    _p_dollar_map = {}
     if fantasy_data:
         for entry in fantasy_data.get("fut_h", []):
             pl = entry.get("player", {})
@@ -437,6 +623,14 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None)
             if mlbam:
                 try:
                     _dollar_map[int(mlbam)] = entry.get("dollar", 0)
+                except (ValueError, TypeError):
+                    pass
+        for entry in fantasy_data.get("fut_p", []):
+            pl = entry.get("player", {})
+            mlbam = pl.get("mlbam")
+            if mlbam:
+                try:
+                    _p_dollar_map[int(mlbam)] = entry.get("dollar", 0)
                 except (ValueError, TypeError):
                     pass
 
@@ -456,7 +650,9 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None)
             end_btn = html.index("</button>", idx) + len("</button>")
             html    = html[:end_btn] + btn_html + html[end_btn:]
 
-    panel_html = render_player_cards_tab(lb_data, _dollar_map)
+    panel_html = render_player_cards_tab(lb_data, _dollar_map,
+                                          lb_pitch_data=lb_pitch_data,
+                                          p_dollar_map=_p_dollar_map)
     html       = html.replace("</body>", panel_html + "\n</body>")
     return html
 

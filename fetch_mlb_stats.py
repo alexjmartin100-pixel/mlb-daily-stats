@@ -129,8 +129,10 @@ def main():
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data)
     lb_data = compute_hitter_percentiles(lb_data)
+    lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
     html = inject_fantasy_tab(html, fantasy_data)
-    html = inject_player_cards_tab(html, lb_data, fantasy_data)
+    html = inject_player_cards_tab(html, lb_data, fantasy_data,
+                                    lb_pitch_data=lb_pitch_data)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
