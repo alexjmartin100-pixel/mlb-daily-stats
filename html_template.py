@@ -955,6 +955,15 @@ const TEAM_COLORS = {
   SF:['#FD5A1E','#fff'],  STL:['#C41E3A','#fff'], TB:['#092C5C','#fff'],
   TEX:['#003278','#fff'], TOR:['#134A8E','#fff'], WSH:['#AB0003','#fff'],
 };
+// Aliases for alternate abbreviations
+TEAM_COLORS.CHW=TEAM_COLORS.CWS;
+TEAM_COLORS.KCR=TEAM_COLORS.KC;
+TEAM_COLORS.TBR=TEAM_COLORS.TB;
+TEAM_COLORS.ANA=TEAM_COLORS.LAA;
+TEAM_COLORS.FLA=TEAM_COLORS.MIA;
+TEAM_COLORS.MON=TEAM_COLORS.WSH;
+TEAM_COLORS.WSN=TEAM_COLORS.WSH;
+TEAM_COLORS.ATH=['#003831','#EFB21E'];
 const tm = t => {
   const tc = TEAM_COLORS[t];
   if(tc) return `<span class="tm" style="background:${tc[0]};color:${tc[1]};border-color:${tc[0]}44">${t}</span>`;
@@ -2325,7 +2334,7 @@ function _renderRosterList(){
     el.innerHTML=players.map(p=>{
       const on=TA_ROSTER_NORMS.has(taNorm(p.name));
       const safe=encodeURIComponent(p.name);
-      const badge=p.team?`<span style="font-size:.68rem;color:var(--muted);margin-left:5px">${p.team}</span>`:'';
+      const badge=p.team?`<span style="margin-left:5px">${tm(p.team)}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
         <span>${p.name}${badge}</span>
         <button onclick="_togglePlayer(decodeURIComponent('${safe}'),${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
