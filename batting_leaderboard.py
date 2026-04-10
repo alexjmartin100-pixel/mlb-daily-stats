@@ -219,17 +219,28 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     # ── Step 3: Savant xwOBA / xBA / xSLG / Chase% / Whiff% / Launch Angle ─
     print("  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA…")
     try:
-        r3 = requests.get(
-            "https://baseballsavant.mlb.com/leaderboard/custom",
-            params={"year": year, "type": "batter", "filter": "",
-                    "sort": "4", "sortDir": "desc", "min": "1",
-                    "selections": ("xwoba,xba,xslg,"
-                                   "estimated_ba_using_speedangle,"
-                                   "estimated_slg_using_speedangle,"
-                                   "launch_angle_avg,"
-                                   "oz_swing_percent,whiff_percent"),
-                    "csv": "true"},
-            headers=hdrs, timeout=30)
+        r3 = None
+        for _attempt in range(4):
+            try:
+                r3 = requests.get(
+                    "https://baseballsavant.mlb.com/leaderboard/custom",
+                    params={"year": year, "type": "batter", "filter": "",
+                            "sort": "4", "sortDir": "desc", "min": "1",
+                            "selections": ("xwoba,xba,xslg,"
+                                           "estimated_ba_using_speedangle,"
+                                           "estimated_slg_using_speedangle,"
+                                           "launch_angle_avg,"
+                                           "oz_swing_percent,whiff_percent"),
+                            "csv": "true"},
+                    headers=hdrs, timeout=30)
+                r3.raise_for_status()
+                break
+            except Exception as _retry_err:
+                if _attempt < 3:
+                    print(f"  [LB] Savant step3 attempt {_attempt+1} failed ({_retry_err}), retrying in 5s…")
+                    time.sleep(5)
+                else:
+                    raise
         r3.raise_for_status()
         sv3 = pd.read_csv(StringIO(r3.text))
         mid_col3 = next((c for c in ["player_id", "batter"] if c in sv3.columns), None)

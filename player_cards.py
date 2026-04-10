@@ -265,7 +265,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
       +   warBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
-      +     (typeof tm==="function"?tm(d.team):'<span style="font-size:.78rem;font-weight:700;color:#ccc">'+(d.team||'\\u2013')+'</span>')
+      +     tm(d.team)
       +     '<span style="color:#888">·</span>'
       +     '<span style="font-size:.74rem;color:#eee">' + pos + '</span>'
       +     '<span style="color:#888">·</span>'

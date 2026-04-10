@@ -234,14 +234,25 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     # ── Step 2: Savant pitcher stats (xERA, xwOBA, wOBA, Chase%, Whiff%, Barrel%, Hard Hit%, Avg EV) ──
     print("  [PLB] Savant pitcher stats…")
     try:
-        r2 = requests.get(
-            "https://baseballsavant.mlb.com/leaderboard/custom",
-            params={"year": year, "type": "pitcher", "filter": "",
-                    "sort": "4", "sortDir": "desc", "min": "1",
-                    "selections": "xera,xwoba,woba,oz_swing_percent,whiff_percent,"
-                                  "brl_percent,ev95percent,avg_hit_speed",
-                    "csv": "true"},
-            headers=hdrs, timeout=30)
+        r2 = None
+        for _attempt in range(4):
+            try:
+                r2 = requests.get(
+                    "https://baseballsavant.mlb.com/leaderboard/custom",
+                    params={"year": year, "type": "pitcher", "filter": "",
+                            "sort": "4", "sortDir": "desc", "min": "1",
+                            "selections": "xera,xwoba,woba,oz_swing_percent,whiff_percent,"
+                                          "brl_percent,ev95percent,avg_hit_speed",
+                            "csv": "true"},
+                    headers=hdrs, timeout=30)
+                r2.raise_for_status()
+                break
+            except Exception as _retry_err:
+                if _attempt < 3:
+                    print(f"  [PLB] Savant step2 attempt {_attempt+1} failed ({_retry_err}), retrying in 5s…")
+                    time.sleep(5)
+                else:
+                    raise
         r2.raise_for_status()
         sv2 = pd.read_csv(StringIO(r2.text))
         mid_col = next((c for c in ["player_id", "pitcher", "mlbam_id", "id"] if c in sv2.columns), None)
@@ -362,13 +373,24 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     # Attempt 2: Savant custom leaderboard with fastball speed selections
     if not fb_velo_ok:
         try:
-            r3b = requests.get(
-                "https://baseballsavant.mlb.com/leaderboard/custom",
-                params={"year": year, "type": "pitcher", "filter": "",
-                        "sort": "4", "sortDir": "desc", "min": "1",
-                        "selections": "n_ff_formatted,n_si_formatted,ff_avg_speed,si_avg_speed,fc_avg_speed",
-                        "csv": "true"},
-                headers=hdrs, timeout=30)
+            r3b = None
+            for _attempt in range(4):
+                try:
+                    r3b = requests.get(
+                        "https://baseballsavant.mlb.com/leaderboard/custom",
+                        params={"year": year, "type": "pitcher", "filter": "",
+                                "sort": "4", "sortDir": "desc", "min": "1",
+                                "selections": "n_ff_formatted,n_si_formatted,ff_avg_speed,si_avg_speed,fc_avg_speed",
+                                "csv": "true"},
+                        headers=hdrs, timeout=30)
+                    r3b.raise_for_status()
+                    break
+                except Exception as _retry_err:
+                    if _attempt < 3:
+                        print(f"  [PLB] custom-fb-velo attempt {_attempt+1} failed ({_retry_err}), retrying in 5s…")
+                        time.sleep(5)
+                    else:
+                        raise
             r3b.raise_for_status()
             sv3b = pd.read_csv(StringIO(r3b.text))
             mid_col = next((c for c in ["player_id","pitcher","id"] if c in sv3b.columns), None)
