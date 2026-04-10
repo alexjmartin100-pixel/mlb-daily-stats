@@ -76,7 +76,7 @@ def fetch_season_batting_leaderboard(year: int) -> list:
             players[mlbam] = {
                 "id":      mlbam,
                 "name":    str(row.get("PlayerName") or row.get("Name") or "").strip(),
-                "team":    str(row.get("Team") or row.get("TeamName") or "").strip(),
+                "team":    str(row.get("TeamNameAbb") or row.get("TeamName") or row.get("Team") or "").strip(),
                 "g":       _int(row.get("G", 0)),
                 "pa":      pa,
                 "ab":      _int(row.get("AB", 0)),

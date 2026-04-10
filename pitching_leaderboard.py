@@ -45,76 +45,32 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
         except (ValueError, TypeError):
             return None
 
-    # ── Step 1: FanGraphs pitching stats ──────────────────────────────────────
-    print("  [PLB] FanGraphs pitching stats…")
+    # ── Step 1: FanGraphs pitching stats (JSON API) ────────────────────────────
+    # Uses the FG JSON API directly — pybaseball's legacy HTML scraper returns 403.
+    print("  [PLB] FanGraphs pitching stats (JSON API)…")
     qual_sp_ip = 10.0
     qual_rp_ip = 3.0
     try:
-        fg = pybaseball.pitching_stats(year, qual=1)
-        # Build FG playerid → MLBAM via Chadwick register
-        fg_to_mlbam = {}
-        try:
-            chad = pybaseball.chadwick_register()
-            for _, cr in chad.iterrows():
-                fgk = cr.get("key_fangraphs")
-                mk  = cr.get("key_mlbam")
-                if pd.notna(fgk) and pd.notna(mk):
-                    try:
-                        fg_to_mlbam[int(fgk)] = int(mk)
-                    except (ValueError, TypeError):
-                        pass
-        except Exception as e2:
-            print(f"  [PLB] Chadwick register failed: {e2}")
+        fg_rows = fg_api({
+            "pos": "all", "stats": "pit", "lg": "all", "qual": "1",
+            "season": year, "season1": year,
+            "month": "0", "team": "0",
+            "pageitems": "2000", "pagenum": "1", "ind": "0",
+            "type": "8",
+        }, "pitching leaderboard")
+        if not fg_rows:
+            raise ValueError("FG API returned no rows")
 
-        # Supplement Chadwick with xMLBAMID from FanGraphs DataFrame directly
-        # (handles new/recently-promoted pitchers not yet in the Chadwick register)
-        if "xMLBAMID" in fg.columns:
-            _pre = len(fg_to_mlbam)
-            for _, cr in fg.iterrows():
-                try:
-                    fgk = int(float(cr.get("playerid") or cr.get("IDfg") or 0))
-                    mid = int(float(cr.get("xMLBAMID") or 0))
-                    if fgk > 0 and mid > 0:
-                        fg_to_mlbam.setdefault(fgk, mid)
-                except (ValueError, TypeError):
-                    pass
-            print(f"  [PLB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after xMLBAMID supplement)")
-        else:
-            # xMLBAMID not in pybaseball DataFrame — call FG API directly (type=8 = Stuff+ leaderboard)
-            try:
-                xmap_rows = fg_api({
-                    "pos": "all", "stats": "pit", "lg": "all", "qual": "0",
-                    "season": year, "season1": year,
-                    "month": "0", "team": "0",
-                    "pageitems": "2000", "pagenum": "1", "ind": "0",
-                    "type": "8",
-                }, "pitcher xMLBAMID map")
-                _pre = len(fg_to_mlbam)
-                for r2 in (xmap_rows or []):
-                    try:
-                        fgk = int(float(r2.get("playerid") or 0))
-                        mid = int(float(r2.get("xMLBAMID") or 0))
-                        if fgk > 0 and mid > 0:
-                            fg_to_mlbam.setdefault(fgk, mid)
-                    except (ValueError, TypeError):
-                        pass
-                print(f"  [PLB] fg_to_mlbam: {_pre} (Chadwick) → {len(fg_to_mlbam)} (after FG API xMLBAMID)")
-            except Exception as e3:
-                print(f"  [PLB] FG API xMLBAMID supplement failed: {e3}")
-
-        max_g = int(fg["G"].max()) if "G" in fg.columns and not fg.empty else 1
+        max_g = max((_int(r.get("G")) for r in fg_rows), default=1)
         qual_sp_ip = max(3.0, round(max_g * 1.0, 1))
         qual_rp_ip = max(1.0, round(max_g * 0.5, 1))
 
-        for _, row in fg.iterrows():
+        for row in fg_rows:
             try:
-                fg_id = int(row.get("playerid") or row.get("IDfg") or 0)
+                mlbam = int(float(row.get("xMLBAMID") or 0))
             except (ValueError, TypeError):
                 continue
-            if fg_id == 0:
-                continue
-            mlbam = fg_to_mlbam.get(fg_id)
-            if mlbam is None:
+            if mlbam == 0:
                 continue
 
             try:
@@ -130,53 +86,47 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
 
             is_sp = gs > 0 and (gs / max(g, 1)) >= 0.5
 
-            # Try to get Stuff+ / Loc+ from FG columns
+            # Stuff+ / Location+ from FG JSON API
             stuff_plus = None
             loc_plus   = None
-            for sc in ["Stuff+", "stuff_plus", "StuffPlus", "Stf+"]:
-                if sc in fg.columns and pd.notna(row.get(sc)):
+            for sc in ["sp_stuff", "Stuff+", "stuff_plus", "StuffPlus"]:
+                v = row.get(sc)
+                if v is not None:
                     try:
-                        stuff_plus = int(round(float(row[sc])))
+                        stuff_plus = int(round(float(v)))
                     except (ValueError, TypeError):
                         pass
                     break
-            for lc in ["Location+", "location_plus", "Loc+", "LocationPlus"]:
-                if lc in fg.columns and pd.notna(row.get(lc)):
+            for lc in ["sp_location", "Location+", "location_plus", "Loc+"]:
+                v = row.get(lc)
+                if v is not None:
                     try:
-                        loc_plus = int(round(float(row[lc])))
+                        loc_plus = int(round(float(v)))
                     except (ValueError, TypeError):
                         pass
                     break
 
-            try:
-                sv = int(float(row.get("SV", 0) or 0))
-            except (ValueError, TypeError):
-                sv = 0
-            try:
-                bs = int(float(row.get("BS", 0) or 0))
-            except (ValueError, TypeError):
-                bs = 0
-            try:
-                hld = int(float(row.get("HLD", 0) or 0))
-            except (ValueError, TypeError):
-                hld = 0
+            sv  = _int(row.get("SV", 0))
+            bs  = _int(row.get("BS", 0))
+            hld = _int(row.get("HLD", 0))
             gm_li = _flt(row.get("gmLI") or row.get("gmLi"), 2)
 
-            # FanGraphs also carries O-Swing%, SwStr%, Swing%, xERA,
-            # Barrel%, HardHit%, EV, FBv — use as baseline; Savant overwrites later
+            # Use TeamNameAbb (clean) instead of Team (contains HTML)
+            team_raw = str(row.get("TeamNameAbb") or row.get("TeamName") or row.get("Team") or "").strip()
+            import re
+            team_clean = re.sub(r'<[^>]+>', '', team_raw).strip()
+
             fg_chase   = _pct(row.get("O-Swing%"))
             fg_xera    = _flt(row.get("xERA"), 3)
             fg_barrel  = _pct(row.get("Barrel%"))
             fg_hh      = _pct(row.get("HardHit%"))
             fg_ev      = _flt(row.get("EV"), 1)
             fg_fbv     = _flt(row.get("FBv"), 1)
-            # Whiff% (per swing) = SwStr% / Swing% — different from SwStr% alone
             fg_whiff   = None
             try:
                 swstr = float(str(row.get("SwStr%", "")).replace("%",""))
                 swing = float(str(row.get("Swing%", "")).replace("%",""))
                 if swing > 0:
-                    # Convert both to fractions if they look like percents (>1.5)
                     if swstr > 1.5: swstr /= 100
                     if swing > 1.5: swing /= 100
                     fg_whiff = round(swstr / swing * 100, 1)
@@ -185,8 +135,8 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
 
             rec = {
                 "id":          mlbam,
-                "name":        str(row.get("Name", "")).strip(),
-                "team":        str(row.get("Team", "")).strip(),
+                "name":        str(row.get("PlayerName") or row.get("Name") or "").strip(),
+                "team":        team_clean,
                 "ip_f":        round(ip_val, 1),
                 "w":           _int(row.get("W", 0)),
                 "sv":          sv,
@@ -205,7 +155,6 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "gb_pct":      _pct(row.get("GB%")),
                 "is_sp":       is_sp,
                 "qualified":   ip_val >= (qual_sp_ip if is_sp else qual_rp_ip),
-                # FanGraphs baseline (Savant will overwrite where available)
                 "xera":        fg_xera,
                 "chase_pct":   fg_chase,
                 "whiff_pct":   fg_whiff,
@@ -213,7 +162,6 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "hard_hit_pct":fg_hh,
                 "avg_ev":      fg_ev,
                 "fb_velo":     fg_fbv,
-                # Savant-only (no FG equivalent)
                 "xwoba": None, "woba": None,
                 "war":   _flt(row.get("WAR"), 1),
             }
