@@ -217,7 +217,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 9, 2026</strong>
       &nbsp;·&nbsp; 6 game(s)
-      &nbsp;·&nbsp; Updated Apr 10, 2026 2:10 PM
+      &nbsp;·&nbsp; Updated Apr 10, 2026 2:26 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -837,7 +837,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 2:10 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 2:26 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2985,7 +2985,7 @@ function _tradeCalc() {
     var pcImgId = 'pc-headshot-' + id;
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
-      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#222">'
+      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#fff">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.parentElement.style.display=\x27none\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
@@ -3141,7 +3141,7 @@ function _tradeCalc() {
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:140px;height:140px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff)" onerror="this.style.display=\x27none\x27"/>';
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\x27none\x27"/>';
     }
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
