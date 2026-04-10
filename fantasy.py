@@ -403,6 +403,7 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                     "SO_p":   _ps("SO"),
                     "SV_p":   _ps("SV"),
                     "HLD_p":  _ps("HLD"),
+                    "IP_p":   _ps("IP"),   # for ERA/WHIP weighting in z-score calc
                     # Structural (not displayed)
                     "_ip":  _avg_field("IP"),   # SP/RP classification
                 }
@@ -424,6 +425,7 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                     "SB_p":  _ps("SB"),
                     "SO_p":  _ps("SO"),
                     "OBP_p": _ps("OBP"),
+                    "PA_p":  _ps("PA"),    # for OBP weighting in z-score calc
                 }
 
             result.append({
@@ -558,6 +560,200 @@ def _merge_players(ytd_list: list, fut_list: list, is_pitcher: bool) -> list:
 
     rows.sort(key=lambda x: x["sort"], reverse=True)
     return rows
+
+
+# ── ESPN Season Projections rendering ─────────────────────────────────────
+# Looks for an ESPN bookmarklet snapshot in the working directory, runs the
+# lineup optimizer + z-score pipeline, and returns standings HTML for the new
+# Season Projections sub-tab. Returns a placeholder block if the snapshot is
+# missing or the parser/optimizer can't be imported.
+ESPN_ROSTER_FILES = ["espn_rosters.json"]   # search order
+PROJ_TEAM_CAT_ORDER = ["R", "HR", "RBI", "SO_h", "SB", "OBP",
+                       "W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
+PROJ_CAT_LABELS = {
+    "R": "R", "HR": "HR", "RBI": "RBI", "SO_h": "K", "SB": "SB", "OBP": "OBP",
+    "W": "W", "SO_p": "K", "SV": "SV", "HLD": "HLD", "ERA": "ERA", "WHIP": "WHIP",
+}
+PROJ_LOWER_BETTER = {"SO_h", "ERA", "WHIP"}
+
+
+def _proj_placeholder(msg: str) -> str:
+    return (
+        '<div style="padding:30px 22px;color:var(--muted);font-size:.86rem;'
+        'background:#181818;border:1px dashed #444;border-radius:8px;'
+        'max-width:760px;margin:18px auto;text-align:center;line-height:1.55">'
+        f'{msg}</div>'
+    )
+
+
+def _fmt_proj_stat(cat: str, v) -> str:
+    """Format a stat value for the standings table."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if cat == "OBP":
+        return f"{f:.3f}"
+    if cat in ("ERA", "WHIP"):
+        return f"{f:.2f}"
+    return str(int(round(f)))
+
+
+def _proj_rank_color(rank: int, n: int) -> str:
+    """Gold #1, gradient red→white→blue from worst→best (matches main fantasy)."""
+    if n <= 1:
+        return "#fff"
+    if rank == 1:
+        return "#f0c040"
+    # t = 0 (best non-#1) → 1 (worst): we want 0 → blueish, 1 → red
+    # Inverted: rank 1 best, rank n worst. Use rank/n.
+    t = (rank - 1) / max(1, n - 1)
+    if t < 0.5:
+        s = t * 2
+        r = round(60  + (235 - 60)  * s)
+        g = round(140 + (235 - 140) * s)
+        b = round(255 + (235 - 255) * s)
+    else:
+        s = (t - 0.5) * 2
+        r = round(235 + (255 - 235) * s)
+        g = round(235 + (60  - 235) * s)
+        b = round(235 + (50  - 235) * s)
+    return f"rgb({r},{g},{b})"
+
+
+def _render_season_projections(fdata: dict) -> str:
+    """
+    Load ESPN snapshot, run optimizer + z-scores, return standings HTML.
+
+    Returns an instructional placeholder if the snapshot file is missing or
+    the optimizer chain isn't importable.
+    """
+    # Locate ESPN snapshot file
+    snap_path = None
+    base = os.path.dirname(os.path.abspath(__file__))
+    for fn in ESPN_ROSTER_FILES:
+        candidate = os.path.join(base, fn)
+        if os.path.exists(candidate):
+            snap_path = candidate
+            break
+    if snap_path is None:
+        return _proj_placeholder(
+            "<strong style='color:#ddd'>Season Projections not yet available.</strong><br><br>"
+            "Run the ESPN Roster Sync bookmarklet to download an "
+            "<code>espn_rosters.json</code> snapshot, then drop it into the project "
+            "folder and rebuild.<br>"
+            "See <code>espn_bookmarklet.html</code> for setup instructions."
+        )
+
+    try:
+        from parse_espn_rosters import parse_league
+        from lineup_optimizer import build_season_projections
+    except Exception as e:
+        return _proj_placeholder(
+            f"Season Projections module failed to import: <code>{e}</code>"
+        )
+
+    try:
+        parsed = parse_league(snap_path, fdata, verbose=False)
+        team_rows = build_season_projections(parsed, verbose=False)
+    except Exception as e:
+        return _proj_placeholder(
+            f"Season Projections build failed: <code>{e}</code>"
+        )
+
+    if not team_rows:
+        return _proj_placeholder("ESPN snapshot loaded but no teams found.")
+
+    # ── Build the standings table ──
+    n_teams = len(team_rows)
+    league_id = parsed.get("league_id") or "?"
+    fetched_at = parsed.get("fetched_at") or ""
+
+    head_cells = ['<th style="text-align:left;padding:8px 10px;font-size:.7rem">#</th>',
+                  '<th style="text-align:left;padding:8px 10px;font-size:.72rem">Team</th>']
+
+    # Hitter section header (R..OBP) then pitcher section header (W..WHIP)
+    h_sub = ["R", "HR", "RBI", "SO_h", "SB", "OBP"]
+    p_sub = ["W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
+    for c in h_sub + p_sub:
+        head_cells.append(
+            f'<th style="text-align:center;padding:8px 6px;font-size:.7rem;'
+            f'white-space:nowrap">{PROJ_CAT_LABELS[c]}</th>'
+        )
+    head_cells.append('<th style="text-align:center;padding:8px 10px;font-size:.7rem">Z&nbsp;Total</th>')
+
+    section_hdr = (
+        '<tr style="background:#161616;color:var(--muted);font-size:.62rem;'
+        'text-transform:uppercase;letter-spacing:.05em">'
+        '<td colspan="2" style="padding:4px 10px;text-align:right">cats:</td>'
+        '<td colspan="6" style="padding:4px 6px;text-align:center;'
+        'border-left:1px solid #2a2a2a">Hitters</td>'
+        '<td colspan="6" style="padding:4px 6px;text-align:center;'
+        'border-left:1px solid #2a2a2a">Pitchers</td>'
+        '<td style="border-left:1px solid #2a2a2a"></td>'
+        '</tr>'
+    )
+
+    body_rows = []
+    for row in team_rows:
+        rt = row["rank_total"]
+        cells = [
+            f'<td style="padding:8px 10px;font-weight:700;color:#aaa">{rt}</td>',
+            f'<td style="padding:8px 10px;font-weight:600;color:#ddd;'
+            f'white-space:nowrap">{row["name"]}</td>',
+        ]
+        first_pitcher = True
+        for c in h_sub + p_sub:
+            border = ""
+            if c == "W" and first_pitcher:
+                border = "border-left:1px solid #2a2a2a;"
+                first_pitcher = False
+            stat_str = _fmt_proj_stat(c, row["stats"][c])
+            rank = row["rank"][c]
+            color = _proj_rank_color(rank, n_teams)
+            cells.append(
+                f'<td style="text-align:center;padding:6px 6px;{border}">'
+                f'<div style="font-size:.82rem;font-weight:700;color:{color};'
+                f'line-height:1.1">{stat_str}</div>'
+                f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+                f'margin-top:1px">#{rank}</div>'
+                f'</td>'
+            )
+        zt = row["z_total"]
+        zt_col = "#4caf50" if zt > 0 else ("#e05555" if zt < 0 else "#aaa")
+        zt_str = f"{zt:+.2f}"
+        cells.append(
+            f'<td style="text-align:center;padding:8px 10px;font-weight:700;'
+            f'color:{zt_col};font-size:.85rem;border-left:1px solid #2a2a2a">'
+            f'{zt_str}</td>'
+        )
+        body_rows.append('<tr style="border-bottom:1px solid #1f1f1f">' + "".join(cells) + '</tr>')
+
+    table_html = (
+        '<div style="overflow-x:auto;padding:0 12px 18px">'
+        '<table class="stats-table" style="width:100%;border-collapse:collapse;'
+        'background:#0e0e0e;border-radius:8px">'
+        '<thead style="background:#1a1a1a">'
+        + section_hdr
+        + '<tr>' + "".join(head_cells) + '</tr>'
+        '</thead>'
+        '<tbody>' + "".join(body_rows) + '</tbody>'
+        '</table>'
+        '</div>'
+    )
+
+    fetched_str = fetched_at[:10] if fetched_at else "unknown"
+    legend = (
+        f'<div style="padding:6px 22px 12px;color:var(--muted);font-size:.74rem">'
+        f'League {league_id} &nbsp;&bull;&nbsp; Snapshot {fetched_str} '
+        f'&nbsp;&bull;&nbsp; Hitter starting 11 chosen by '
+        f'<strong>FG&nbsp;$ × position eligibility</strong> '
+        f'(C, 1B, 2B, 3B, SS, 3OF, MI, CI, UTIL); all rostered pitchers count. '
+        f'Z-scores computed across {n_teams} teams. K/ERA/WHIP are lower-is-better.'
+        f'</div>'
+    )
+
+    return legend + table_html
 
 
 def render_fantasy_tab(fdata: dict) -> str:
@@ -720,6 +916,12 @@ def render_fantasy_tab(fdata: dict) -> str:
     _trade_h_json = _json.dumps(_trade_h)
     _trade_p_json = _json.dumps(_trade_p)
 
+    # ── ESPN Season Projections sub-tab ────────────────────────────────────
+    # Loads the bookmarklet-exported roster snapshot (if present), runs the
+    # lineup optimizer + z-score pipeline, and renders the standings HTML.
+    # Falls back to an instructional placeholder if the JSON isn't there yet.
+    proj_html = _render_season_projections(fdata)
+
     inner = f"""
 <div id="fantasy-panel" class="tab-panel">
   <div style="padding:18px 20px 6px">
@@ -745,6 +947,11 @@ def render_fantasy_tab(fdata: dict) -> str:
               onclick="fantSwitch('trade')"
               style="padding:8px 18px">
         &#x1F4B1; Trade Machine
+      </button>
+      <button id="fant-proj-btn" class="tab-btn"
+              onclick="fantSwitch('proj')"
+              style="padding:8px 18px">
+        &#x1F4CA; Season Projections
       </button>
     </div>
   </div>
@@ -859,13 +1066,20 @@ def render_fantasy_tab(fdata: dict) -> str:
   </div>
 </div>
 
+<!-- ══ SEASON PROJECTIONS ══ -->
+<div id="fant-proj-wrap" style="display:none">
+  {proj_html}
+</div>
+
 <script>
 /* ── Hitter / Pitcher main toggle ────────────────────────────────── */
 function fantSwitch(which) {{
   document.getElementById('fant-h-wrap').style.display     = which==='h'     ? '' : 'none';
   document.getElementById('fant-p-wrap').style.display     = which==='p'     ? '' : 'none';
   document.getElementById('fant-trade-wrap').style.display = which==='trade' ? '' : 'none';
-  ['h','p','trade'].forEach(function(w) {{
+  var pw = document.getElementById('fant-proj-wrap');
+  if (pw) pw.style.display = which==='proj' ? '' : 'none';
+  ['h','p','trade','proj'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     if (!btn) return;
     var on = (w === which);

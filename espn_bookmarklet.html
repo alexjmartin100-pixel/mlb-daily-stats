@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ESPN Roster Sync &mdash; Bookmarklet</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+         max-width: 740px; margin: 40px auto; padding: 0 22px; color: #222; line-height: 1.55; }
+  h1 { color: #c8102e; margin-bottom: 4px; }
+  h2 { color: #444; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+  .bm-wrap { background: #f7f7f7; border: 2px dashed #aaa; padding: 28px;
+             text-align: center; border-radius: 10px; margin: 26px 0; }
+  .bm-link { display: inline-block; background: #c8102e; color: #fff;
+             padding: 14px 28px; border-radius: 6px; text-decoration: none;
+             font-weight: 700; font-size: 1.1rem; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  .bm-link:hover { background: #a00d24; }
+  .bm-hint { margin-top: 14px; color: #666; font-size: .85rem; }
+  .step { background: #fafafa; border-left: 4px solid #c8102e;
+          padding: 11px 16px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .step strong { color: #c8102e; }
+  code { background: #efefef; padding: 2px 6px; border-radius: 3px;
+         font-size: .9em; font-family: "SF Mono", Consolas, monospace; }
+  details { margin-top: 28px; background: #fafafa; padding: 12px 16px; border-radius: 6px; }
+  summary { cursor: pointer; font-weight: 600; }
+  pre { background: #1e1e1e; color: #eee; padding: 14px; border-radius: 6px;
+        overflow-x: auto; font-size: .78em; line-height: 1.45;
+        white-space: pre-wrap; word-break: break-all; }
+  .note { background: #fffbe6; border-left: 4px solid #d4a017;
+          padding: 11px 16px; margin: 16px 0; border-radius: 0 4px 4px 0; font-size: .92em; }
+</style>
+</head>
+<body>
+
+<h1>ESPN Roster Sync</h1>
+<p>One-click roster pull from your ESPN fantasy baseball league. Runs inside your already-logged-in browser tab, so there's no auth flow to defeat &mdash; ESPN sees a normal request from your real session.</p>
+
+<div class="bm-wrap">
+  <a class="bm-link" href="javascript:(async()=>{try{var u=new URL(location.href);var leagueId=u.searchParams.get('leagueId')||(u.pathname.match(/leagues?\/(\d+)/)||[])[1];if(!leagueId){alert('Open your ESPN fantasy baseball league page first, then click this bookmarklet.');return;}var seasonId=u.searchParams.get('seasonId')||String(new Date().getFullYear());var ep='https://lm-api-reads.fantasy.espn.com/apis/v3/games/flb/seasons/'+seasonId+'/segments/0/leagues/'+leagueId+'?view=mRoster&amp;view=mTeam&amp;view=mSettings';var r=await fetch(ep,{credentials:'include'});if(!r.ok){alert('ESPN API returned '+r.status+' '+r.statusText);return;}var j=await r.json();var out={fetchedAt:new Date().toISOString(),leagueId:leagueId,seasonId:seasonId,raw:j};var blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='espn_rosters_'+leagueId+'_'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},200);}catch(e){alert('Bookmarklet error: '+e.message);}})();">&#x1F4E5; ESPN Roster Sync</a>
+  <p class="bm-hint">&uarr; Drag this red button up to your bookmarks bar</p>
+</div>
+
+<h2>Install</h2>
+<div class="step"><strong>1.</strong> Make sure your bookmarks bar is visible in Chrome. If not, press <code>Ctrl+Shift+B</code>.</div>
+<div class="step"><strong>2.</strong> Click and drag the red <strong>&#x1F4E5; ESPN Roster Sync</strong> button above onto your bookmarks bar. Release to drop it. You should see it appear there as a new bookmark.</div>
+<div class="step"><strong>3.</strong> If dragging doesn't work in your browser, use the &ldquo;Manual install&rdquo; section at the bottom of this page.</div>
+
+<h2>Use</h2>
+<div class="step"><strong>1.</strong> Open <code>fantasy.espn.com</code> in Chrome and log in if needed.</div>
+<div class="step"><strong>2.</strong> Navigate to your league. Any page where the URL contains <code>leagueId=...</code> will work &mdash; the league home, standings, your team, etc.</div>
+<div class="step"><strong>3.</strong> Click the <strong>&#x1F4E5; ESPN Roster Sync</strong> bookmark in your bookmarks bar.</div>
+<div class="step"><strong>4.</strong> A file named <code>espn_rosters_{leagueId}_{date}.json</code> will download to your Downloads folder.</div>
+<div class="step"><strong>5.</strong> Send that JSON file back to me &mdash; I'll use it as the source schema to write the parser against your actual league data.</div>
+
+<div class="note">
+<strong>First-run note:</strong> If the bookmarklet pops up an alert with a 401 or 403, it means your ESPN session has expired in that tab. Refresh the league page (or click any link on it) to reactivate the session, then click the bookmarklet again. This is the same thing that would happen if you just sat on the page idle for an hour.
+</div>
+
+<h2>What it does</h2>
+<p>The bookmarklet calls ESPN's fantasy API endpoint at <code>lm-api-reads.fantasy.espn.com</code> with three views: <code>mRoster</code> (every team's full roster including players, position eligibility, and IL status), <code>mTeam</code> (team names, owners, abbreviations), and <code>mSettings</code> (league lineup configuration including the position slot definitions). It auto-detects the league ID from your current URL and the season from either the URL or the current calendar year.</p>
+
+<p>The downloaded JSON wraps ESPN's raw response with a <code>fetchedAt</code> ISO timestamp plus the <code>leagueId</code> and <code>seasonId</code> for traceability. Nothing is modified, filtered, or interpreted &mdash; it's the raw API payload, which is what I want for Phase 1 so I can write the parser against your league's actual schema instead of guessing at field names.</p>
+
+<details>
+<summary>Manual install (if drag-and-drop doesn't work)</summary>
+<p style="margin-top:10px">Right-click your bookmarks bar &rarr; <strong>Add page&hellip;</strong> &rarr; set the <strong>Name</strong> to <code>&#x1F4E5; ESPN Roster Sync</code> and paste the entire string below into the <strong>URL</strong> field:</p>
+<pre>javascript:(async()=&gt;{try{var u=new URL(location.href);var leagueId=u.searchParams.get('leagueId')||(u.pathname.match(/leagues?\/(\d+)/)||[])[1];if(!leagueId){alert('Open your ESPN fantasy baseball league page first, then click this bookmarklet.');return;}var seasonId=u.searchParams.get('seasonId')||String(new Date().getFullYear());var ep='https://lm-api-reads.fantasy.espn.com/apis/v3/games/flb/seasons/'+seasonId+'/segments/0/leagues/'+leagueId+'?view=mRoster&amp;view=mTeam&amp;view=mSettings';var r=await fetch(ep,{credentials:'include'});if(!r.ok){alert('ESPN API returned '+r.status+' '+r.statusText);return;}var j=await r.json();var out={fetchedAt:new Date().toISOString(),leagueId:leagueId,seasonId:seasonId,raw:j};var blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='espn_rosters_'+leagueId+'_'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href);},200);}catch(e){alert('Bookmarklet error: '+e.message);}})();</pre>
+</details>
+
+</body>
+</html>
