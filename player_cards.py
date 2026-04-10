@@ -197,14 +197,17 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     # Pitcher leaders — computed SEPARATELY within SP and RP subgroups, so
     # the best starter and the best reliever in each category both get gold.
     # NOTE: chase% is higher-better for pitchers.
-    _p_higher = ["w","k","sv","hld","whiff_pct","k_pct","gb_pct","fb_velo",
-                 "chase_pct","k_bb_pct","stuff_plus","loc_plus"]
+    # SV/HLD are excluded from the SP pool — starting pitchers should never
+    # get gold on SV or HLD regardless of whether they happen to lead SPs.
+    _p_higher_sp = ["w","k","whiff_pct","k_pct","gb_pct","fb_velo",
+                    "chase_pct","k_bb_pct","stuff_plus","loc_plus"]
+    _p_higher_rp = _p_higher_sp + ["sv","hld"]
     _p_lower  = ["era","whip","xera","xba","xwoba","woba","siera",
                  "bb_pct","barrel_pct","hard_hit_pct","avg_ev"]
     _sp_list = [p for p in _all_pitchers if p.get("is_sp", False)]
     _rp_list = [p for p in _all_pitchers if not p.get("is_sp", False)]
-    for _pool in (_sp_list, _rp_list):
-        for sk in _p_higher + _p_lower:
+    for _pool, _higher in ((_sp_list, _p_higher_sp), (_rp_list, _p_higher_rp)):
+        for sk in _higher + _p_lower:
             best_val = None
             best_ids = []
             want_low = sk in _p_lower
@@ -395,6 +398,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var std_items;
     if (d.type === 'p') {{
       var svStr = (d.sv != null && d.svo != null) ? (d.sv + '/' + d.svo) : fmtN(d.sv);
+      // For starting pitchers, SV/HLD are not meaningful — never highlight gold.
+      var isSP = d.is_sp === true;
       std_items = [
         ['GP',    fmtN(d.g),    false],
         ['GS',    fmtN(d.gs),   false],
@@ -405,8 +410,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         ['K',     fmtN(d.k),    !!leaderMap.k],
         ['SIERA', fmt2(d.siera),!!leaderMap.siera],
         ['K-BB%', (d.kbb!=null?d.kbb.toFixed(1)+'%':'–'), !!leaderMap.k_bb_pct],
-        ['SV/O',  svStr,        !!leaderMap.sv],
-        ['HLD',   fmtN(d.hld),  !!leaderMap.hld],
+        ['SV/O',  svStr,        isSP ? false : !!leaderMap.sv],
+        ['HLD',   fmtN(d.hld),  isSP ? false : !!leaderMap.hld],
       ];
     }} else {{
     std_items = [

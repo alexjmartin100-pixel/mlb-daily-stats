@@ -196,7 +196,8 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                     params={"year": year, "type": "pitcher", "filter": "",
                             "sort": "4", "sortDir": "desc", "min": "1",
                             "selections": "xera,xba,xwoba,woba,oz_swing_percent,whiff_percent,"
-                                          "brl_percent,ev95percent,avg_hit_speed",
+                                          "brl_percent,ev95percent,avg_hit_speed,"
+                                          "groundballs_percent",
                             "csv": "true"},
                     headers=hdrs, timeout=30)
                 r2.raise_for_status()
@@ -222,6 +223,7 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
                 "brl_percent":       ("barrel_pct",   1),
                 "ev95percent":       ("hard_hit_pct", 1),
                 "avg_hit_speed":     ("avg_ev",       1),
+                "groundballs_percent": ("gb_pct",     1),
             }
             matched = 0
             for _, row in sv2.iterrows():
@@ -564,17 +566,91 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     return {"starters": sp_out, "relievers": rp_out}
 
 
+def _fetch_savant_pitcher_pop(year: int) -> dict:
+    """
+    Scrape one Savant pitcher player page (Tarik Skubal, 669373) and extract
+    population avg_metric / stddev_metric for each slider metric. These match
+    the exact values Savant uses to compute player-page slider percentiles.
+    Returns {metric_name: (avg, std, n)}.
+    """
+    import re
+    try:
+        r = requests.get(
+            "https://baseballsavant.mlb.com/savant-player/tarik-skubal-669373",
+            params={"stats": "statcast-r-pitching-mlb"},
+            headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+        r.raise_for_status()
+        body = r.text
+        pattern = re.compile(
+            r'"metric":"([^"]+)","avg_metric":([-\d\.eE]+),"stddev_metric":([-\d\.eE]+),"n":"?(\d+)"?')
+        out = {}
+        for m in pattern.finditer(body):
+            name = m.group(1)
+            try:
+                avg = float(m.group(2))
+                std = float(m.group(3))
+                n   = int(m.group(4))
+                if std > 0:
+                    out[name] = (avg, std, n)
+            except (ValueError, TypeError):
+                continue
+        if out:
+            print(f"  [PLB] ✓ Savant pitcher pop params: {len(out)} metrics")
+        return out
+    except Exception as e:
+        print(f"  [PLB] Savant pitcher pop param fetch failed: {e}")
+        return {}
+
+
+# Hardcoded fallback population params (extracted from Savant player page
+# ~early April 2026, n≈340 qualified). Used if live scrape fails.
+_PITCHER_POP_FALLBACK = {
+    "xera":                (3.916,   0.8744, 340),
+    "xba":                 (0.242,   0.0284, 340),
+    "xwoba":               (0.305,   0.0320, 340),
+    "woba":                (0.307,   0.0373, 340),
+    "exit_velocity_avg":   (88.052,  1.3177, 340),
+    "oz_swing_percent":    (29.658,  3.5213, 340),
+    "whiff_percent":       (23.277,  5.1749, 340),
+    "k_percent":           (20.882,  5.7073, 340),
+    "bb_percent":          (7.534,   2.1333, 340),
+    "hard_hit_percent":    (32.751,  4.1380, 340),
+    "barrel_batted_rate":  (5.163,   1.6955, 340),
+    "groundballs_percent": (47.118,  7.8245, 340),
+    "fastball_velo":       (92.631,  2.7135, 340),
+}
+
+# Map Savant population-param metric names → our internal pitcher stat keys
+_PITCHER_POP_KEY_MAP = {
+    "xera":                "xera",
+    "xba":                 "xba",
+    "xwoba":               "xwoba",
+    "woba":                "woba",
+    "exit_velocity_avg":   "avg_ev",
+    "oz_swing_percent":    "chase_pct",
+    "whiff_percent":       "whiff_pct",
+    "k_percent":           "k_pct",
+    "bb_percent":          "bb_pct",
+    "hard_hit_percent":    "hard_hit_pct",
+    "barrel_batted_rate":  "barrel_pct",
+    "groundballs_percent": "gb_pct",
+    "fastball_velo":       "fb_velo",
+}
+
+
 def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
     """
-    Use pre-fetched Baseball Savant percentile rankings (1-100 scale) for
-    pitchers. For stats not in Savant's bulk CSV (gb_pct, siera, k_bb_pct,
-    woba, stuff_plus, loc_plus), fall back to z-score based percentiles
-    computed from the qualified-player distribution (matches Savant's
-    player-page methodology).
+    Compute pitcher percentiles that match Baseball Savant's player-page
+    sliders exactly, by using population (avg_metric, stddev_metric) scraped
+    from Savant's embedded JSON and running value through normal CDF.
+
+    For stats not in Savant pop params (siera, k_bb_pct, stuff_plus, loc_plus),
+    fall back to z-score over the qualified-player pool.
 
     stuff_plus and loc_plus are computed separately within the SP group and
     within the RP group — so a reliever's Stuff+ percentile ranks against
-    other relievers, not starters.
+    other relievers, not starters. This SP/RP split is kept intentionally
+    per user preference.
     """
     import math
     if not lb_pitch_data:
@@ -596,13 +672,24 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
         "barrel_pct", "hard_hit_pct", "gb_pct",
         "siera",
     ]
-    # Stats that get split SP/RP percentile pools
+    # Stats that get split SP/RP percentile pools (Stuff+/Loc+ only)
     sp_rp_split_keys = ["stuff_plus", "loc_plus"]
+
+    # Try live Savant pop params, fall back to hardcoded
+    live = _fetch_savant_pitcher_pop(2026)
+    merged = dict(_PITCHER_POP_FALLBACK)
+    merged.update(live)
+
+    # Convert to internal key space
+    pop_savant = {}
+    for sv_name, p_key in _PITCHER_POP_KEY_MAP.items():
+        if sv_name in merged:
+            avg, std, _n = merged[sv_name]
+            pop_savant[p_key] = (avg, std)
 
     def _build_pop(pool, keys):
         stats = {}
         qual_pool = [p for p in pool if p.get("qualified", False)]
-        # If no qualified subset (small group), fall back to full pool
         if len(qual_pool) < 5:
             qual_pool = pool
         for k in keys:
@@ -616,7 +703,13 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
                 stats[k] = (None, None)
         return stats
 
-    pop_all = _build_pop(all_p, stat_keys)
+    # For stats with no Savant pop params, compute from qualified pool
+    missing = [k for k in stat_keys if k not in pop_savant]
+    pop_fallback = _build_pop(all_p, missing)
+    pop_all = dict(pop_savant)
+    pop_all.update(pop_fallback)
+
+    # SP/RP split pools for Stuff+/Loc+
     pop_sp  = _build_pop(starters,  sp_rp_split_keys)
     pop_rp  = _build_pop(relievers, sp_rp_split_keys)
 
@@ -635,18 +728,14 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
         return (100 - p) if invert else p
 
     for p in all_p:
-        savant_pct = p.get("_savant_pct", {}) or {}
         pct = {}
         for k in stat_keys:
-            if k in savant_pct:
-                pct[k] = savant_pct[k]
+            v = p.get(k)
+            if v is None:
+                pct[k] = None
             else:
-                v = p.get(k)
-                if v is None:
-                    pct[k] = None
-                else:
-                    pct[k] = _zscore_pct(pop_all, k, v, k in lower_better)
-        # Stuff+ / Loc+ split by SP vs RP
+                pct[k] = _zscore_pct(pop_all, k, v, k in lower_better)
+        # Stuff+ / Loc+ split by SP vs RP (kept intentionally per user)
         is_sp = p.get("is_sp", False)
         split_pop = pop_sp if is_sp else pop_rp
         for k in sp_rp_split_keys:
