@@ -252,7 +252,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     var pcImgId = 'pc-headshot-' + id;
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
-      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#fff">'
+      + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:#d6d6d6">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
@@ -408,7 +408,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None) -> str:
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:6px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
+      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:13px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
