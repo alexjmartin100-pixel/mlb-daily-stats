@@ -482,90 +482,12 @@ def fetch_season_batting_leaderboard(year: int) -> list:
 
 
 
-def _fetch_savant_hitter_pop(year: int) -> dict:
-    """
-    Scrape one Savant batter player page (Aaron Judge, 592450) and extract
-    population avg_metric / stddev_metric for each slider metric. These match
-    the exact values Savant uses to compute player-page slider percentiles.
-    Returns {metric_name: (avg, std, n)}.
-    """
-    import re
-    try:
-        r = requests.get(
-            "https://baseballsavant.mlb.com/savant-player/aaron-judge-592450",
-            params={"stats": "statcast-r-hitting-mlb"},
-            headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
-        r.raise_for_status()
-        body = r.text
-        pattern = re.compile(
-            r'"metric":"([^"]+)","avg_metric":([-\d\.eE]+),"stddev_metric":([-\d\.eE]+),"n":"?(\d+)"?')
-        out = {}
-        for m in pattern.finditer(body):
-            name = m.group(1)
-            try:
-                avg = float(m.group(2))
-                std = float(m.group(3))
-                n   = int(m.group(4))
-                if std > 0:
-                    out[name] = (avg, std, n)
-            except (ValueError, TypeError):
-                continue
-        if out:
-            print(f"  [LB] ✓ Savant hitter pop params: {len(out)} metrics")
-        return out
-    except Exception as e:
-        print(f"  [LB] Savant hitter pop param fetch failed: {e}")
-        return {}
-
-
-# Hardcoded fallback population params (extracted from Savant player page
-# ~early April 2026, n≈250 qualified). Used if live scrape fails.
-_HITTER_POP_FALLBACK = {
-    "xwoba":                (0.319,  0.0372, 250),
-    "xba":                  (0.254,  0.0235, 250),
-    "xslg":                 (0.406,  0.0675, 250),
-    "exit_velocity_avg":    (88.545, 2.0845, 250),
-    "exit_velocity_max":    (103.480,9.8993, 250),
-    "barrel_batted_rate":   (5.646,  3.6578, 250),
-    "hard_hit_percent":     (34.522, 8.0640, 250),
-    "sweet_spot_percent":   (32.291, 3.8334, 250),
-    "avg_swing_speed":      (72.014, 2.7310, 250),
-    "squared_up_swing":     (25.066, 5.1728, 250),
-    "oz_swing_percent":     (29.547, 5.6480, 250),
-    "whiff_percent":        (21.675, 6.0315, 250),
-    "k_percent":            (18.961, 5.6368, 250),
-    "bb_percent":           (7.783,  3.0066, 250),
-    "sprint_speed":         (26.542, 1.8571, 250),
-}
-
-# Map Savant population-param metric names → our internal player stat keys
-_HITTER_POP_KEY_MAP = {
-    "xwoba":              "xwoba",
-    "xba":                "xba",
-    "xslg":               "xslg",
-    "exit_velocity_avg":  "avg_ev",
-    "exit_velocity_max":  "max_ev",
-    "barrel_batted_rate": "barrel_pct",
-    "hard_hit_percent":   "hard_hit_pct",
-    "sweet_spot_percent": "sweet_spot_pct",
-    "avg_swing_speed":    "bat_speed",
-    "squared_up_swing":   "squared_up_pct",
-    "oz_swing_percent":   "chase_pct",
-    "whiff_percent":      "whiff_pct",
-    "k_percent":          "k_pct",
-    "bb_percent":         "bb_pct",
-    "sprint_speed":       "sprint_speed",
-}
-
-
 def compute_hitter_percentiles(players: list) -> list:
     """
-    Compute hitter percentiles that match Baseball Savant's player-page sliders
-    exactly, by using population (avg_metric, stddev_metric) scraped from
-    Savant's embedded JSON and running value through normal CDF (z-score).
-
-    For stats with no Savant population params (e.g. launch_angle_avg), fall
-    back to computing mean/std over the qualified-player pool.
+    Use pre-fetched Baseball Savant percentile rankings (1-100 scale) when
+    available. For stats not in Savant's bulk percentile-rankings CSV
+    (e.g. sweet_spot_pct), compute z-score based percentiles from the
+    qualified-player distribution (matches Savant's player-page methodology).
     """
     import math
 
@@ -578,26 +500,11 @@ def compute_hitter_percentiles(players: list) -> list:
         "sprint_speed", "launch_angle_avg",
     ]
 
-    # Try live Savant population params, fall back to hardcoded values.
-    # Use year from first player if available, otherwise skip.
-    live = _fetch_savant_hitter_pop(2026)
-    pop_raw = live if live else _HITTER_POP_FALLBACK
-    # Merge: prefer live, fall back to hardcoded per-metric
-    merged = dict(_HITTER_POP_FALLBACK)
-    merged.update(live)
-
-    # Convert to internal key space
-    pop_stats = {}
-    for sv_name, p_key in _HITTER_POP_KEY_MAP.items():
-        if sv_name in merged:
-            avg, std, _n = merged[sv_name]
-            pop_stats[p_key] = (avg, std)
-
-    # For stats not in Savant pop, build from qualified pool as fallback
+    # Build population mean/stddev from qualified players only (matches Savant).
+    # This mirrors what Savant does on a player's page: z-score → normal CDF.
     qualified = [p for p in players if p.get("qualified", False)]
+    pop_stats = {}
     for k in stat_keys:
-        if k in pop_stats:
-            continue
         vals = [p[k] for p in qualified if p.get(k) is not None]
         if len(vals) >= 2:
             mean = sum(vals) / len(vals)
@@ -622,13 +529,18 @@ def compute_hitter_percentiles(players: list) -> list:
         return (100 - p) if invert else p
 
     for p in players:
+        savant_pct = p.get("_savant_pct", {})
         pct = {}
         for k in stat_keys:
-            v = p.get(k)
-            if v is None:
-                pct[k] = None
+            # Prefer Savant's pre-computed percentile (bulk CSV) when present
+            if k in savant_pct:
+                pct[k] = savant_pct[k]
             else:
-                pct[k] = _zscore_pct(k, v, k in lower_better)
+                v = p.get(k)
+                if v is None:
+                    pct[k] = None
+                else:
+                    pct[k] = _zscore_pct(k, v, k in lower_better)
         p["pct"] = pct
 
     return players

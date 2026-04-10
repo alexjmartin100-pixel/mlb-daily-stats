@@ -398,7 +398,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var std_items;
     if (d.type === 'p') {{
       var svStr = (d.sv != null && d.svo != null) ? (d.sv + '/' + d.svo) : fmtN(d.sv);
-      // For starting pitchers, SV/HLD are not meaningful — never highlight gold.
+      // Starting pitchers never get gold on SV/HLD (not meaningful for SPs).
       var isSP = d.is_sp === true;
       std_items = [
         ['GP',    fmtN(d.g),    false],
