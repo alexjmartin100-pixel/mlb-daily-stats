@@ -505,6 +505,57 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
     except Exception as e:
         print(f"  [PLB] MLB API bio failed: {e}")
 
+    # ── Step 6: Savant percentile rankings (pre-computed by Baseball Savant) ──
+    # Mirrors the hitter path in batting_leaderboard.py — prefers Savant's
+    # pre-computed percentiles so player cards match the Savant player page.
+    print("  [PLB] Savant percentile rankings (pitcher)…")
+    _savant_pctile_map = {}
+    try:
+        rp_ = requests.get(
+            "https://baseballsavant.mlb.com/leaderboard/percentile-rankings",
+            params={"type": "pitcher", "year": year, "csv": "true"},
+            headers=hdrs, timeout=30)
+        rp_.raise_for_status()
+        pct_df = pd.read_csv(StringIO(rp_.text))
+        print(f"  [PLB] Savant pitcher pct cols: {list(pct_df.columns[:20])}")
+        # Savant column → our internal pitcher stat key
+        _savant_col_map = {
+            "xwoba":            "xwoba",
+            "xba":              "xba",
+            "xera":              "xera",
+            "exit_velocity":    "avg_ev",
+            "brl_percent":      "barrel_pct",
+            "hard_hit_percent": "hard_hit_pct",
+            "k_percent":        "k_pct",
+            "bb_percent":       "bb_pct",
+            "whiff_percent":    "whiff_pct",
+            "chase_percent":    "chase_pct",
+            "gb_percent":       "gb_pct",
+            "fb_velocity":      "fb_velo",
+        }
+        pid_col = "player_id"
+        for _, row in pct_df.iterrows():
+            try:
+                mid = int(row[pid_col])
+            except (ValueError, TypeError):
+                continue
+            pmap = {}
+            for sv_col, p_key in _savant_col_map.items():
+                try:
+                    v = row.get(sv_col)
+                    if pd.notna(v):
+                        pmap[p_key] = int(round(float(v)))
+                except (ValueError, TypeError):
+                    pass
+            _savant_pctile_map[mid] = pmap
+        print(f"  [PLB] ✓ Savant pitcher percentiles: {len(_savant_pctile_map)} players")
+    except Exception as e:
+        print(f"  [PLB] Savant pitcher percentile rankings failed: {e}")
+
+    # Attach Savant percentiles to pitchers
+    for mid, p in all_pitchers_d.items():
+        p["_savant_pct"] = _savant_pctile_map.get(mid, {})
+
     sp_out = sorted(starters_d.values(),  key=lambda x: (x.get("ip_f") or 0), reverse=True)
     rp_out = sorted(relievers_d.values(), key=lambda x: (-(x.get("era") or 99), x.get("ip_f") or 0), reverse=False)
     print(f"  [PLB] Done: {len(sp_out)} SP, {len(rp_out)} RP")
@@ -513,8 +564,9 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
 
 def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
     """
-    Compute percentile rankings (1-100) across all pitchers for key stats.
-    Mutates pitcher dicts in place to add `pct` sub-dict.
+    Use pre-fetched Baseball Savant percentile rankings (1-100 scale) for
+    pitchers, mirroring compute_hitter_percentiles. Falls back to
+    self-computed percentiles only for stats Savant doesn't cover.
     """
     if not lb_pitch_data:
         return lb_pitch_data
@@ -522,9 +574,11 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
     if not all_p:
         return lb_pitch_data
 
-    # Lower is better for pitchers
+    # Lower is better for pitchers (self-computed fallback only; Savant's
+    # pre-computed rankings already have the right polarity).
+    # NOTE: chase% is higher-better for pitchers.
     lower_better = {"xera", "xba", "xwoba", "woba", "avg_ev",
-                    "chase_pct", "hard_hit_pct", "barrel_pct", "bb_pct"}
+                    "hard_hit_pct", "barrel_pct", "bb_pct"}
     stat_keys = [
         "xera", "xba", "xwoba", "woba",
         "fb_velo", "avg_ev",
@@ -556,13 +610,18 @@ def compute_pitcher_percentiles(lb_pitch_data: dict) -> dict:
         return (101 - pct) if invert else pct
 
     for p in all_p:
+        savant_pct = p.get("_savant_pct", {}) or {}
         pct = {}
         for k in stat_keys:
-            v = p.get(k)
-            if v is None:
-                pct[k] = None
+            # Prefer Savant's pre-computed percentile (matches the Savant player page)
+            if k in savant_pct:
+                pct[k] = savant_pct[k]
             else:
-                pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
+                v = p.get(k)
+                if v is None:
+                    pct[k] = None
+                else:
+                    pct[k] = _pct_rank(stat_vals[k], v, k in lower_better)
         p["pct"] = pct
 
     return lb_pitch_data

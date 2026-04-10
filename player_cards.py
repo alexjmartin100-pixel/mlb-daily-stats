@@ -195,9 +195,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             _leaders.setdefault(str(bid), []).append(sk)
 
     # Pitcher leaders (among qualified pitchers)
-    _p_higher = ["w","k","sv","hld","whiff_pct","k_pct","gb_pct","fb_velo"]
-    _p_lower  = ["era","whip","xera","xba","xwoba","woba",
-                 "chase_pct","bb_pct","barrel_pct","hard_hit_pct","avg_ev"]
+    # NOTE: chase% is higher-better for pitchers; siera/k_bb_pct included;
+    # stuff_plus/loc_plus included for arsenal header gold highlight
+    _p_higher = ["w","k","sv","hld","whiff_pct","k_pct","gb_pct","fb_velo",
+                 "chase_pct","k_bb_pct","stuff_plus","loc_plus"]
+    _p_lower  = ["era","whip","xera","xba","xwoba","woba","siera",
+                 "bb_pct","barrel_pct","hard_hit_pct","avg_ev"]
     for sk in _p_higher + _p_lower:
         best_val = None
         best_ids = []
@@ -397,8 +400,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         ['ERA',   fmt2(d.era),  !!leaderMap.era],
         ['WHIP',  fmt2(d.whip), !!leaderMap.whip],
         ['K',     fmtN(d.k),    !!leaderMap.k],
-        ['SIERA', fmt2(d.siera),false],
-        ['K-BB%', (d.kbb!=null?d.kbb.toFixed(1)+'%':'–'), false],
+        ['SIERA', fmt2(d.siera),!!leaderMap.siera],
+        ['K-BB%', (d.kbb!=null?d.kbb.toFixed(1)+'%':'–'), !!leaderMap.k_bb_pct],
         ['SV/O',  svStr,        !!leaderMap.sv],
         ['HLD',   fmtN(d.hld),  !!leaderMap.hld],
       ];
@@ -556,15 +559,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       }}
       var stfStr = d.stf != null ? d.stf : '–';
       var locStr = d.loc != null ? d.loc : '–';
-      var stfCol = (d.stf != null && d.stf >= 100) ? '#4caf50' : (d.stf != null && d.stf < 95 ? '#e66' : '#ddd');
-      var locCol = (d.loc != null && d.loc >= 100) ? '#4caf50' : (d.loc != null && d.loc < 95 ? '#e66' : '#ddd');
+      var stfIsGold = !!leaderMap.stuff_plus;
+      var locIsGold = !!leaderMap.loc_plus;
+      var stfCol = stfIsGold ? '#f0c040'
+                  : (d.stf != null && d.stf >= 100) ? '#4caf50'
+                  : (d.stf != null && d.stf < 95 ? '#e66' : '#ddd');
+      var locCol = locIsGold ? '#f0c040'
+                  : (d.loc != null && d.loc >= 100) ? '#4caf50'
+                  : (d.loc != null && d.loc < 95 ? '#e66' : '#ddd');
+      var stfLblCol = stfIsGold ? '#b8982e' : '#888';
+      var locLblCol = locIsGold ? '#b8982e' : '#888';
       bb_html =
         '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:8px 12px;margin-bottom:10px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
         + '<div style="font-size:.6rem;font-weight:700;color:#999;letter-spacing:.06em">PITCH ARSENAL</div>'
         + '<div style="display:flex;gap:12px">'
-        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + stfCol + '">' + stfStr + '</div><div style="font-size:.52rem;color:#888;letter-spacing:.04em">STUFF+</div></div>'
-        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + locCol + '">' + locStr + '</div><div style="font-size:.52rem;color:#888;letter-spacing:.04em">LOC+</div></div>'
+        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + stfCol + '">' + stfStr + '</div><div style="font-size:.52rem;color:' + stfLblCol + ';letter-spacing:.04em">STUFF+</div></div>'
+        +   '<div style="text-align:center"><div style="font-size:.82rem;font-weight:800;color:' + locCol + '">' + locStr + '</div><div style="font-size:.52rem;color:' + locLblCol + ';letter-spacing:.04em">LOC+</div></div>'
         + '</div></div>'
         + '<div style="display:flex;justify-content:space-between;font-size:.52rem;color:#666;letter-spacing:.04em;padding:0 0 3px;border-bottom:1px solid #222;margin-bottom:2px">'
         +   '<span>PITCH</span><span style="margin-left:auto;margin-right:54px">USAGE</span><span>VELO</span>'
