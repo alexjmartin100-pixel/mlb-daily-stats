@@ -600,24 +600,26 @@ def _fmt_proj_stat(cat: str, v) -> str:
 
 
 def _proj_rank_color(rank: int, n: int) -> str:
-    """Gold #1, gradient red→white→blue from worst→best (matches main fantasy)."""
+    """Gold #1, then gradient red (best non-#1) → white (mid) → blue (worst).
+    Matches the main fantasy table convention (red=high, blue=low)."""
     if n <= 1:
         return "#fff"
     if rank == 1:
         return "#f0c040"
-    # t = 0 (best non-#1) → 1 (worst): we want 0 → blueish, 1 → red
-    # Inverted: rank 1 best, rank n worst. Use rank/n.
-    t = (rank - 1) / max(1, n - 1)
+    # t in [0, 1]: 0 = best non-#1 (rank 2), 1 = worst (rank n)
+    t = (rank - 2) / max(1, n - 2)
     if t < 0.5:
+        # Red → white
         s = t * 2
-        r = round(60  + (235 - 60)  * s)
-        g = round(140 + (235 - 140) * s)
-        b = round(255 + (235 - 255) * s)
+        r = round(255 + (235 - 255) * s)
+        g = round(60  + (235 - 60)  * s)
+        b = round(50  + (235 - 50)  * s)
     else:
+        # White → blue
         s = (t - 0.5) * 2
-        r = round(235 + (255 - 235) * s)
-        g = round(235 + (60  - 235) * s)
-        b = round(235 + (50  - 235) * s)
+        r = round(235 + (60  - 235) * s)
+        g = round(235 + (140 - 235) * s)
+        b = round(235 + (255 - 235) * s)
     return f"rgb({r},{g},{b})"
 
 
@@ -669,30 +671,63 @@ def _render_season_projections(fdata: dict) -> str:
     league_id = parsed.get("league_id") or "?"
     fetched_at = parsed.get("fetched_at") or ""
 
+    h_sub = ["R", "HR", "RBI", "SO_h", "SB", "OBP"]
+    p_sub = ["W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
+
+    # ── Compute hitter / pitcher z-subtotals per team and their ranks ──
+    for t in team_rows:
+        t["z_hit"] = round(sum(t["z"][c] for c in h_sub), 3)
+        t["z_pit"] = round(sum(t["z"][c] for c in p_sub), 3)
+    for sub_key in ("z_hit", "z_pit"):
+        order = sorted(team_rows, key=lambda x: x[sub_key], reverse=True)
+        rank_key = "rank_hit" if sub_key == "z_hit" else "rank_pit"
+        for i, t in enumerate(order, start=1):
+            t[rank_key] = i
+
     head_cells = ['<th style="text-align:left;padding:8px 10px;font-size:.7rem">#</th>',
                   '<th style="text-align:left;padding:8px 10px;font-size:.72rem">Team</th>']
 
-    # Hitter section header (R..OBP) then pitcher section header (W..WHIP)
-    h_sub = ["R", "HR", "RBI", "SO_h", "SB", "OBP"]
-    p_sub = ["W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
-    for c in h_sub + p_sub:
+    # Hitter cats (R..OBP) → H Z subtotal → Pitcher cats (W..WHIP) → P Z subtotal → Z Total
+    for c in h_sub:
         head_cells.append(
             f'<th style="text-align:center;padding:8px 6px;font-size:.7rem;'
             f'white-space:nowrap">{PROJ_CAT_LABELS[c]}</th>'
         )
-    head_cells.append('<th style="text-align:center;padding:8px 10px;font-size:.7rem">Z&nbsp;Total</th>')
+    head_cells.append('<th style="text-align:center;padding:8px 8px;font-size:.7rem;'
+                      'border-left:1px solid #2a2a2a">H&nbsp;Z</th>')
+    for c in p_sub:
+        head_cells.append(
+            f'<th style="text-align:center;padding:8px 6px;font-size:.7rem;'
+            f'white-space:nowrap">{PROJ_CAT_LABELS[c]}</th>'
+        )
+    head_cells.append('<th style="text-align:center;padding:8px 8px;font-size:.7rem;'
+                      'border-left:1px solid #2a2a2a">P&nbsp;Z</th>')
+    head_cells.append('<th style="text-align:center;padding:8px 10px;font-size:.7rem;'
+                      'border-left:1px solid #2a2a2a">Z&nbsp;Total</th>')
 
     section_hdr = (
         '<tr style="background:#161616;color:var(--muted);font-size:.62rem;'
         'text-transform:uppercase;letter-spacing:.05em">'
         '<td colspan="2" style="padding:4px 10px;text-align:right">cats:</td>'
-        '<td colspan="6" style="padding:4px 6px;text-align:center;'
+        '<td colspan="7" style="padding:4px 6px;text-align:center;'
         'border-left:1px solid #2a2a2a">Hitters</td>'
-        '<td colspan="6" style="padding:4px 6px;text-align:center;'
+        '<td colspan="7" style="padding:4px 6px;text-align:center;'
         'border-left:1px solid #2a2a2a">Pitchers</td>'
         '<td style="border-left:1px solid #2a2a2a"></td>'
         '</tr>'
     )
+
+    def _subtotal_cell(z_val, rank):
+        color = _proj_rank_color(rank, n_teams)
+        return (
+            f'<td style="text-align:center;padding:6px 8px;'
+            f'border-left:1px solid #2a2a2a">'
+            f'<div style="font-size:.82rem;font-weight:700;color:{color};'
+            f'line-height:1.1">{z_val:+.2f}</div>'
+            f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+            f'margin-top:1px">#{rank}</div>'
+            f'</td>'
+        )
 
     body_rows = []
     for row in team_rows:
@@ -702,23 +737,36 @@ def _render_season_projections(fdata: dict) -> str:
             f'<td style="padding:8px 10px;font-weight:600;color:#ddd;'
             f'white-space:nowrap">{row["name"]}</td>',
         ]
-        first_pitcher = True
-        for c in h_sub + p_sub:
-            border = ""
-            if c == "W" and first_pitcher:
-                border = "border-left:1px solid #2a2a2a;"
-                first_pitcher = False
+        # Hitter category cells
+        for c in h_sub:
             stat_str = _fmt_proj_stat(c, row["stats"][c])
             rank = row["rank"][c]
             color = _proj_rank_color(rank, n_teams)
             cells.append(
-                f'<td style="text-align:center;padding:6px 6px;{border}">'
+                f'<td style="text-align:center;padding:6px 6px">'
                 f'<div style="font-size:.82rem;font-weight:700;color:{color};'
                 f'line-height:1.1">{stat_str}</div>'
                 f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
                 f'margin-top:1px">#{rank}</div>'
                 f'</td>'
             )
+        # Hitter z subtotal
+        cells.append(_subtotal_cell(row["z_hit"], row["rank_hit"]))
+        # Pitcher category cells
+        for c in p_sub:
+            stat_str = _fmt_proj_stat(c, row["stats"][c])
+            rank = row["rank"][c]
+            color = _proj_rank_color(rank, n_teams)
+            cells.append(
+                f'<td style="text-align:center;padding:6px 6px">'
+                f'<div style="font-size:.82rem;font-weight:700;color:{color};'
+                f'line-height:1.1">{stat_str}</div>'
+                f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+                f'margin-top:1px">#{rank}</div>'
+                f'</td>'
+            )
+        # Pitcher z subtotal
+        cells.append(_subtotal_cell(row["z_pit"], row["rank_pit"]))
         zt = row["z_total"]
         zt_col = "#4caf50" if zt > 0 else ("#e05555" if zt < 0 else "#aaa")
         zt_str = f"{zt:+.2f}"
