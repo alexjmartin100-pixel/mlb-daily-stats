@@ -2107,23 +2107,39 @@ function _phase3SimulateTrade() {{
   return league;
 }}
 
-/* Color helper mirroring _proj_rank_color: gold (1) → red (mid) → blue (last) */
+/* Color helper — exact JS port of Python _proj_rank_color in fantasy.py.
+   Gold (#f0c040) for #1; then red(255,60,50) → white(235,235,235) → blue(60,140,255)
+   for ranks 2..n. Matches the rest of the dashboard's red=best/blue=worst gradient. */
 function _phase3RankColor(rank, n) {{
-  if (n <= 1) return '#888';
-  var t = (rank - 1) / (n - 1);
-  if (t <= 0.5) {{
-    var u = t / 0.5;
-    var r = Math.round(240 + (224 - 240) * u);
-    var g = Math.round(192 + (85  - 192) * u);
-    var b = Math.round( 64 + (85  -  64) * u);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  if (n <= 1) return '#fff';
+  if (rank === 1) return '#f0c040';
+  var t = (rank - 2) / Math.max(1, n - 2);
+  var r, g, b;
+  if (t < 0.5) {{
+    var s = t * 2;
+    r = Math.round(255 + (235 - 255) * s);
+    g = Math.round( 60 + (235 -  60) * s);
+    b = Math.round( 50 + (235 -  50) * s);
   }} else {{
-    var u = (t - 0.5) / 0.5;
-    var r = Math.round(224 + ( 80 - 224) * u);
-    var g = Math.round( 85 + (130 -  85) * u);
-    var b = Math.round( 85 + (220 -  85) * u);
-    return 'rgb(' + r + ',' + g + ',' + b + ')';
+    var s2 = (t - 0.5) * 2;
+    r = Math.round(235 + ( 60 - 235) * s2);
+    g = Math.round(235 + (140 - 235) * s2);
+    b = Math.round(235 + (255 - 235) * s2);
   }}
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}}
+
+/* Compute the LAP-optimized lineup dollar value + starter list for one team.
+   Used for the diagnostic display so the user can SEE why z changed. */
+function _phase3LineupSummary(team) {{
+  var starters = _phase3OptimizeHitters(team.hitters || []);
+  var dollar = 0;
+  var names = [];
+  starters.forEach(function(s) {{
+    dollar += (s.dollars || 0);
+    names.push((s.name || '?') + ' ($' + (s.dollars || 0).toFixed(1) + ')');
+  }});
+  return {{ dollar: dollar, names: names, count: starters.length }};
 }}
 
 /* Render the compact 2-team delta + (collapsed) full standings table */
@@ -2143,6 +2159,12 @@ function _phase3RenderImpact() {{
     wrap.style.display = 'none'; return;
   }}
 
+  // Compute lineup-$ before/after for both teams (diagnostic)
+  var sumOldUser = _phase3LineupSummary(oldUser);
+  var sumNewUser = _phase3LineupSummary(newUser);
+  var sumOldOpp  = _phase3LineupSummary(oldOpp);
+  var sumNewOpp  = _phase3LineupSummary(newOpp);
+
   function fmtDelta(before, after, decimals) {{
     var d = after - before;
     var sign = d > 0 ? '+' : (d < 0 ? '\u2212' : '');
@@ -2160,9 +2182,14 @@ function _phase3RenderImpact() {{
          + sign + ' ' + Math.abs(d) + '</span>';
   }}
 
-  function teamCard(label, oldT, newT, accent) {{
+  function teamCard(label, oldT, newT, oldSum, newSum, accent) {{
     var oC = _phase3RankColor(oldT.rank_total, n);
     var nC = _phase3RankColor(newT.rank_total, n);
+    var dollarDelta = newSum.dollar - oldSum.dollar;
+    var dCol = dollarDelta > 0.05 ? '#4caf50' : (dollarDelta < -0.05 ? '#e05555' : '#888');
+    var dSign = dollarDelta > 0 ? '+' : (dollarDelta < 0 ? '\u2212' : '');
+    var dollarStr = '<span style="color:' + dCol + ';font-weight:700">'
+                  + dSign + '$' + Math.abs(dollarDelta).toFixed(1) + '</span>';
     return '<div style="flex:1;min-width:230px;background:#1a1a1a;border-radius:8px;'
          + 'padding:10px 13px;border-left:3px solid ' + accent + '">'
          + '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
@@ -2189,14 +2216,18 @@ function _phase3RenderImpact() {{
          +   '<div>' + oldT.z_pit.toFixed(2) + '</div>'
          +   '<div style="color:#666">\u2192</div>'
          +   '<div>' + newT.z_pit.toFixed(2) + '&nbsp;&nbsp;' + fmtDelta(oldT.z_pit, newT.z_pit, 2) + '</div>'
+         +   '<div style="color:var(--muted)" title="Sum of $ values of the 11 LAP-optimized starting hitters">Lineup&nbsp;$</div>'
+         +   '<div>$' + oldSum.dollar.toFixed(1) + '</div>'
+         +   '<div style="color:#666">\u2192</div>'
+         +   '<div>$' + newSum.dollar.toFixed(1) + '&nbsp;&nbsp;' + dollarStr + '</div>'
          + '</div>'
          + '</div>';
   }}
 
   document.getElementById('phase3-delta').innerHTML =
     '<div style="display:flex;gap:12px;flex-wrap:wrap">'
-    + teamCard('You', oldUser, newUser, '#4caf50')
-    + teamCard('Counterparty', oldOpp, newOpp, '#e05555')
+    + teamCard('You',          oldUser, newUser, sumOldUser, sumNewUser, '#4caf50')
+    + teamCard('Counterparty', oldOpp,  newOpp,  sumOldOpp,  sumNewOpp,  '#e05555')
     + '</div>';
 
   // Build the optional collapsible full table only when it's currently visible
