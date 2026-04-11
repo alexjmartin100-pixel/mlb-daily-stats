@@ -851,7 +851,23 @@ def _render_season_projections(fdata: dict) -> str:
         f'</div>'
     )
 
-    return legend + table_html
+    # Monte Carlo finish-probability button + output container.
+    # Handler (mcRunSeasonProjSim) lives in the main fantasy-tab JS block and
+    # uses PHASE3_LEAGUE.teams, which is the same payload that drives the
+    # standings table above.
+    mc_block = (
+        '<div style="padding:6px 22px 18px">'
+        '<button onclick="mcRunSeasonProjSim()" '
+        'style="background:#1a1a1a;border:1px solid #333;color:#ddd;'
+        'padding:7px 16px;border-radius:6px;cursor:pointer;'
+        'font-size:.78rem;font-weight:600">'
+        '&#x1F3B2; Run finish-probability sim (10,000 trials)'
+        '</button>'
+        '<div id="mc-proj-out" style="margin-top:12px"></div>'
+        '</div>'
+    )
+
+    return legend + table_html + mc_block
 
 
 # ── Phase 3: trade-machine league-state payload ────────────────────────────
@@ -1393,9 +1409,16 @@ def render_fantasy_tab(fdata: dict) -> str:
                      font-size:.78rem;font-weight:600">
         &#x25BC; Show full updated standings
       </button>
+      <button id="phase3-mc-btn" onclick="phase3ToggleMc()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show finish-probability sim (before / after)
+      </button>
     </div>
     <div id="phase3-lineup-wrap" style="display:none;margin-top:10px"></div>
     <div id="phase3-table-wrap" style="display:none;margin-top:10px"></div>
+    <div id="phase3-mc-wrap"     style="display:none;margin-top:10px"></div>
   </div>
 </div>
 
@@ -2092,6 +2115,257 @@ function _phase3RecomputeZ(teams) {{
   return teams;
 }}
 
+/* ══ Monte Carlo finish-probability simulation ═════════════════════════
+   Roto-style standings sim: for each of _MC_TRIALS trials we perturb every
+   team's projected RoS total in each of the 12 league categories by
+   Normal(0, sigma_cat), rank the league per category (1 = best), sum roto
+   points (N for first down to 1 for last), sort by total roto points, and
+   tally each team's finish position. Final output per team: probability
+   vector over finish positions 1..N plus an expected-finish scalar.
+   Works on any "teams" array with a .stats map — PHASE3_LEAGUE.teams for
+   the baseline, or the post-trade newLeague returned by _phase3SimulateTrade.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Per-category coefficient of variation — stddev as a fraction of the RoS
+   projection. Tuned to roughly reflect how uncertain season-long numbers
+   are: counting stats 5–15%, ratio stats (OBP/ERA/WHIP) 1.5–5%. */
+var _MC_CV = {{
+  R: 0.05, HR: 0.08, RBI: 0.06, SB: 0.12, SO_h: 0.06, OBP: 0.015,
+  W: 0.10, SO_p: 0.06, SV: 0.15, HLD: 0.15, ERA: 0.05, WHIP: 0.03
+}};
+var _MC_TRIALS = 10000;
+var _mcBaselineCache = null;
+
+/* Box-Muller standard normal. */
+function _mcGaussian() {{
+  var u = 1 - Math.random(), v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}}
+
+function _mcRunSim(teams) {{
+  var N = teams.length;
+  if (!N || !PHASE3_LEAGUE) return {{}};
+  var cats  = PHASE3_LEAGUE.hit_cats.concat(PHASE3_LEAGUE.pit_cats);
+  var nCats = cats.length;
+  var lower = {{}};
+  PHASE3_LEAGUE.lower_better.forEach(function(c) {{ lower[c] = true; }});
+
+  // Pre-compute (mu, sigma) matrices so the inner loop stays hot
+  var mu  = new Array(N);
+  var sig = new Array(N);
+  for (var i = 0; i < N; i++) {{
+    var mrow = new Array(nCats);
+    var srow = new Array(nCats);
+    var st = teams[i].stats || {{}};
+    for (var k = 0; k < nCats; k++) {{
+      var c = cats[k];
+      var v = st[c] || 0;
+      mrow[k] = v;
+      var s = Math.abs(v) * (_MC_CV[c] || 0.08);
+      if (s < 1e-6) s = Math.max(1e-6, Math.abs(v) * 0.02);
+      srow[k] = s;
+    }}
+    mu[i]  = mrow;
+    sig[i] = srow;
+  }}
+
+  // counts[i][j] = number of trials where team i finished in position j+1
+  var counts = new Array(N);
+  for (var i = 0; i < N; i++) {{
+    counts[i] = new Array(N);
+    for (var j = 0; j < N; j++) counts[i][j] = 0;
+  }}
+  var sampled = new Array(N);
+  for (var i = 0; i < N; i++) sampled[i] = new Array(nCats);
+  var roto = new Array(N);
+  var idx  = new Array(N);
+
+  for (var trial = 0; trial < _MC_TRIALS; trial++) {{
+    for (var i = 0; i < N; i++) {{
+      roto[i] = 0;
+      for (var k = 0; k < nCats; k++) {{
+        sampled[i][k] = mu[i][k] + sig[i][k] * _mcGaussian();
+      }}
+    }}
+    // Rank each category and add roto points
+    for (var k = 0; k < nCats; k++) {{
+      for (var i = 0; i < N; i++) idx[i] = i;
+      var isLower = lower[cats[k]];
+      var kk = k;
+      idx.sort(function(a, b) {{
+        var va = sampled[a][kk], vb = sampled[b][kk];
+        return isLower ? (va - vb) : (vb - va);
+      }});
+      for (var i = 0; i < N; i++) roto[idx[i]] += (N - i);
+    }}
+    // Final standings: sort teams DESC by total roto points
+    for (var i = 0; i < N; i++) idx[i] = i;
+    idx.sort(function(a, b) {{ return roto[b] - roto[a]; }});
+    for (var i = 0; i < N; i++) counts[idx[i]][i]++;
+  }}
+
+  var result = {{}};
+  for (var i = 0; i < N; i++) {{
+    var probs = new Array(N);
+    var exp   = 0;
+    for (var j = 0; j < N; j++) {{
+      probs[j] = counts[i][j] / _MC_TRIALS;
+      exp += probs[j] * (j + 1);
+    }}
+    result[teams[i].team_id] = {{ probs: probs, expFinish: exp }};
+  }}
+  return result;
+}}
+
+/* Baseline league sim is expensive and never changes within a session;
+   cache it so repeated trade-machine renders don't rerun it. */
+function _mcGetBaseline() {{
+  if (_mcBaselineCache) return _mcBaselineCache;
+  _mcBaselineCache = _mcRunSim(PHASE3_LEAGUE.teams);
+  return _mcBaselineCache;
+}}
+
+/* Render a rows=teams, cols=finish-positions heatmap table.
+   Teams sorted ASC by expected finish (best on top).
+   highlightTids: optional array of team_ids to bold / yellow-edge. */
+function _mcRenderHeatmap(teams, sim, highlightTids) {{
+  var rows = teams.map(function(t) {{
+    var s = sim[t.team_id] || {{probs: [], expFinish: 0}};
+    return {{
+      team_id:   t.team_id,
+      name:      t.name,
+      probs:     s.probs,
+      expFinish: s.expFinish
+    }};
+  }});
+  rows.sort(function(a, b) {{ return a.expFinish - b.expFinish; }});
+  var N = rows.length;
+  var hl = {{}};
+  (highlightTids || []).forEach(function(tid) {{ hl[tid] = true; }});
+
+  function cellBg(p) {{
+    if (p < 0.005) return 'transparent';
+    var a = Math.min(0.85, 0.08 + p * 2.2);
+    return 'rgba(78,180,100,' + a.toFixed(3) + ')';
+  }}
+
+  var html = '<table style="width:100%;border-collapse:collapse;background:#0e0e0e;'
+           + 'border-radius:8px;overflow:hidden;font-size:.68rem">'
+           + '<thead><tr style="background:#161616;color:var(--muted);'
+           + 'text-transform:uppercase;letter-spacing:.05em">'
+           + '<th style="padding:5px 10px;text-align:left;font-size:.62rem">Team</th>'
+           + '<th style="padding:5px 6px;text-align:right;font-size:.62rem">Exp.</th>';
+  for (var i = 1; i <= N; i++) {{
+    html += '<th style="padding:5px 4px;text-align:center;width:32px;font-size:.62rem">' + i + '</th>';
+  }}
+  html += '</tr></thead><tbody>';
+  rows.forEach(function(r) {{
+    var hlStyle = hl[r.team_id] ? 'background:#1c1610;border-left:2px solid #f0c040;' : '';
+    html += '<tr style="border-bottom:1px solid #1f1f1f;' + hlStyle + '">'
+         +  '<td style="padding:4px 10px;font-weight:600;color:#ddd;white-space:nowrap">' + r.name + '</td>'
+         +  '<td style="padding:4px 6px;text-align:right;font-weight:700;color:#ddd">' + r.expFinish.toFixed(1) + '</td>';
+    for (var i = 0; i < N; i++) {{
+      var p   = r.probs[i] || 0;
+      var pct = p * 100;
+      var label = pct < 0.5 ? '' : (pct < 10 ? pct.toFixed(1) : Math.round(pct).toString());
+      html += '<td style="padding:3px;text-align:center;background:' + cellBg(p)
+           +  ';color:#eee;font-weight:600">' + label + '</td>';
+    }}
+    html += '</tr>';
+  }});
+  html += '</tbody></table>';
+  return html;
+}}
+
+/* Trade machine: render side-by-side before / after heatmaps with a
+   compact expected-finish delta summary for the two involved teams. */
+function _mcRenderBeforeAfter(baseTeams, newTeams, baseSim, newSim, userTid, oppTid) {{
+  function fmtD(d) {{
+    if (Math.abs(d) < 0.05) return '<span style="color:#888;font-weight:700">\u25A0 0.00</span>';
+    var col  = d < 0 ? '#4caf50' : '#e05555';
+    var sign = d < 0 ? '\u25B2' : '\u25BC';   // up arrow = better (lower exp finish)
+    return '<span style="color:' + col + ';font-weight:700">' + sign + ' ' + Math.abs(d).toFixed(2) + '</span>';
+  }}
+  function row(label, tid, color) {{
+    var b = baseSim[tid], a = newSim[tid];
+    if (!b || !a) return '';
+    return '<div style="display:grid;grid-template-columns:110px 1fr 1fr 1fr;gap:10px;'
+         + 'padding:4px 0;font-size:.78rem;align-items:center">'
+         + '<div style="color:' + color + ';font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:.68rem">' + label + '</div>'
+         + '<div style="color:var(--muted)">Before <span style="color:#fff;font-weight:700;margin-left:6px">' + b.expFinish.toFixed(2) + '</span></div>'
+         + '<div style="color:var(--muted)">After  <span style="color:#fff;font-weight:700;margin-left:6px">' + a.expFinish.toFixed(2) + '</span></div>'
+         + '<div>\u0394 ' + fmtD(a.expFinish - b.expFinish) + '</div>'
+         + '</div>';
+  }}
+  var summary = '<div style="background:#131313;border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+              + '<div style="font-size:.68rem;color:var(--muted);font-weight:700;'
+              + 'text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">'
+              + 'Expected finish \u2014 10,000-trial roto sim</div>'
+              + row('You',          userTid, '#4caf50')
+              + row('Counterparty', oppTid,  '#e05555')
+              + '</div>';
+
+  var hl = [userTid, oppTid];
+  var grid = '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+           + '<div style="flex:1;min-width:320px">'
+           + '<div style="font-size:.66rem;color:var(--muted);font-weight:700;'
+           + 'text-transform:uppercase;letter-spacing:.05em;padding:0 0 6px 4px">Before trade</div>'
+           + _mcRenderHeatmap(baseTeams, baseSim, hl)
+           + '</div>'
+           + '<div style="flex:1;min-width:320px">'
+           + '<div style="font-size:.66rem;color:var(--muted);font-weight:700;'
+           + 'text-transform:uppercase;letter-spacing:.05em;padding:0 0 6px 4px">After trade</div>'
+           + _mcRenderHeatmap(newTeams, newSim, hl)
+           + '</div>'
+           + '</div>';
+  return summary + grid;
+}}
+
+function phase3ToggleMc() {{
+  var mw  = document.getElementById('phase3-mc-wrap');
+  var btn = document.getElementById('phase3-mc-btn');
+  if (!mw) return;
+  var open = mw.style.display !== 'none';
+  if (open) {{
+    mw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show finish-probability sim (before / after)';
+  }} else {{
+    if (!window._phase3Last || !window._phase3Last.newLeague) return;
+    _phase3RenderMcSim();
+    mw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide finish-probability sim';
+  }}
+}}
+
+function _phase3RenderMcSim() {{
+  var mw = document.getElementById('phase3-mc-wrap');
+  if (!mw || !window._phase3Last || !window._phase3Last.newLeague) return;
+  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 10,000 trials\u2026</div>';
+  setTimeout(function() {{
+    var L = window._phase3Last;
+    var userTid = PHASE3_LEAGUE.user_team_id;
+    var oppTid  = _tradeRoster.recvTeamId;
+    var baseSim = _mcGetBaseline();
+    var newSim  = _mcRunSim(L.newLeague);
+    mw.innerHTML = _mcRenderBeforeAfter(PHASE3_LEAGUE.teams, L.newLeague, baseSim, newSim, userTid, oppTid);
+  }}, 20);
+}}
+
+/* Season Projections tab handler: run baseline sim over the current league
+   and render a single heatmap with Team Alex highlighted. */
+function mcRunSeasonProjSim() {{
+  if (!PHASE3_LEAGUE) return;
+  var out = document.getElementById('mc-proj-out');
+  if (!out) return;
+  out.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 10,000 trials\u2026</div>';
+  setTimeout(function() {{
+    var sim = _mcGetBaseline();
+    var userTid = PHASE3_LEAGUE.user_team_id;
+    out.innerHTML = _mcRenderHeatmap(PHASE3_LEAGUE.teams, sim, userTid != null ? [userTid] : []);
+  }}, 20);
+}}
+
+
 /* Build a deep-copied league with the trade applied. The two affected
    teams have their hitter / pitcher lists rewritten (subtract sent
    players, add received players), then their lineups are re-optimized
@@ -2314,6 +2588,8 @@ function _phase3RenderImpact() {{
   if (lw && lw.style.display !== 'none') _phase3RenderLineups();
   var tw = document.getElementById('phase3-table-wrap');
   if (tw && tw.style.display !== 'none') _phase3RenderTable(newLeague);
+  var mw = document.getElementById('phase3-mc-wrap');
+  if (mw && mw.style.display !== 'none') _phase3RenderMcSim();
 }}
 
 /* Toggle the optimized-lineup table (slot-by-slot before/after for both teams) */
