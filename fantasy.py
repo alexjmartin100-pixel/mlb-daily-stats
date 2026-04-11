@@ -1001,8 +1001,17 @@ def _build_phase3_payload(fdata: dict) -> dict:
             "team_id":    tid,
             "name":       nm,
             "abbrev":     tr.get("abbrev") or "",
-            "hitters":    [_hit_record(h) for h in pt.get("hitters",  [])],
-            "pitchers":   [_pit_record(p) for p in pt.get("pitchers", [])],
+            # IMPORTANT: filter out IL/NA (inactive) players before serializing.
+            # build_season_projections() in lineup_optimizer.py filters to active
+            # players before aggregating, so tr["stats"] (the Python baseline)
+            # reflects only active players. If we hand the JS every hitter/pitcher
+            # here, then _phase3SimulateTrade() will re-aggregate the two affected
+            # teams over a DIFFERENT player pool than the baseline — inflating
+            # their totals relative to the 8 untouched teams and corrupting the
+            # league mean/sigma inside _phase3RecomputeZ. Keep the JS player pool
+            # in lockstep with the Python baseline.
+            "hitters":    [_hit_record(h) for h in pt.get("hitters",  []) if not h.get("inactive")],
+            "pitchers":   [_pit_record(p) for p in pt.get("pitchers", []) if not p.get("inactive")],
             "stats":      tr.get("stats", {}),
             "z":          tr.get("z",     {}),
             "rank":       tr.get("rank",  {}),
