@@ -989,6 +989,18 @@ def _build_phase3_payload(fdata: dict) -> dict:
             "IP":   round(_f(p.get("IP_p")),   1),
         }
 
+    # Build a name→(team_id, espn_id) lookup covering ALL rostered players
+    # (active + inactive). The trade pool uses this to tag IL/NA stars with a
+    # team_id so they're not mistaken for free agents. Without this they'd
+    # slip into the FA picker because _phase3["teams"] excludes inactive.
+    all_rostered: dict = {}
+    for pt in parsed.get("teams", []):
+        ptid = pt.get("team_id")
+        for rec in pt.get("hitters", []) + pt.get("pitchers", []):
+            nm_key = (rec.get("name") or "").strip().lower()
+            if nm_key:
+                all_rostered[nm_key] = (ptid, rec.get("espn_id"))
+
     teams_payload = []
     user_team_id = None
     for tr in team_rows:
@@ -1035,6 +1047,9 @@ def _build_phase3_payload(fdata: dict) -> dict:
             [6, "MI"],   [7, "CI"], [12, "UTIL"],
         ],
         "teams": teams_payload,
+        # Internal-only: full roster name lookup including IL/NA. Caller strips
+        # this before JSON-encoding for the JS payload.
+        "_all_rostered": all_rostered,
     }
 
 
@@ -1220,24 +1235,23 @@ def render_fantasy_tab(fdata: dict) -> str:
         # Tag every player in the (existing flat) trade pool with the team_id
         # they belong to, so the search can be filtered by side. Players who
         # aren't on any roster are dropped — you can't trade unrostered guys.
-        _name_to_team: dict = {}
-        _name_to_espn: dict = {}
-        for _t in _phase3["teams"]:
-            for _h in _t.get("hitters", []):
-                key = (_h["name"] or "").strip().lower()
-                _name_to_team[key] = _t["team_id"]
-                _name_to_espn[key] = _h["espn_id"]
-            for _pp in _t.get("pitchers", []):
-                key = (_pp["name"] or "").strip().lower()
-                _name_to_team[key] = _t["team_id"]
-                _name_to_espn[key] = _pp["espn_id"]
+        # Use _all_rostered (which covers IL/NA players) rather than
+        # _phase3["teams"] (which excludes them) so IL stars don't slip back
+        # into the free-agent picker with a null team_id.
+        _all_rostered = _phase3.get("_all_rostered") or {}
         for _rec in _trade_h + _trade_p:
             k = (_rec["name"] or "").strip().lower()
-            _rec["team_id"] = _name_to_team.get(k)
-            _rec["espn_id"] = _name_to_espn.get(k)
+            _tid_eid = _all_rostered.get(k)
+            if _tid_eid is not None:
+                _rec["team_id"], _rec["espn_id"] = _tid_eid
+            else:
+                _rec["team_id"] = None
+                _rec["espn_id"] = None
         # Re-serialise with the new team_id / espn_id fields baked in.
         _trade_h_json = _json.dumps(_trade_h)
         _trade_p_json = _json.dumps(_trade_p)
+        # Strip the internal-only _all_rostered map before shipping to JS.
+        _phase3.pop("_all_rostered", None)
         _phase3_json = _json.dumps(_phase3)
     else:
         _phase3_json = "null"
@@ -1649,7 +1663,7 @@ var TRADE_PITCHERS = {_trade_p_json};
    Null if no ESPN snapshot is present — the calculator falls back to the
    classic projected-stat-diff verdict only in that case. */
 var PHASE3_LEAGUE  = {_phase3_json};
-var _tradeRoster   = {{ send: [], recv: [], recvTeamId: null, pickups: [] }};
+var _tradeRoster   = {{ send: [], recv: [], recvTeamId: null, pickups: [], pitcherPickups: [] }};
 /* Active free-agent pickup-picker state. When set, _phase3RenderLineups renders
    an inline free-agent list in place of the "+" button for the target slot.
    Cleared on any add/remove. */
@@ -1714,7 +1728,9 @@ function tradeRemove(side, name) {{
   // confusing and phase3 simulation won't run without both sides anyway.
   if (!_tradeRoster.send.length && !_tradeRoster.recv.length) {{
     _tradeRoster.pickups = [];
+    _tradeRoster.pitcherPickups = [];
     window._phase3PickerSlot = null;
+    window._phase3PitcherPicker = false;
   }}
   _tradeRender();
 }}
@@ -1929,7 +1945,9 @@ function tradeSetCounter(val) {{
   _tradeRoster.recvTeamId = val ? parseInt(val, 10) : null;
   _tradeRoster.recv = [];
   _tradeRoster.pickups = [];
+  _tradeRoster.pitcherPickups = [];
   window._phase3PickerSlot = null;
+  window._phase3PitcherPicker = false;
   var inp = document.getElementById('trade-recv-search');
   if (inp) inp.value = '';
   _tradeRender();
@@ -2426,6 +2444,11 @@ function _phase3SimulateTrade() {{
     if (team.team_id === userTid && _tradeRoster.pickups && _tradeRoster.pickups.length) {{
       _tradeRoster.pickups.forEach(function(pk) {{ team.hitters.push(pk); }});
     }}
+    // Apply any free-agent pitcher pickups to the user's pitcher pool.
+    // Pitchers have no slot/LAP — they just add to the aggregate pool.
+    if (team.team_id === userTid && _tradeRoster.pitcherPickups && _tradeRoster.pitcherPickups.length) {{
+      _tradeRoster.pitcherPickups.forEach(function(pk) {{ team.pitchers.push(pk); }});
+    }}
     // Re-optimize lineup + re-aggregate
     var starters = _phase3OptimizeHitters(team.hitters);
     var hAgg = _phase3AggHit(starters);
@@ -2687,6 +2710,76 @@ function phase3RemovePickup(name) {{
   _tradeCalc();
 }}
 
+/* ── Pitcher free-agent pickups ────────────────────────────────────────
+   Mirrors the hitter pickup pipeline but simpler: pitchers have no slot
+   positions, so a pickup is just another entry in the team.pitchers list.
+   Triggered when a trade leaves the user with more pitchers going out than
+   coming in — each open pitcher spot gets a "+" button that opens an
+   inline picker of top-10 SP + top-3 RP available from free agency. */
+
+function _phase3MakePickupPitcher(p) {{
+  return {{
+    espn_id:  'fa_' + (p.name || '').replace(/[^A-Za-z0-9]+/g, '_'),
+    name:     p.name,
+    team:     p.team,
+    dollars:  p.dollars || 0,
+    role:     p.role || 'sp',
+    W:        (p.proj && p.proj.W)    || 0,
+    SO_p:     (p.proj && p.proj.K_p)  || 0,
+    SV:       (p.proj && p.proj.SV)   || 0,
+    HLD:      (p.proj && p.proj.HLD)  || 0,
+    ERA:      (p.proj && p.proj.ERA)  || 0,
+    WHIP:     (p.proj && p.proj.WHIP) || 0,
+    // IP fallback: SP ~ 160, RP ~ 65. Rough but good enough for IP-weighted
+    // ERA/WHIP aggregation — FA pickups don't hugely move a team's rates.
+    IP:       (p.role === 'sp' ? 160 : 65),
+    is_pickup:   true,
+    is_pitcher:  true
+  }};
+}}
+
+/* Top N unrostered pitchers sorted by $, split out by role.
+   Returns top 10 SPs followed by top 3 RPs, excluding anyone already
+   picked up. team_id == null catches both true FAs and IL/NA players since
+   IL players now carry a team_id (see _all_rostered in _build_phase3_payload). */
+function _phase3FreeAgentPitchers() {{
+  var inUse = {{}};
+  (_tradeRoster.pitcherPickups || []).forEach(function(pk) {{ inUse[pk.name] = true; }});
+  var pool = TRADE_PITCHERS.filter(function(p) {{
+    return p.team_id == null && !inUse[p.name];
+  }});
+  var sps = pool.filter(function(p) {{ return (p.role || 'sp') === 'sp'; }});
+  var rps = pool.filter(function(p) {{ return (p.role || 'sp') === 'rp'; }});
+  sps.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+  rps.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+  return sps.slice(0, 10).concat(rps.slice(0, 3));
+}}
+
+function phase3OpenPitcherPicker() {{
+  window._phase3PitcherPicker = true;
+  _phase3RenderLineups();
+}}
+function phase3ClosePitcherPicker() {{
+  window._phase3PitcherPicker = false;
+  _phase3RenderLineups();
+}}
+
+function phase3AddPitcherPickup(playerName) {{
+  var p = TRADE_PITCHERS.find(function(x) {{ return x.name === playerName; }});
+  if (!p) return;
+  if (!_tradeRoster.pitcherPickups) _tradeRoster.pitcherPickups = [];
+  _tradeRoster.pitcherPickups.push(_phase3MakePickupPitcher(p));
+  window._phase3PitcherPicker = false;
+  _tradeCalc();          // triggers _phase3RenderImpact → re-renders lineups too
+}}
+
+function phase3RemovePitcherPickup(name) {{
+  _tradeRoster.pitcherPickups = (_tradeRoster.pitcherPickups || []).filter(function(pk) {{
+    return pk.name !== name;
+  }});
+  _tradeCalc();
+}}
+
 /* Render a 2-column (You / Counterparty) slot-by-slot before/after lineup table.
    Highlights any slot whose occupant changed. Includes pitcher staff and
    "+" buttons on empty hitter slots so the user can simulate a waiver pickup. */
@@ -2810,9 +2903,47 @@ function _phase3RenderLineups() {{
          + '</tbody></table>';
   }}
 
+  // Picker sub-row for pitcher FA pickups — top 10 SPs + top 3 RPs.
+  function renderPitcherPicker() {{
+    var fas = _phase3FreeAgentPitchers();
+    var html = '<div style="background:#0f0f0f;border:1px solid #333;border-radius:6px;'
+             + 'padding:7px 9px;margin:4px 0">'
+             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+             + '<span style="font-size:.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">'
+             + 'Pick up a FA pitcher (top 10 SP &bull; top 3 RP)</span>'
+             + '<button onmousedown="phase3ClosePitcherPicker()" '
+             + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.9rem;padding:0 4px">&#x2715;</button>'
+             + '</div>';
+    if (!fas.length) {{
+      html += '<div style="color:var(--muted);font-size:.75rem;padding:4px">No unrostered pitchers available.</div>';
+    }} else {{
+      html += '<div style="display:flex;flex-wrap:wrap;gap:3px">';
+      fas.forEach(function(p) {{
+        var dCol = p.dollars >= 10 ? '#f0c040' : p.dollars >= 0 ? '#7ec87e' : '#888';
+        var roleTag = '<span style="color:#777;font-size:.66rem;margin-left:2px">'
+                    + (p.role || 'sp').toUpperCase() + '</span>';
+        html += '<button onmousedown="phase3AddPitcherPickup(this.dataset.name)" '
+             +  'data-name="' + (p.name || '').replace(/"/g,'&quot;') + '" '
+             +  'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
+             +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
+             +  'display:inline-flex;align-items:center;gap:4px">'
+             +  '<span style="font-weight:600">' + p.name + '</span>'
+             +  '<span style="color:#777;font-size:.68rem">' + (p.team||'') + '</span>'
+             +  roleTag
+             +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
+             +  '</button>';
+      }});
+      html += '</div>';
+    }}
+    html += '</div>';
+    return html;
+  }}
+
   // Pitcher staff: no slots, so show a union of before/after sorted by $.
   // Added pitchers tinted green, removed tinted red, kept neutral.
-  function pitcherTable(oldSum, newSum) {{
+  // isUser = true renders "+ FA" buttons on any open pitcher spots created
+  // by the trade, mirroring the hitter-side behavior.
+  function pitcherTable(oldSum, newSum, isUser) {{
     var oldP = oldSum.pitchers || [];
     var newP = newSum.pitchers || [];
     var oldIds = {{}}; oldP.forEach(function(p) {{ oldIds[p.espn_id] = p; }});
@@ -2821,7 +2952,11 @@ function _phase3RenderLineups() {{
     // dollar-sorted order you'll have after the trade), then any removed.
     var union = newP.slice();
     oldP.forEach(function(p) {{ if (!newIds[p.espn_id]) union.push(p); }});
-    if (!union.length) {{
+    // Open pitcher spots = how many more pitchers the user had before the
+    // trade than after (post-pickup). newSum already includes any active
+    // pitcher pickups from _phase3SimulateTrade, so this auto-calibrates.
+    var openSlots = isUser ? Math.max(0, oldP.length - newP.length) : 0;
+    if (!union.length && !openSlots) {{
       return '<div style="color:var(--muted);font-size:.75rem;padding:4px">No pitchers.</div>';
     }}
     var rows = '';
@@ -2848,6 +2983,28 @@ function _phase3RenderLineups() {{
             +   '<td style="padding:4px 8px">' + afterStr + '</td>'
             + '</tr>';
     }});
+    // Render one "(empty)" row per open pitcher spot with a "+ FA" button.
+    // The picker itself is rendered as a full-width sub-row below the first
+    // empty row when active.
+    for (var os = 0; os < openSlots; os++) {{
+      var emptyCell = '<span style="color:#e05555;font-weight:700">(empty)</span>'
+                    + '&nbsp;&nbsp;<button '
+                    + 'onmousedown="phase3OpenPitcherPicker()" '
+                    + 'style="background:#1e3a1e;border:1px solid #2e6b2e;color:#9cd39c;'
+                    + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700">'
+                    + '+ FA</button>';
+      rows += '<tr style="background:#241a1a;border-bottom:1px solid #1d1d1d">'
+            +   '<td style="padding:4px 8px;color:#f0c040;font-weight:700;width:46px">P</td>'
+            +   '<td style="padding:4px 8px"><span style="color:#666">\u2014</span></td>'
+            +   '<td style="padding:4px 8px;color:#666;text-align:center;width:18px">\u2192</td>'
+            +   '<td style="padding:4px 8px">' + emptyCell + '</td>'
+            + '</tr>';
+      if (os === 0 && window._phase3PitcherPicker) {{
+        rows += '<tr><td colspan="4" style="padding:0 8px 6px">'
+              + renderPitcherPicker()
+              + '</td></tr>';
+      }}
+    }}
     var oldD = (oldSum.pDollar || 0).toFixed(1);
     var newD = (newSum.pDollar || 0).toFixed(1);
     var dDelta = (newSum.pDollar || 0) - (oldSum.pDollar || 0);
@@ -2879,15 +3036,17 @@ function _phase3RenderLineups() {{
     return '<div style="flex:1;min-width:340px;background:#141414;border-radius:8px;'
          + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
          +   hitterTable(label, oldSum, newSum, accent, isUser)
-         +   pitcherTable(oldSum, newSum)
+         +   pitcherTable(oldSum, newSum, isUser)
          + '</div>';
   }}
 
   // Active pickups summary (user side only) — shown above the tables so
-  // it's easy to see what hypothetical waiver adds are in play.
+  // it's easy to see what hypothetical waiver adds are in play. Hitters
+  // and pitchers share one banner, hitters first.
   var pickupBanner = '';
+  var allChips = '';
   if (_tradeRoster.pickups && _tradeRoster.pickups.length) {{
-    var chips = _tradeRoster.pickups.map(function(pk) {{
+    allChips += _tradeRoster.pickups.map(function(pk) {{
       var slotLabel = '?';
       var slots = PHASE3_LEAGUE ? PHASE3_LEAGUE.slots : [];
       for (var i = 0; i < slots.length; i++) {{
@@ -2904,11 +3063,28 @@ function _phase3RenderLineups() {{
            + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.85rem;padding:0 2px">&#x2715;</button>'
            + '</span>';
     }}).join('');
+  }}
+  if (_tradeRoster.pitcherPickups && _tradeRoster.pitcherPickups.length) {{
+    allChips += _tradeRoster.pitcherPickups.map(function(pk) {{
+      var roleLbl = (pk.role || 'sp').toUpperCase();
+      return '<span style="display:inline-flex;align-items:center;gap:5px;'
+           + 'background:#1e2a1e;border:1px solid #2e6b2e;border-radius:12px;'
+           + 'padding:3px 9px;margin-right:5px;font-size:.73rem">'
+           + '<span style="color:#f0c040;font-weight:700">+' + roleLbl + '</span>'
+           + '<span style="color:#ddd">' + pk.name + '</span>'
+           + '<span style="color:#888">$' + (pk.dollars||0).toFixed(1) + '</span>'
+           + '<button onmousedown="phase3RemovePitcherPickup(this.dataset.name)" '
+           + 'data-name="' + (pk.name||'').replace(/"/g,'&quot;') + '" '
+           + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.85rem;padding:0 2px">&#x2715;</button>'
+           + '</span>';
+    }}).join('');
+  }}
+  if (allChips) {{
     pickupBanner = '<div style="margin-bottom:8px;padding:6px 9px;'
                  + 'background:#0f1a0f;border-radius:6px;border-left:3px solid #4caf50">'
                  + '<span style="font-size:.66rem;color:var(--muted);font-weight:700;'
                  + 'text-transform:uppercase;letter-spacing:.05em;margin-right:6px">Waiver adds</span>'
-                 + chips + '</div>';
+                 + allChips + '</div>';
   }}
 
   lw.innerHTML = pickupBanner
