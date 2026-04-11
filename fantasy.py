@@ -854,6 +854,165 @@ def _render_season_projections(fdata: dict) -> str:
     return legend + table_html
 
 
+# ── Phase 3: trade-machine league-state payload ────────────────────────────
+# Builds a JSON-serialisable snapshot of every team's roster, projected stats,
+# baseline z-scores and ranks. The trade-machine JS uses this to recompute
+# the league standings on-the-fly when a hypothetical trade is composed.
+def _build_phase3_payload(fdata: dict) -> dict:
+    """
+    Returns a dict with the league state needed for in-browser trade simulation:
+        {
+          "ok": True/False,
+          "user_team_id": int | None,         # "Team Alex" lookup
+          "hit_cats":   ["R","HR","RBI","SO_h","SB","OBP"],
+          "pit_cats":   ["W","SO_p","SV","HLD","ERA","WHIP"],
+          "lower_better": ["SO_h","ERA","WHIP"],
+          "slots": [[slot_id,label], ...],   # 11 hitter slot instances
+          "teams": [
+            {
+              "team_id": int,
+              "name": str,
+              "abbrev": str,
+              "hitters":  [ {espn_id, name, team, dollars, elig:[...],
+                             R, HR, RBI, SO_h, SB, OBP, PA}, ... ],
+              "pitchers": [ {espn_id, name, team, dollars,
+                             W, SO_p, SV, HLD, ERA, WHIP, IP}, ... ],
+              "stats":    {cat: float},     # baseline 12 totals
+              "z":        {cat: float},     # baseline z-scores (lower-better negated)
+              "rank":     {cat: int},
+              "z_total":  float, "rank_total": int,
+              "z_hit":    float, "rank_hit":   int,
+              "z_pit":    float, "rank_pit":   int,
+            }, ...
+          ]
+        }
+    Returns {"ok": False, "reason": "..."} if the snapshot can't be loaded.
+    """
+    snap_path = None
+    base = os.path.dirname(os.path.abspath(__file__))
+    for fn in ESPN_ROSTER_FILES:
+        candidate = os.path.join(base, fn)
+        if os.path.exists(candidate):
+            snap_path = candidate
+            break
+    if snap_path is None:
+        return {"ok": False, "reason": "no snapshot"}
+
+    try:
+        from parse_espn_rosters import parse_league
+        from lineup_optimizer import build_season_projections
+    except Exception as e:
+        return {"ok": False, "reason": f"import: {e}"}
+
+    try:
+        parsed = parse_league(snap_path, fdata, verbose=False)
+        team_rows = build_season_projections(parsed, verbose=False)
+    except Exception as e:
+        return {"ok": False, "reason": f"build: {e}"}
+
+    if not team_rows:
+        return {"ok": False, "reason": "empty league"}
+
+    # Same hitter / pitcher z-subtotal logic that _render_season_projections uses
+    h_sub = ["R", "HR", "RBI", "SO_h", "SB", "OBP"]
+    p_sub = ["W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
+    for t in team_rows:
+        t["z_hit"] = round(sum(t["z"][c] for c in h_sub), 3)
+        t["z_pit"] = round(sum(t["z"][c] for c in p_sub), 3)
+    for sub_key in ("z_hit", "z_pit"):
+        order = sorted(team_rows, key=lambda x: x[sub_key], reverse=True)
+        rank_key = "rank_hit" if sub_key == "z_hit" else "rank_pit"
+        for i, t in enumerate(order, start=1):
+            t[rank_key] = i
+
+    # Build per-player records by joining each team's rostered players to fdata.
+    # parsed["teams"] holds the raw hitter/pitcher recs (with elig + fdata).
+    parsed_by_id = {pt["team_id"]: pt for pt in parsed.get("teams", [])}
+
+    def _f(v) -> float:
+        if v is None:
+            return 0.0
+        try:
+            f = float(v)
+            return 0.0 if f != f else f
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _hit_record(rec: dict) -> dict:
+        fd = rec.get("fdata") or {}
+        p  = fd.get("player") or {}
+        return {
+            "espn_id": rec.get("espn_id"),
+            "name":    rec.get("name") or p.get("name") or "",
+            "team":    rec.get("team") or "",
+            "dollars": round(_f(fd.get("dollar")), 1),
+            "elig":    list(rec.get("elig") or []),
+            "R":    round(_f(p.get("R_p")),    1),
+            "HR":   round(_f(p.get("HR_p")),   1),
+            "RBI":  round(_f(p.get("RBI_p")),  1),
+            "SO_h": round(_f(p.get("SO_p")),   1),  # hitter K
+            "SB":   round(_f(p.get("SB_p")),   1),
+            "OBP":  round(_f(p.get("OBP_p")),  4),
+            "PA":   round(_f(p.get("PA_p")),   1),
+        }
+
+    def _pit_record(rec: dict) -> dict:
+        fd = rec.get("fdata") or {}
+        p  = fd.get("player") or {}
+        return {
+            "espn_id": rec.get("espn_id"),
+            "name":    rec.get("name") or p.get("name") or "",
+            "team":    rec.get("team") or "",
+            "dollars": round(_f(fd.get("dollar")), 1),
+            "W":    round(_f(p.get("W_p")),    1),
+            "SO_p": round(_f(p.get("SO_p")),   1),
+            "SV":   round(_f(p.get("SV_p")),   1),
+            "HLD":  round(_f(p.get("HLD_p")),  1),
+            "ERA":  round(_f(p.get("ERA_p")),  3),
+            "WHIP": round(_f(p.get("WHIP_p")), 3),
+            "IP":   round(_f(p.get("IP_p")),   1),
+        }
+
+    teams_payload = []
+    user_team_id = None
+    for tr in team_rows:
+        tid = tr.get("team_id")
+        nm  = tr.get("name") or ""
+        if user_team_id is None and nm.strip().lower() == "team alex":
+            user_team_id = tid
+        pt = parsed_by_id.get(tid, {})
+        teams_payload.append({
+            "team_id":    tid,
+            "name":       nm,
+            "abbrev":     tr.get("abbrev") or "",
+            "hitters":    [_hit_record(h) for h in pt.get("hitters",  [])],
+            "pitchers":   [_pit_record(p) for p in pt.get("pitchers", [])],
+            "stats":      tr.get("stats", {}),
+            "z":          tr.get("z",     {}),
+            "rank":       tr.get("rank",  {}),
+            "z_total":    tr.get("z_total"),
+            "rank_total": tr.get("rank_total"),
+            "z_hit":      tr.get("z_hit"),
+            "rank_hit":   tr.get("rank_hit"),
+            "z_pit":      tr.get("z_pit"),
+            "rank_pit":   tr.get("rank_pit"),
+        })
+
+    return {
+        "ok": True,
+        "user_team_id": user_team_id,
+        "hit_cats": h_sub,
+        "pit_cats": p_sub,
+        "lower_better": ["SO_h", "ERA", "WHIP"],
+        "slots": [
+            [0,  "C"],   [1, "1B"], [2, "2B"], [3, "3B"], [4, "SS"],
+            [5, "OF"],   [5, "OF"], [5, "OF"],
+            [6, "MI"],   [7, "CI"], [12, "UTIL"],
+        ],
+        "teams": teams_payload,
+    }
+
+
 def render_fantasy_tab(fdata: dict) -> str:
     """Generate the full HTML for the Fantasy tab panel."""
     if not fdata:
@@ -1020,6 +1179,38 @@ def render_fantasy_tab(fdata: dict) -> str:
     # Falls back to an instructional placeholder if the JSON isn't there yet.
     proj_html = _render_season_projections(fdata)
 
+    # ── Phase 3: trade-machine league-state payload ────────────────────────
+    # Builds the per-team rostered-player snapshot the JS uses to recompute
+    # standings on the fly when a hypothetical trade is composed.
+    # If the ESPN snapshot isn't present, the trade machine still functions
+    # in its old "FG values only" mode (PHASE3 == null guards everything).
+    _phase3 = _build_phase3_payload(fdata)
+    if _phase3.get("ok"):
+        # Tag every player in the (existing flat) trade pool with the team_id
+        # they belong to, so the search can be filtered by side. Players who
+        # aren't on any roster are dropped — you can't trade unrostered guys.
+        _name_to_team: dict = {}
+        _name_to_espn: dict = {}
+        for _t in _phase3["teams"]:
+            for _h in _t.get("hitters", []):
+                key = (_h["name"] or "").strip().lower()
+                _name_to_team[key] = _t["team_id"]
+                _name_to_espn[key] = _h["espn_id"]
+            for _pp in _t.get("pitchers", []):
+                key = (_pp["name"] or "").strip().lower()
+                _name_to_team[key] = _t["team_id"]
+                _name_to_espn[key] = _pp["espn_id"]
+        for _rec in _trade_h + _trade_p:
+            k = (_rec["name"] or "").strip().lower()
+            _rec["team_id"] = _name_to_team.get(k)
+            _rec["espn_id"] = _name_to_espn.get(k)
+        # Re-serialise with the new team_id / espn_id fields baked in.
+        _trade_h_json = _json.dumps(_trade_h)
+        _trade_p_json = _json.dumps(_trade_p)
+        _phase3_json = _json.dumps(_phase3)
+    else:
+        _phase3_json = "null"
+
     inner = f"""
 <div id="fantasy-panel" class="tab-panel">
   <div style="padding:18px 20px 6px">
@@ -1142,6 +1333,17 @@ def render_fantasy_tab(fdata: dict) -> str:
                   border-left:3px solid #4caf50">
         &#x1F4E5; Receiving
       </div>
+      <!-- Phase 3: counterparty selector. Hidden if no PHASE3_LEAGUE. -->
+      <div id="trade-counter-wrap" style="display:none;margin-bottom:8px">
+        <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                       text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+          Trading with
+        </label>
+        <select id="trade-counter-sel" onchange="tradeSetCounter(this.value)"
+                style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                       padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+        </select>
+      </div>
       <div style="position:relative;margin-bottom:10px">
         <input id="trade-recv-search" type="text" placeholder="&#128269; Add player&#8230;"
                oninput="tradeSearch('recv',this.value)"
@@ -1161,6 +1363,26 @@ def render_fantasy_tab(fdata: dict) -> str:
       </div>
     </div>
 
+  </div>
+
+  <!-- Phase 3: post-trade league impact. Populated by JS once a trade has
+       at least one player on each side and PHASE3_LEAGUE is loaded. -->
+  <div id="phase3-wrap" style="display:none;margin-top:18px;
+                                border-top:1px solid #2a2a2a;padding-top:14px">
+    <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+      &#x1F4CA; League impact (rebalanced lineups, full z-score recompute)
+    </div>
+    <div id="phase3-delta"></div>
+    <div style="margin-top:10px">
+      <button id="phase3-toggle-btn" onclick="phase3ToggleTable()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show full updated standings
+      </button>
+      <div id="phase3-table-wrap" style="display:none;margin-top:10px"></div>
+    </div>
   </div>
 </div>
 
@@ -1378,7 +1600,11 @@ applyFantColors('fant-p-tbl');
 /* ── Trade Calculator ────────────────────────────────────────── */
 var TRADE_HITTERS  = {_trade_h_json};
 var TRADE_PITCHERS = {_trade_p_json};
-var _tradeRoster   = {{ send: [], recv: [] }};
+/* Phase 3: full league state (per-team rosters + baseline z-scores).
+   Null if no ESPN snapshot is present — the calculator falls back to the
+   classic projected-stat-diff verdict only in that case. */
+var PHASE3_LEAGUE  = {_phase3_json};
+var _tradeRoster   = {{ send: [], recv: [], recvTeamId: null }};
 
 function tradeSearch(side, q) {{
   var dd = document.getElementById('trade-' + side + '-dd');
@@ -1386,6 +1612,18 @@ function tradeSearch(side, q) {{
   if (!q) {{ dd.style.display = 'none'; return; }}
   var added = _tradeRoster.send.concat(_tradeRoster.recv).map(function(p) {{ return p.name; }});
   var pool  = TRADE_HITTERS.concat(TRADE_PITCHERS);
+  // Phase 3 filter: send side = user's team only, recv side = selected counterparty.
+  // (If PHASE3 isn't loaded the pool stays unfiltered — old behavior.)
+  if (PHASE3_LEAGUE) {{
+    var userTid = PHASE3_LEAGUE.user_team_id;
+    var recvTid = _tradeRoster.recvTeamId;
+    pool = pool.filter(function(p) {{
+      if (p.team_id == null) return false;        // unrostered → drop
+      if (side === 'send') return p.team_id === userTid;
+      if (side === 'recv') return recvTid != null && p.team_id === recvTid;
+      return true;
+    }});
+  }}
   var hits  = pool.filter(function(p) {{
     return added.indexOf(p.name) === -1 && p.name.toLowerCase().indexOf(q) !== -1;
   }}).slice(0, 8);
@@ -1581,6 +1819,447 @@ function _tradeCalc() {{
   }});
   bHtml += '</div>';
   breakEl.innerHTML = bHtml;
+
+  // Phase 3: full league recompute (only when ESPN snapshot is loaded
+  // and the trade has at least one player on each side)
+  if (PHASE3_LEAGUE && send.length && recv.length) {{
+    _phase3RenderImpact();
+  }} else {{
+    var p3 = document.getElementById('phase3-wrap');
+    if (p3) p3.style.display = 'none';
+  }}
+}}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── Phase 3: Trade impact on league standings ─────────────────────
+   ════════════════════════════════════════════════════════════════════
+   When a trade has both sides populated, swap players between the two
+   affected teams, re-optimize each team's hitter lineup with a JS LAP
+   solver, re-aggregate stats, and recompute z-scores across all 10
+   teams. Then render a compact before/after delta block plus an
+   optional collapsible full standings table.
+   ──────────────────────────────────────────────────────────────────── */
+
+/* One-time init: populate the counterparty dropdown and default to the
+   first non-user team. Hides the whole UI if PHASE3_LEAGUE is unavailable. */
+function phase3Init() {{
+  var wrap = document.getElementById('trade-counter-wrap');
+  if (!PHASE3_LEAGUE) {{ if (wrap) wrap.style.display = 'none'; return; }}
+  if (!wrap) return;
+  var sel = document.getElementById('trade-counter-sel');
+  if (!sel) return;
+  var others = PHASE3_LEAGUE.teams.filter(function(t) {{
+    return t.team_id !== PHASE3_LEAGUE.user_team_id;
+  }});
+  var html = '<option value="">— pick a team —</option>';
+  others.forEach(function(t) {{
+    html += '<option value="' + t.team_id + '">' + t.name + '</option>';
+  }});
+  sel.innerHTML = html;
+  wrap.style.display = '';
+}}
+phase3Init();
+
+/* Counterparty change handler. Wipes the recv side because old players
+   would belong to a different team. */
+function tradeSetCounter(val) {{
+  _tradeRoster.recvTeamId = val ? parseInt(val, 10) : null;
+  _tradeRoster.recv = [];
+  var inp = document.getElementById('trade-recv-search');
+  if (inp) inp.value = '';
+  _tradeRender();
+}}
+
+/* ── Hungarian LAP solver (square matrix, minimizes total cost) ─────
+   Pure-JS port of the classic O(n^3) Munkres-Kuhn algorithm. We use it
+   the same way scipy does on the Python side: build a cost matrix where
+   ineligible (player, slot) pairs get a very large penalty and eligible
+   pairs get -dollar (so minimizing cost = maximizing $).               */
+function _phase3Hungarian(cost) {{
+  var n = cost.length;
+  if (!n) return [];
+  var INF = 1e18;
+  var u = new Array(n + 1).fill(0);
+  var v = new Array(n + 1).fill(0);
+  var p = new Array(n + 1).fill(0);
+  var way = new Array(n + 1).fill(0);
+  for (var i = 1; i <= n; i++) {{
+    p[0] = i;
+    var j0 = 0;
+    var minv = new Array(n + 1).fill(INF);
+    var used = new Array(n + 1).fill(false);
+    do {{
+      used[j0] = true;
+      var i0 = p[j0], delta = INF, j1 = 0;
+      for (var j = 1; j <= n; j++) {{
+        if (used[j]) continue;
+        var cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+        if (cur < minv[j]) {{ minv[j] = cur; way[j] = j0; }}
+        if (minv[j] < delta) {{ delta = minv[j]; j1 = j; }}
+      }}
+      for (var j = 0; j <= n; j++) {{
+        if (used[j]) {{ u[p[j]] += delta; v[j] -= delta; }}
+        else {{ minv[j] -= delta; }}
+      }}
+      j0 = j1;
+    }} while (p[j0] !== 0);
+    do {{ var j2 = way[j0]; p[j0] = p[j2]; j0 = j2; }} while (j0 !== 0);
+  }}
+  // p[j] = row assigned to column j → flip to row→col
+  var ans = new Array(n).fill(-1);
+  for (var jj = 1; jj <= n; jj++) {{
+    if (p[jj] > 0) ans[p[jj] - 1] = jj - 1;
+  }}
+  return ans;
+}}
+
+/* Pick the best 11-hitter lineup from the given roster.
+   Returns the subset of `hitters` (player records) that fill starting
+   slots — same shape as the Python optimize_hitter_lineup output. */
+function _phase3OptimizeHitters(hitters) {{
+  if (!hitters || !hitters.length) return [];
+  var SLOTS = PHASE3_LEAGUE.slots;
+  var nSlots = SLOTS.length;
+  var nPlayers = hitters.length;
+  var n = Math.max(nPlayers, nSlots);
+  var INELIG = 1e9;
+  var cost = [];
+  for (var i = 0; i < n; i++) {{
+    var row = new Array(n).fill(INELIG);
+    if (i < nPlayers) {{
+      var rec = hitters[i];
+      var elig = rec.elig || [];
+      var dollar = rec.dollars || 0;
+      for (var j = 0; j < nSlots; j++) {{
+        var slotId = SLOTS[j][0];
+        if (elig.indexOf(slotId) !== -1) {{
+          // Negate so the LAP minimizer maximizes dollar value.
+          // +1 ensures even $0 players strictly beat ineligible cells.
+          row[j] = -(dollar + 1.0);
+        }}
+      }}
+    }}
+    cost.push(row);
+  }}
+  var assign = _phase3Hungarian(cost);
+  var starters = [];
+  for (var r = 0; r < n; r++) {{
+    var c = assign[r];
+    if (c < 0 || c >= nSlots) continue;
+    if (r >= nPlayers) continue;
+    if (cost[r][c] >= INELIG / 2) continue;
+    starters.push(hitters[r]);
+  }}
+  return starters;
+}}
+
+/* Sum counting stats + PA-weighted OBP across the optimized lineup */
+function _phase3AggHit(starters) {{
+  var out = {{R:0, HR:0, RBI:0, SO_h:0, SB:0, OBP:0}};
+  var obpNum = 0, paTotal = 0;
+  starters.forEach(function(p) {{
+    out.R    += p.R    || 0;
+    out.HR   += p.HR   || 0;
+    out.RBI  += p.RBI  || 0;
+    out.SO_h += p.SO_h || 0;
+    out.SB   += p.SB   || 0;
+    var pa = p.PA || 0, obp = p.OBP || 0;
+    if (pa > 0 && obp > 0) {{ obpNum += obp * pa; paTotal += pa; }}
+  }});
+  out.OBP = paTotal > 0 ? (obpNum / paTotal) : 0;
+  return out;
+}}
+
+/* Sum counting stats + IP-weighted ERA/WHIP across all rostered pitchers */
+function _phase3AggPit(pitchers) {{
+  var out = {{W:0, SO_p:0, SV:0, HLD:0, ERA:0, WHIP:0}};
+  var eraNum = 0, whipNum = 0, ipTotal = 0;
+  pitchers.forEach(function(p) {{
+    out.W    += p.W    || 0;
+    out.SO_p += p.SO_p || 0;
+    out.SV   += p.SV   || 0;
+    out.HLD  += p.HLD  || 0;
+    var ip = p.IP || 0, era = p.ERA || 0, whip = p.WHIP || 0;
+    if (ip > 0) {{
+      if (era  > 0) eraNum  += era  * ip;
+      if (whip > 0) whipNum += whip * ip;
+      ipTotal += ip;
+    }}
+  }});
+  out.ERA  = ipTotal > 0 ? (eraNum  / ipTotal) : 0;
+  out.WHIP = ipTotal > 0 ? (whipNum / ipTotal) : 0;
+  return out;
+}}
+
+/* Z-score every team across all 12 cats; return ranks + subtotals.
+   Mutates the passed-in `teams` array in place by setting .stats, .z,
+   .rank, .z_total, .z_hit, .z_pit, .rank_total, .rank_hit, .rank_pit. */
+function _phase3RecomputeZ(teams) {{
+  var allCats = PHASE3_LEAGUE.hit_cats.concat(PHASE3_LEAGUE.pit_cats);
+  var lower = {{}};
+  PHASE3_LEAGUE.lower_better.forEach(function(c) {{ lower[c] = true; }});
+  // mean / std per category
+  allCats.forEach(function(cat) {{
+    var vals = teams.map(function(t) {{ return t.stats[cat] || 0; }});
+    var mu = vals.reduce(function(a,b) {{ return a+b; }}, 0) / vals.length;
+    var ssd = vals.reduce(function(a,b) {{ return a + (b-mu)*(b-mu); }}, 0);
+    var sig = Math.sqrt(ssd / vals.length);
+    if (sig < 1e-9) sig = 1e-9;
+    teams.forEach(function(t) {{
+      var v = t.stats[cat] || 0;
+      var z = (v - mu) / sig;
+      if (lower[cat]) z = -z;
+      if (!t.z) t.z = {{}};
+      t.z[cat] = Math.round(z * 1000) / 1000;
+    }});
+  }});
+  // per-cat ranks
+  allCats.forEach(function(cat) {{
+    var sorted = teams.slice().sort(function(a,b) {{ return b.z[cat] - a.z[cat]; }});
+    sorted.forEach(function(t, i) {{
+      if (!t.rank) t.rank = {{}};
+      t.rank[cat] = i + 1;
+    }});
+  }});
+  // subtotals + total ranks
+  teams.forEach(function(t) {{
+    var zh = 0, zp = 0;
+    PHASE3_LEAGUE.hit_cats.forEach(function(c) {{ zh += t.z[c]; }});
+    PHASE3_LEAGUE.pit_cats.forEach(function(c) {{ zp += t.z[c]; }});
+    t.z_hit = Math.round(zh * 1000) / 1000;
+    t.z_pit = Math.round(zp * 1000) / 1000;
+    t.z_total = Math.round((zh + zp) * 1000) / 1000;
+  }});
+  ['z_hit','z_pit','z_total'].forEach(function(key) {{
+    var rk = key === 'z_hit' ? 'rank_hit' : key === 'z_pit' ? 'rank_pit' : 'rank_total';
+    var sorted = teams.slice().sort(function(a,b) {{ return b[key] - a[key]; }});
+    sorted.forEach(function(t, i) {{ t[rk] = i + 1; }});
+  }});
+  return teams;
+}}
+
+/* Build a deep-copied league with the trade applied. The two affected
+   teams have their hitter / pitcher lists rewritten (subtract sent
+   players, add received players), then their lineups are re-optimized
+   and stats re-aggregated. Untouched teams keep their existing stats. */
+function _phase3SimulateTrade() {{
+  var league = JSON.parse(JSON.stringify(PHASE3_LEAGUE.teams));
+  var userTid = PHASE3_LEAGUE.user_team_id;
+  var oppTid  = _tradeRoster.recvTeamId;
+  if (oppTid == null) return null;
+
+  var sendIds = {{}};   // espn_ids leaving the user
+  var recvIds = {{}};   // espn_ids leaving the opponent
+  _tradeRoster.send.forEach(function(p) {{ if (p.espn_id != null) sendIds[p.espn_id] = true; }});
+  _tradeRoster.recv.forEach(function(p) {{ if (p.espn_id != null) recvIds[p.espn_id] = true; }});
+
+  function findById(teamId, espn_id) {{
+    var tm = league.find(function(t) {{ return t.team_id === teamId; }});
+    if (!tm) return null;
+    var hit = tm.hitters .find(function(p) {{ return p.espn_id === espn_id; }});
+    if (hit) return hit;
+    return tm.pitchers.find(function(p) {{ return p.espn_id === espn_id; }});
+  }}
+
+  // Pull the actual player records (with full stat fields) from the
+  // original league snapshot — the trade-roster entries don't carry the
+  // hitter PA / pitcher IP fields needed for re-aggregation.
+  var sendPlayers = _tradeRoster.send.map(function(p) {{
+    return findById(userTid, p.espn_id) || p;
+  }});
+  var recvPlayers = _tradeRoster.recv.map(function(p) {{
+    return findById(oppTid, p.espn_id) || p;
+  }});
+
+  league.forEach(function(team) {{
+    if (team.team_id !== userTid && team.team_id !== oppTid) return;
+    var rmIds = team.team_id === userTid ? sendIds : recvIds;
+    var addList = team.team_id === userTid ? recvPlayers : sendPlayers;
+    team.hitters  = team.hitters .filter(function(p) {{ return !rmIds[p.espn_id]; }});
+    team.pitchers = team.pitchers.filter(function(p) {{ return !rmIds[p.espn_id]; }});
+    addList.forEach(function(p) {{
+      // Decide bucket: if it has elig list it's a hitter, else pitcher
+      // (every hitter record carries elig; pitchers don't)
+      if (p.elig && p.elig.length) team.hitters.push(p);
+      else team.pitchers.push(p);
+    }});
+    // Re-optimize lineup + re-aggregate
+    var starters = _phase3OptimizeHitters(team.hitters);
+    var hAgg = _phase3AggHit(starters);
+    var pAgg = _phase3AggPit(team.pitchers);
+    team.stats = {{
+      R:    Math.round(hAgg.R    * 10) / 10,
+      HR:   Math.round(hAgg.HR   * 10) / 10,
+      RBI:  Math.round(hAgg.RBI  * 10) / 10,
+      SO_h: Math.round(hAgg.SO_h * 10) / 10,
+      SB:   Math.round(hAgg.SB   * 10) / 10,
+      OBP:  Math.round(hAgg.OBP  * 10000) / 10000,
+      W:    Math.round(pAgg.W    * 10) / 10,
+      SO_p: Math.round(pAgg.SO_p * 10) / 10,
+      SV:   Math.round(pAgg.SV   * 10) / 10,
+      HLD:  Math.round(pAgg.HLD  * 10) / 10,
+      ERA:  Math.round(pAgg.ERA  * 1000) / 1000,
+      WHIP: Math.round(pAgg.WHIP * 1000) / 1000,
+    }};
+  }});
+
+  _phase3RecomputeZ(league);
+  return league;
+}}
+
+/* Color helper mirroring _proj_rank_color: gold (1) → red (mid) → blue (last) */
+function _phase3RankColor(rank, n) {{
+  if (n <= 1) return '#888';
+  var t = (rank - 1) / (n - 1);
+  if (t <= 0.5) {{
+    var u = t / 0.5;
+    var r = Math.round(240 + (224 - 240) * u);
+    var g = Math.round(192 + (85  - 192) * u);
+    var b = Math.round( 64 + (85  -  64) * u);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }} else {{
+    var u = (t - 0.5) / 0.5;
+    var r = Math.round(224 + ( 80 - 224) * u);
+    var g = Math.round( 85 + (130 -  85) * u);
+    var b = Math.round( 85 + (220 -  85) * u);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }}
+}}
+
+/* Render the compact 2-team delta + (collapsed) full standings table */
+function _phase3RenderImpact() {{
+  var newLeague = _phase3SimulateTrade();
+  var wrap = document.getElementById('phase3-wrap');
+  if (!newLeague || !wrap) {{ if (wrap) wrap.style.display = 'none'; return; }}
+  wrap.style.display = '';
+  var n = PHASE3_LEAGUE.teams.length;
+  var userTid = PHASE3_LEAGUE.user_team_id;
+  var oppTid  = _tradeRoster.recvTeamId;
+  function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
+  function findNew(tid) {{ return newLeague.find(function(t) {{ return t.team_id === tid; }}); }}
+  var oldUser = findOld(userTid), newUser = findNew(userTid);
+  var oldOpp  = findOld(oppTid),  newOpp  = findNew(oppTid);
+  if (!oldUser || !newUser || !oldOpp || !newOpp) {{
+    wrap.style.display = 'none'; return;
+  }}
+
+  function fmtDelta(before, after, decimals) {{
+    var d = after - before;
+    var sign = d > 0 ? '+' : (d < 0 ? '\u2212' : '');
+    var col  = d > 0.005 ? '#4caf50' : (d < -0.005 ? '#e05555' : '#888');
+    return '<span style="color:' + col + ';font-weight:700">'
+         + sign + Math.abs(d).toFixed(decimals) + '</span>';
+  }}
+  function fmtRankDelta(before, after) {{
+    var d = before - after;  // positive = improved (rank dropped numerically)
+    var col, sign;
+    if (d > 0) {{ col = '#4caf50'; sign = '\u25B2'; }}
+    else if (d < 0) {{ col = '#e05555'; sign = '\u25BC'; }}
+    else {{ col = '#888'; sign = '\u25A0'; }}
+    return '<span style="color:' + col + ';font-weight:700">'
+         + sign + ' ' + Math.abs(d) + '</span>';
+  }}
+
+  function teamCard(label, oldT, newT, accent) {{
+    var oC = _phase3RankColor(oldT.rank_total, n);
+    var nC = _phase3RankColor(newT.rank_total, n);
+    return '<div style="flex:1;min-width:230px;background:#1a1a1a;border-radius:8px;'
+         + 'padding:10px 13px;border-left:3px solid ' + accent + '">'
+         + '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
+         +   'text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">'
+         +   label + '</div>'
+         + '<div style="font-size:.92rem;font-weight:700;color:#fff;margin-bottom:8px">'
+         +   newT.name + '</div>'
+         + '<div style="display:grid;grid-template-columns:auto auto auto auto;gap:5px 10px;'
+         +   'font-size:.78rem;align-items:center">'
+         +   '<div style="color:var(--muted)">Z Total</div>'
+         +   '<div>' + oldT.z_total.toFixed(2) + '</div>'
+         +   '<div style="color:#666">\u2192</div>'
+         +   '<div style="color:' + nC + ';font-weight:700">' + newT.z_total.toFixed(2) + '</div>'
+         +   '<div style="color:var(--muted)">Rank</div>'
+         +   '<div style="color:' + oC + '">#' + oldT.rank_total + '</div>'
+         +   '<div style="color:#666">\u2192</div>'
+         +   '<div style="color:' + nC + ';font-weight:700">#' + newT.rank_total + '&nbsp;&nbsp;'
+         +     fmtRankDelta(oldT.rank_total, newT.rank_total) + '</div>'
+         +   '<div style="color:var(--muted)">H&nbsp;Z</div>'
+         +   '<div>' + oldT.z_hit.toFixed(2) + '</div>'
+         +   '<div style="color:#666">\u2192</div>'
+         +   '<div>' + newT.z_hit.toFixed(2) + '&nbsp;&nbsp;' + fmtDelta(oldT.z_hit, newT.z_hit, 2) + '</div>'
+         +   '<div style="color:var(--muted)">P&nbsp;Z</div>'
+         +   '<div>' + oldT.z_pit.toFixed(2) + '</div>'
+         +   '<div style="color:#666">\u2192</div>'
+         +   '<div>' + newT.z_pit.toFixed(2) + '&nbsp;&nbsp;' + fmtDelta(oldT.z_pit, newT.z_pit, 2) + '</div>'
+         + '</div>'
+         + '</div>';
+  }}
+
+  document.getElementById('phase3-delta').innerHTML =
+    '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+    + teamCard('You', oldUser, newUser, '#4caf50')
+    + teamCard('Counterparty', oldOpp, newOpp, '#e05555')
+    + '</div>';
+
+  // Build the optional collapsible full table only when it's currently visible
+  var tw = document.getElementById('phase3-table-wrap');
+  if (tw && tw.style.display !== 'none') _phase3RenderTable(newLeague);
+}}
+
+function phase3ToggleTable() {{
+  var tw  = document.getElementById('phase3-table-wrap');
+  var btn = document.getElementById('phase3-toggle-btn');
+  if (!tw) return;
+  var open = tw.style.display !== 'none';
+  if (open) {{
+    tw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show full updated standings';
+  }} else {{
+    var newLeague = _phase3SimulateTrade();
+    if (!newLeague) return;
+    _phase3RenderTable(newLeague);
+    tw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide full updated standings';
+  }}
+}}
+
+function _phase3RenderTable(newLeague) {{
+  var tw = document.getElementById('phase3-table-wrap');
+  if (!tw) return;
+  var n = newLeague.length;
+  function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
+  var sorted = newLeague.slice().sort(function(a,b) {{ return a.rank_total - b.rank_total; }});
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
+           + '<thead><tr style="border-bottom:1px solid #333">'
+           + '<th style="text-align:left;padding:6px 8px;color:var(--muted)">#</th>'
+           + '<th style="text-align:left;padding:6px 8px;color:var(--muted)">Team</th>'
+           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">Z Total</th>'
+           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">\u0394 Z</th>'
+           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">\u0394 Rank</th>'
+           + '</tr></thead><tbody>';
+  sorted.forEach(function(t) {{
+    var old = findOld(t.team_id);
+    var rkC = _phase3RankColor(t.rank_total, n);
+    var zd  = t.z_total - old.z_total;
+    var rd  = old.rank_total - t.rank_total;
+    var zCol = zd > 0.005 ? '#4caf50' : zd < -0.005 ? '#e05555' : '#888';
+    var rCol = rd > 0     ? '#4caf50' : rd < 0      ? '#e05555' : '#888';
+    var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
+    var rStr = rd === 0 ? '\u25A0 0'
+             : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
+    var isUser = t.team_id === PHASE3_LEAGUE.user_team_id;
+    var isOpp  = t.team_id === _tradeRoster.recvTeamId;
+    var nameAccent = isUser ? '#4caf50' : isOpp ? '#e05555' : '#ddd';
+    var bg = (isUser || isOpp) ? '#1a1a1a' : 'transparent';
+    html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
+          + '<td style="padding:5px 8px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
+          + '<td style="padding:5px 8px;color:' + nameAccent + ';font-weight:600">' + t.name + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;color:' + rkC + ';font-weight:700">'
+          +   t.z_total.toFixed(2) + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;color:' + zCol + '">' + zStr + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;color:' + rCol + '">' + rStr + '</td>'
+          + '</tr>';
+  }});
+  html += '</tbody></table>';
+  tw.innerHTML = html;
 }}
 </script>
 """
