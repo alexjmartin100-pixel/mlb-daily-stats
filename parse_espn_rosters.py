@@ -93,18 +93,27 @@ def load_espn_snapshot(json_path: str) -> Dict[str, Any]:
         return json.load(f)
 
 
+def _last_name(nm: str) -> str:
+    """Return the last whitespace-separated token of a name, post-norm.
+    Handles two-word surnames poorly but that's what Pass-4 is for."""
+    parts = nm.split()
+    return parts[-1] if parts else ""
+
+
 def _build_fg_index(fut_h: list, fut_p: list) -> Dict:
     """
     Build lookup tables over the existing FG projection list.
 
-    Returns a dict with three views:
-      - by_name_team: {(norm_name, team_abbrev): entry}
-      - by_name:      {norm_name: [entry, entry, ...]}    (collision-aware fallback)
-      - by_mlbam:     {int(mlbam_id): entry}              (future use w/ Chadwick)
+    Returns a dict with four views:
+      - by_name_team:  {(norm_name, team_abbrev): entry}
+      - by_name:       {norm_name: [entry, entry, ...]}    (collision-aware fallback)
+      - by_mlbam:      {int(mlbam_id): entry}              (future use w/ Chadwick)
+      - by_last_team:  {(last_name, team_abbrev): [entry, ...]} (nickname fallback)
     """
     by_name_team: Dict = {}
     by_name: Dict = {}
     by_mlbam: Dict = {}
+    by_last_team: Dict = {}
     for entry in (fut_h or []) + (fut_p or []):
         p = entry.get("player", {}) or {}
         nm = _alias(norm_name(p.get("name", "") or ""))
@@ -114,13 +123,21 @@ def _build_fg_index(fut_h: list, fut_p: list) -> Dict:
         if tm:
             by_name_team[(nm, tm)] = entry
         by_name.setdefault(nm, []).append(entry)
+        last = _last_name(nm)
+        if last and tm:
+            by_last_team.setdefault((last, tm), []).append(entry)
         try:
             m = p.get("mlbam")
             if m is not None:
                 by_mlbam[int(m)] = entry
         except (TypeError, ValueError):
             pass
-    return {"by_name_team": by_name_team, "by_name": by_name, "by_mlbam": by_mlbam}
+    return {
+        "by_name_team": by_name_team,
+        "by_name": by_name,
+        "by_mlbam": by_mlbam,
+        "by_last_team": by_last_team,
+    }
 
 
 def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Optional[Dict]:
@@ -130,7 +147,10 @@ def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Opt
     Match priority:
       1. Normalized full name + MLB team
       2. Normalized full name alone, if exactly one match exists
-      3. None
+      3. Last-name + MLB team, if exactly one FG entry matches
+         (handles Cam/Cameron, Matt/Matthew, Nick/Nicky, etc. — any
+         nickname/full-name mismatch that shares a last name and team)
+      4. None
     """
     nm = _alias(norm_name(espn_player.get("fullName", "") or ""))
     if not nm:
@@ -146,6 +166,15 @@ def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Opt
     name_hits = fg_idx["by_name"].get(nm, [])
     if len(name_hits) == 1:
         return name_hits[0]
+
+    # Pass 3: last-name + team, unique match. Covers nickname vs full-name
+    # mismatches (e.g. ESPN "Cam Schlittler" vs FG "Cameron Schlittler") as
+    # long as there's only one player with that surname on that MLB team.
+    last = _last_name(nm)
+    if last and tm:
+        lt_hits = fg_idx["by_last_team"].get((last, tm), [])
+        if len(lt_hits) == 1:
+            return lt_hits[0]
 
     return None
 
@@ -296,9 +325,4 @@ if __name__ == "__main__":
     for t in raw["teams"]:
         active = sum(1 for e in t["roster"]["entries"]
                      if e.get("lineupSlotId") not in INACTIVE_LINEUP_SLOTS)
-        h_ct = sum(1 for e in t["roster"]["entries"]
-                   if e.get("lineupSlotId") not in INACTIVE_LINEUP_SLOTS
-                   and not _is_pitcher(e["playerPoolEntry"]["player"].get("eligibleSlots", [])))
-        p_ct = active - h_ct
-        print(f"  team {t['id']:2}  {t.get('name','?'):30}  active={active:2}  "
-              f"H={h_ct:2}  P={p_ct:2}")
+        print(f"  {t.get('name', t.get('id'))}: {active} active")
