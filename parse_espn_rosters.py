@@ -48,8 +48,10 @@ HITTER_LINEUP_SIZE = sum(c for _, c in HITTER_LINEUP_SLOTS)  # 11
 # (no slot optimization). IL pitchers are still excluded.
 PITCHER_ELIGIBLE_SLOTS = {13, 14, 15}  # P / SP / RP
 
-# Slots that mean "this player is not contributing" — exclude from totals.
-EXCLUDE_LINEUP_SLOTS = {17, 19}  # IL, NA
+# Slots that mean "this player is not contributing" — they still belong to
+# their team (so the trade machine tags them with a team_id and the FA picker
+# doesn't offer them), but the lineup optimizer skips them via rec["inactive"].
+INACTIVE_LINEUP_SLOTS = {17, 19}  # IL, NA
 
 
 # ── ESPN proTeamId → standard MLB abbreviation ─────────────────────────────
@@ -196,7 +198,7 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
     teams_out: List[Dict] = []
     unmatched: List[Dict] = []
     counts = {"hitters_matched": 0, "pitchers_matched": 0,
-              "il_excluded": 0, "total_active": 0}
+              "inactive_kept": 0, "total_active": 0}
 
     for t in raw.get("teams", []):
         team_obj = {
@@ -208,10 +210,11 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
         }
         for entry in t.get("roster", {}).get("entries", []):
             slot = entry.get("lineupSlotId")
-            if slot in EXCLUDE_LINEUP_SLOTS:
-                counts["il_excluded"] += 1
-                continue
-            counts["total_active"] += 1
+            inactive = slot in INACTIVE_LINEUP_SLOTS
+            if inactive:
+                counts["inactive_kept"] += 1
+            else:
+                counts["total_active"] += 1
 
             ppe = entry.get("playerPoolEntry", {}) or {}
             p = ppe.get("player", {}) or {}
@@ -223,12 +226,16 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
 
             fd_entry = _lookup_player(fg_idx, p, pro_abbrev)
             if fd_entry is None:
-                unmatched.append({
-                    "espn_id":   espn_id,
-                    "name":      full,
-                    "team":      pro_abbrev,
-                    "is_pitcher": is_pit,
-                })
+                # Only track unmatched for active players — inactive guys with
+                # no FG projection row can't show up in TRADE_HITTERS anyway,
+                # so they don't cause the FA-picker leak.
+                if not inactive:
+                    unmatched.append({
+                        "espn_id":   espn_id,
+                        "name":      full,
+                        "team":      pro_abbrev,
+                        "is_pitcher": is_pit,
+                    })
                 continue
 
             rec = {
@@ -238,13 +245,16 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
                 "elig":       elig,
                 "fdata":      fd_entry,
                 "is_pitcher": is_pit,
+                "inactive":   inactive,   # True for IL/NA; lineup optimizer skips these
             }
             if is_pit:
                 team_obj["pitchers"].append(rec)
-                counts["pitchers_matched"] += 1
+                if not inactive:
+                    counts["pitchers_matched"] += 1
             else:
                 team_obj["hitters"].append(rec)
-                counts["hitters_matched"] += 1
+                if not inactive:
+                    counts["hitters_matched"] += 1
 
         teams_out.append(team_obj)
 
@@ -254,7 +264,7 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
         miss = active - total_matched
         rate = (100.0 * total_matched / active) if active else 0.0
         print(f"  [ESPN] {len(teams_out)} teams, {active} active roster spots "
-              f"({counts['il_excluded']} IL excluded)")
+              f"({counts['inactive_kept']} IL/NA kept as inactive)")
         print(f"  [ESPN] Joined {total_matched}/{active} ({rate:.1f}%) — "
               f"{counts['hitters_matched']} hitters, {counts['pitchers_matched']} pitchers")
         if miss:
@@ -285,9 +295,9 @@ if __name__ == "__main__":
     print(f"# teams: {len(raw['teams'])}")
     for t in raw["teams"]:
         active = sum(1 for e in t["roster"]["entries"]
-                     if e.get("lineupSlotId") not in EXCLUDE_LINEUP_SLOTS)
+                     if e.get("lineupSlotId") not in INACTIVE_LINEUP_SLOTS)
         h_ct = sum(1 for e in t["roster"]["entries"]
-                   if e.get("lineupSlotId") not in EXCLUDE_LINEUP_SLOTS
+                   if e.get("lineupSlotId") not in INACTIVE_LINEUP_SLOTS
                    and not _is_pitcher(e["playerPoolEntry"]["player"].get("eligibleSlots", [])))
         p_ct = active - h_ct
         print(f"  team {t['id']:2}  {t.get('name','?'):30}  active={active:2}  "

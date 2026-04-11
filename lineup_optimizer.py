@@ -276,8 +276,14 @@ def build_season_projections(parsed_league: Dict[str, Any],
     team_rows: List[Dict[str, Any]] = []
 
     for team in parsed_league.get("teams", []):
-        starters = optimize_hitter_lineup(team.get("hitters", []))
-        pitchers = team.get("pitchers", []) or []
+        # parse_espn_rosters keeps IL/NA players on the team roster (so the
+        # trade machine can tag them with a team_id and exclude them from the
+        # free-agent picker), but they're flagged inactive=True and must not
+        # count toward starting lineups or stat totals.
+        active_hitters  = [h for h in team.get("hitters",  []) if not h.get("inactive")]
+        active_pitchers = [p for p in team.get("pitchers", []) if not p.get("inactive")]
+        starters = optimize_hitter_lineup(active_hitters)
+        pitchers = active_pitchers
 
         h_stats = aggregate_hitter_stats(starters)
         p_stats = aggregate_pitcher_stats(pitchers)
