@@ -1598,8 +1598,8 @@ function applyFantColors(tblId) {{
         b = Math.round(50  + (235 - 50)  * s);
       }} else {{
         var s2 = (t - 0.5) * 2;
-        r = Math.round(235 + (50  - 235) * s2);
-        g = Math.round(235 + (110 - 235) * s2);
+        r = Math.round(235 + ( 60 - 235) * s2);
+        g = Math.round(235 + (140 - 235) * s2);
         b = Math.round(235 + (255 - 235) * s2);
       }}
       cell.style.color = 'rgb(' + r + ',' + g + ',' + b + ')';
@@ -2470,13 +2470,18 @@ function _phase3RenderLineups() {{
       var bg = changed ? '#241a1a' : 'transparent';
       var slotCol = changed ? '#f0c040' : 'var(--muted)';
       var afterCell = fmtCell(na.player);
-      // "+" button: only for user's empty AFTER slots.
+      // "+" button: only for user's empty AFTER slots. Args are carried via
+      // data-* attributes to sidestep Python f-string backslash-escape rules.
       if (isUser && !na.player) {{
+        var slotLbl = (na.slot_label || '').replace(/"/g, '&quot;');
         afterCell = '<span style="color:#e05555;font-weight:700">(empty)</span>'
-                  + '&nbsp;&nbsp;<button onmousedown="phase3OpenPickupMenu(' + na.slot_id + ",'" + na.slot_label + "')\" "
+                  + '&nbsp;&nbsp;<button '
+                  + 'data-slot-id="' + na.slot_id + '" '
+                  + 'data-slot-label="' + slotLbl + '" '
+                  + 'onmousedown="phase3OpenPickupMenu(Number(this.dataset.slotId),this.dataset.slotLabel)" '
                   + 'style="background:#1e3a1e;border:1px solid #2e6b2e;color:#9cd39c;'
-                  + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700"'
-                  + '>+ FA</button>';
+                  + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700">'
+                  + '+ FA</button>';
       }}
       rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
             +   '<td style="padding:4px 8px;color:' + slotCol + ';font-weight:700;width:46px">'
