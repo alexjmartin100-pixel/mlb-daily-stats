@@ -1146,6 +1146,9 @@ def render_fantasy_tab(fdata: dict) -> str:
     def _sfp(v, d=3):
         try: return round(float(v or 0), d)
         except: return 0.0
+    # NOTE: hitter strikeouts use key 'K_h' (lower = better) and pitcher
+    # strikeouts use key 'K_p' (higher = better). They used to share the key
+    # 'K', which silently collided in mixed trade aggregation.
     _trade_h = []
     for _e in fdata["fut_h"]:
         _p = _e["player"]
@@ -1153,10 +1156,13 @@ def render_fantasy_tab(fdata: dict) -> str:
             "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
             "dollars": _sf(_e["dollar"]), "is_pitcher": False,
             "cats": {"R":_sf(_p.get("R")),"HR":_sf(_p.get("HR")),"RBI":_sf(_p.get("RBI")),
-                     "SB":_sf(_p.get("SB")),"K":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))},
+                     "SB":_sf(_p.get("SB")),"K_h":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))},
+            # PA_p is carried so a waiver-pickup can still be PA-weighted
+            # into a team's aggregate OBP during Phase 3 simulation.
             "proj": {"R":_sfp(_p.get("R_p"),0),"HR":_sfp(_p.get("HR_p"),0),
                      "RBI":_sfp(_p.get("RBI_p"),0),"SB":_sfp(_p.get("SB_p"),0),
-                     "K":_sfp(_p.get("SO_p"),0),"OBP":_sfp(_p.get("OBP_p"),3)}
+                     "K_h":_sfp(_p.get("SO_p"),0),"OBP":_sfp(_p.get("OBP_p"),3),
+                     "PA":_sfp(_p.get("PA_p"),0)}
         })
     _trade_p = []
     for _e in fdata["fut_p"]:
@@ -1165,9 +1171,9 @@ def render_fantasy_tab(fdata: dict) -> str:
             "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
             "role": _e.get("role","sp"), "dollars": _sf(_e["dollar"]), "is_pitcher": True,
             "cats": {"W":_sf(_p.get("W")),"ERA":_sf(_p.get("ERA")),"WHIP":_sf(_p.get("WHIP")),
-                     "K":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
+                     "K_p":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
             "proj": {"W":_sfp(_p.get("W_p"),0),"ERA":_sfp(_p.get("ERA_p"),2),
-                     "WHIP":_sfp(_p.get("WHIP_p"),2),"K":_sfp(_p.get("SO_p"),0),
+                     "WHIP":_sfp(_p.get("WHIP_p"),2),"K_p":_sfp(_p.get("SO_p"),0),
                      "SV":_sfp(_p.get("SV_p"),0),"HLD":_sfp(_p.get("HLD_p"),0)}
         })
     _trade_h_json = _json.dumps(_trade_h)
@@ -1379,7 +1385,7 @@ def render_fantasy_tab(fdata: dict) -> str:
               style="background:#1a1a1a;border:1px solid #333;color:#bbb;
                      padding:6px 14px;border-radius:6px;cursor:pointer;
                      font-size:.78rem;font-weight:600">
-        &#x25BC; Show optimized lineups (before / after)
+        &#x25BC; Show optimized lineups + staff (before / after)
       </button>
       <button id="phase3-toggle-btn" onclick="phase3ToggleTable()"
               style="background:#1a1a1a;border:1px solid #333;color:#bbb;
@@ -1611,7 +1617,11 @@ var TRADE_PITCHERS = {_trade_p_json};
    Null if no ESPN snapshot is present — the calculator falls back to the
    classic projected-stat-diff verdict only in that case. */
 var PHASE3_LEAGUE  = {_phase3_json};
-var _tradeRoster   = {{ send: [], recv: [], recvTeamId: null }};
+var _tradeRoster   = {{ send: [], recv: [], recvTeamId: null, pickups: [] }};
+/* Active free-agent pickup-picker state. When set, _phase3RenderLineups renders
+   an inline free-agent list in place of the "+" button for the target slot.
+   Cleared on any add/remove. */
+window._phase3PickerSlot = null;
 
 function tradeSearch(side, q) {{
   var dd = document.getElementById('trade-' + side + '-dd');
@@ -1668,6 +1678,12 @@ function tradeAdd(side, name) {{
 
 function tradeRemove(side, name) {{
   _tradeRoster[side] = _tradeRoster[side].filter(function(p) {{ return p.name !== name; }});
+  // Clear pickups if the trade is now empty — orphaned waiver adds are
+  // confusing and phase3 simulation won't run without both sides anyway.
+  if (!_tradeRoster.send.length && !_tradeRoster.recv.length) {{
+    _tradeRoster.pickups = [];
+    window._phase3PickerSlot = null;
+  }}
   _tradeRender();
 }}
 
@@ -1723,14 +1739,15 @@ function _tradeRender() {{
 /* \u2500\u2500 Trade Calc: verdict + per-stat breakdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
 // Counting stats are summed; rate stats (OBP/ERA/WHIP) are averaged across the side.
 var TRADE_RATE_STATS = {{'OBP':true,'ERA':true,'WHIP':true}};
-// Lower-is-better categories. NOTE: the display key 'K' is overloaded — it's
-// HITTER strikeouts (lower = better) when the trade is hitters-only, and
-// PITCHER strikeouts (higher = better) otherwise. The render loop in
-// _tradeCalc picks the correct direction dynamically, so 'K' is intentionally
-// not listed here as a static lower-better cat.
-var TRADE_LOWER_BETTER = {{'ERA':true,'WHIP':true}};
+// Lower-is-better categories. Hitter strikeouts (K_h) are lower-better;
+// pitcher strikeouts (K_p) are higher-better — they used to share the key
+// 'K' which silently collided in mixed trades.
+var TRADE_LOWER_BETTER = {{'ERA':true,'WHIP':true,'K_h':true}};
 // Stat order so hitter cats line up with sidebar order, pitcher cats too
-var TRADE_STAT_ORDER = ['R','HR','RBI','SB','OBP','W','SV','HLD','K','ERA','WHIP'];
+var TRADE_STAT_ORDER = ['R','HR','RBI','SB','K_h','OBP','W','SV','HLD','K_p','ERA','WHIP'];
+// Display label map — lets us use disambiguated internal keys while showing
+// friendlier labels in the UI. Unmapped keys render as-is.
+var TRADE_DISPLAY_LABEL = {{'K_h':'K (H)','K_p':'K (P)'}};
 
 function _aggProj(players) {{
   // Returns {{stat: aggregated_value}} — sums for counting stats, averages for rate stats
@@ -1808,11 +1825,6 @@ function _tradeCalc() {{
     if (!seen[k]) {{ seen[k]=1; allKeys.push(k); }}
   }});
   if (!allKeys.length) {{ breakEl.innerHTML=''; return; }}
-  // Detect whether the trade involves any pitchers. If it's a hitters-only
-  // trade, the 'K' display key represents hitter strikeouts (lower = better).
-  // Otherwise 'K' represents pitcher strikeouts (higher = better).
-  var pitcherInTrade = false;
-  send.concat(recv).forEach(function(p) {{ if (p && p.is_pitcher) pitcherInTrade = true; }});
   var bHtml = '<div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;'
             + 'letter-spacing:.06em;font-weight:700;margin:8px 0 4px;text-align:center">'
             + 'Projected Season \u0394</div>'
@@ -1820,21 +1832,19 @@ function _tradeCalc() {{
   allKeys.forEach(function(k) {{
     var sv = sendAgg[k]||0, rv = recvAgg[k]||0;
     var rawDiff = rv - sv;
-    var kIsHitterSO = (k === 'K' && !pitcherInTrade);
-    var effectiveLowerBetter = TRADE_LOWER_BETTER[k] || kIsHitterSO;
-    var adjDiff = effectiveLowerBetter ? -rawDiff : rawDiff;
-    // Significance threshold depends on stat type. Hitter K is still a
-    // counting stat, so use the counting-stat threshold (0.5) for it.
-    var thresh = (k === 'OBP') ? 0.0005
-               : (TRADE_LOWER_BETTER[k] ? 0.005 : 0.5);
+    var adjDiff = TRADE_LOWER_BETTER[k] ? -rawDiff : rawDiff;
+    // Rate stats (ERA/WHIP/OBP) need a finer significance threshold.
+    var isRate = (k === 'OBP' || k === 'ERA' || k === 'WHIP');
+    var thresh = (k === 'OBP') ? 0.0005 : (isRate ? 0.005 : 0.5);
     var isPos = adjDiff >  thresh;
     var isNeg = adjDiff < -thresh;
     var col   = isPos ? '#4caf50' : isNeg ? '#e05555' : '#888';
     var arrow = isPos ? '&#x25B2;' : isNeg ? '&#x25BC;' : '&#x25A0;';
     var dispDiff = _fmtStatDiff(k, rawDiff);
+    var label = TRADE_DISPLAY_LABEL[k] || k;
     bHtml += '<div style="display:flex;justify-content:space-between;align-items:center;'
            + 'padding:5px 9px;background:#1a1a1a;border-radius:5px;border-left:3px solid ' + col + '">'
-           + '<span style="font-size:.76rem;font-weight:700;color:#ccc">' + k + '</span>'
+           + '<span style="font-size:.76rem;font-weight:700;color:#ccc">' + label + '</span>'
            + '<span style="font-size:.8rem;font-weight:700;color:' + col + '">' + arrow + ' ' + dispDiff + '</span>'
            + '</div>';
   }});
@@ -1886,6 +1896,8 @@ phase3Init();
 function tradeSetCounter(val) {{
   _tradeRoster.recvTeamId = val ? parseInt(val, 10) : null;
   _tradeRoster.recv = [];
+  _tradeRoster.pickups = [];
+  window._phase3PickerSlot = null;
   var inp = document.getElementById('trade-recv-search');
   if (inp) inp.value = '';
   _tradeRender();
@@ -2125,6 +2137,12 @@ function _phase3SimulateTrade() {{
       if (p.elig && p.elig.length) team.hitters.push(p);
       else team.pitchers.push(p);
     }});
+    // Apply any free-agent pickups to the user's hitter pool. Each pickup
+    // carries elig=[targetSlot] so the LAP will slot it there and nowhere
+    // else — honest "fill the hole" semantics.
+    if (team.team_id === userTid && _tradeRoster.pickups && _tradeRoster.pickups.length) {{
+      _tradeRoster.pickups.forEach(function(pk) {{ team.hitters.push(pk); }});
+    }}
     // Re-optimize lineup + re-aggregate
     var starters = _phase3OptimizeHitters(team.hitters);
     var hAgg = _phase3AggHit(starters);
@@ -2172,15 +2190,24 @@ function _phase3RankColor(rank, n) {{
 }}
 
 /* Compute the LAP-optimized lineup dollar value + slot assignments for one team.
+   Also returns the pitcher staff sorted by dollar value (no slot constraints).
    Used for the diagnostic display so the user can SEE why z changed. */
 function _phase3LineupSummary(team) {{
   var full = _phase3OptimizeHittersFull(team.hitters || []);
-  var dollar = 0;
-  full.starters.forEach(function(s) {{ dollar += (s.dollars || 0); }});
+  var hDollar = 0;
+  full.starters.forEach(function(s) {{ hDollar += (s.dollars || 0); }});
+  var pitchers = (team.pitchers || []).slice().sort(function(a, b) {{
+    return (b.dollars || 0) - (a.dollars || 0);
+  }});
+  var pDollar = 0;
+  pitchers.forEach(function(p) {{ pDollar += (p.dollars || 0); }});
   return {{
-    dollar:   dollar,
+    dollar:   hDollar,               // back-compat: 'dollar' = hitter lineup $
+    hDollar:  hDollar,
+    pDollar:  pDollar,
     count:    full.starters.length,
-    assigns:  full.assigns          // [{{slot_id, slot_label, player|null}}, ...]
+    assigns:  full.assigns,          // [{{slot_id, slot_label, player|null}}, ...]
+    pitchers: pitchers               // dollar-sorted full staff (no slot)
   }};
 }}
 
@@ -2297,7 +2324,7 @@ function phase3ToggleLineups() {{
   var open = lw.style.display !== 'none';
   if (open) {{
     lw.style.display = 'none';
-    btn.innerHTML = '\u25BC Show optimized lineups (before / after)';
+    btn.innerHTML = '\u25BC Show optimized lineups + staff (before / after)';
   }} else {{
     if (!window._phase3Last) {{
       // No render has happened yet — bail quietly.
@@ -2309,20 +2336,127 @@ function phase3ToggleLineups() {{
   }}
 }}
 
+/* Build a phase3-compatible hitter record from a TRADE_HITTERS free-agent row.
+   The pickup is pinned to exactly one slot via elig=[slotId] so the LAP puts
+   them there and nowhere else — honest "fill the hole" semantics. */
+function _phase3MakePickup(p, slotId) {{
+  return {{
+    espn_id:  'fa_' + (p.name || '').replace(/[^A-Za-z0-9]+/g, '_'),
+    name:     p.name,
+    team:     p.team,
+    dollars:  p.dollars || 0,
+    elig:     [slotId],
+    R:        (p.proj && p.proj.R)    || 0,
+    HR:       (p.proj && p.proj.HR)   || 0,
+    RBI:      (p.proj && p.proj.RBI)  || 0,
+    SO_h:     (p.proj && p.proj.K_h)  || 0,
+    SB:       (p.proj && p.proj.SB)   || 0,
+    OBP:      (p.proj && p.proj.OBP)  || 0,
+    PA:       (p.proj && p.proj.PA)   || 600,
+    is_pickup:   true,
+    pickup_slot: slotId
+  }};
+}}
+
+/* Return the top-N unrostered hitters from the global trade pool, sorted by $.
+   Excludes any players already pinned as pickups. */
+function _phase3FreeAgentHitters(limit) {{
+  var inUse = {{}};
+  (_tradeRoster.pickups || []).forEach(function(pk) {{ inUse[pk.name] = true; }});
+  var fas = TRADE_HITTERS.filter(function(p) {{
+    return p.team_id == null && !inUse[p.name];
+  }});
+  fas.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+  return fas.slice(0, limit || 15);
+}}
+
+/* Open the picker menu for a given empty slot. Stores state on the window
+   so the next _phase3RenderLineups() call renders the inline list. */
+function phase3OpenPickupMenu(slotId, slotLabel) {{
+  window._phase3PickerSlot = {{slot_id: slotId, slot_label: slotLabel}};
+  _phase3RenderLineups();
+}}
+function phase3ClosePickupMenu() {{
+  window._phase3PickerSlot = null;
+  _phase3RenderLineups();
+}}
+
+/* Add a free-agent pickup to the user's team pinned to the current picker slot,
+   then re-run the full phase3 simulation so z-scores, ranks, and the lineup
+   display all reflect the pickup. */
+function phase3AddPickup(playerName) {{
+  if (!window._phase3PickerSlot) return;
+  var slotId = window._phase3PickerSlot.slot_id;
+  var p = TRADE_HITTERS.find(function(x) {{ return x.name === playerName; }});
+  if (!p) return;
+  _tradeRoster.pickups.push(_phase3MakePickup(p, slotId));
+  window._phase3PickerSlot = null;
+  _tradeCalc();          // triggers _phase3RenderImpact → re-renders lineups too
+}}
+
+/* Remove an active pickup by name. */
+function phase3RemovePickup(name) {{
+  _tradeRoster.pickups = (_tradeRoster.pickups || []).filter(function(pk) {{
+    return pk.name !== name;
+  }});
+  _tradeCalc();
+}}
+
 /* Render a 2-column (You / Counterparty) slot-by-slot before/after lineup table.
-   Highlights any slot whose occupant changed. Uses the cached summaries from
-   the most recent _phase3RenderImpact() call so this is purely a render step. */
+   Highlights any slot whose occupant changed. Includes pitcher staff and
+   "+" buttons on empty hitter slots so the user can simulate a waiver pickup. */
 function _phase3RenderLineups() {{
   var lw = document.getElementById('phase3-lineup-wrap');
   if (!lw || !window._phase3Last) return;
   var L = window._phase3Last;
+  var userTid = PHASE3_LEAGUE ? PHASE3_LEAGUE.user_team_id : null;
+  var picker  = window._phase3PickerSlot;
 
   function fmtCell(p) {{
     if (!p) return '<span style="color:#e05555;font-weight:700">(empty)</span>';
+    var tag = p.is_pickup
+      ? '<span style="color:#f0c040;font-size:.62rem;font-weight:700;margin-left:4px">PICKUP</span>'
+      : '';
     return '<span style="color:#ddd">' + (p.name || '?') + '</span>'
-         + '<span style="color:#888;margin-left:4px">$' + (p.dollars || 0).toFixed(1) + '</span>';
+         + '<span style="color:#888;margin-left:4px">$' + (p.dollars || 0).toFixed(1) + '</span>'
+         + tag;
   }}
-  function lineupTable(label, oldSum, newSum, accent) {{
+
+  // Picker sub-row: list of top FA hitters rendered inline when the user
+  // has just clicked "+" on an empty slot of their own team.
+  function renderPicker(slotLabel) {{
+    var fas = _phase3FreeAgentHitters(12);
+    var html = '<div style="background:#0f0f0f;border:1px solid #333;border-radius:6px;'
+             + 'padding:7px 9px;margin:4px 0">'
+             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+             + '<span style="font-size:.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">'
+             + 'Pick up a FA hitter for ' + slotLabel + '</span>'
+             + '<button onmousedown="phase3ClosePickupMenu()" '
+             + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.9rem;padding:0 4px">&#x2715;</button>'
+             + '</div>';
+    if (!fas.length) {{
+      html += '<div style="color:var(--muted);font-size:.75rem;padding:4px">No unrostered hitters available.</div>';
+    }} else {{
+      html += '<div style="display:flex;flex-wrap:wrap;gap:3px">';
+      fas.forEach(function(p) {{
+        var dCol = p.dollars >= 10 ? '#f0c040' : p.dollars >= 0 ? '#7ec87e' : '#888';
+        html += '<button onmousedown="phase3AddPickup(this.dataset.name)" '
+             +  'data-name="' + (p.name || '').replace(/"/g,'&quot;') + '" '
+             +  'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
+             +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
+             +  'display:inline-flex;align-items:center;gap:4px">'
+             +  '<span style="font-weight:600">' + p.name + '</span>'
+             +  '<span style="color:#777;font-size:.68rem">' + (p.team||'') + '</span>'
+             +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
+             +  '</button>';
+      }});
+      html += '</div>';
+    }}
+    html += '</div>';
+    return html;
+  }}
+
+  function hitterTable(label, oldSum, newSum, accent, isUser) {{
     var rows = '';
     var oldA = oldSum.assigns || [];
     var newA = newSum.assigns || [];
@@ -2335,23 +2469,37 @@ function _phase3RenderLineups() {{
       var changed = (oid !== nid);
       var bg = changed ? '#241a1a' : 'transparent';
       var slotCol = changed ? '#f0c040' : 'var(--muted)';
+      var afterCell = fmtCell(na.player);
+      // "+" button: only for user's empty AFTER slots.
+      if (isUser && !na.player) {{
+        afterCell = '<span style="color:#e05555;font-weight:700">(empty)</span>'
+                  + '&nbsp;&nbsp;<button onmousedown="phase3OpenPickupMenu(' + na.slot_id + ",'" + na.slot_label + "')\" "
+                  + 'style="background:#1e3a1e;border:1px solid #2e6b2e;color:#9cd39c;'
+                  + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700"'
+                  + '>+ FA</button>';
+      }}
       rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
             +   '<td style="padding:4px 8px;color:' + slotCol + ';font-weight:700;width:46px">'
             +     (na.slot_label || oa.slot_label || '?') + '</td>'
             +   '<td style="padding:4px 8px">' + fmtCell(oa.player) + '</td>'
             +   '<td style="padding:4px 8px;color:#666;text-align:center;width:18px">\u2192</td>'
-            +   '<td style="padding:4px 8px">' + fmtCell(na.player) + '</td>'
+            +   '<td style="padding:4px 8px">' + afterCell + '</td>'
             + '</tr>';
+      // If the picker is open and this is the target slot, render the picker
+      // as a full-width sub-row immediately below.
+      if (isUser && picker && picker.slot_id === na.slot_id && !na.player) {{
+        rows += '<tr><td colspan="4" style="padding:0 8px 6px">'
+              + renderPicker(picker.slot_label)
+              + '</td></tr>';
+      }}
     }}
-    var oldD = (oldSum.dollar || 0).toFixed(1);
-    var newD = (newSum.dollar || 0).toFixed(1);
-    var dDelta = (newSum.dollar || 0) - (oldSum.dollar || 0);
+    var oldD = (oldSum.hDollar || 0).toFixed(1);
+    var newD = (newSum.hDollar || 0).toFixed(1);
+    var dDelta = (newSum.hDollar || 0) - (oldSum.hDollar || 0);
     var dCol = dDelta > 0.05 ? '#4caf50' : (dDelta < -0.05 ? '#e05555' : '#888');
     var dSign = dDelta > 0 ? '+' : (dDelta < 0 ? '\u2212' : '');
-    return '<div style="flex:1;min-width:320px;background:#141414;border-radius:8px;'
-         + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
-         + '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
-         +   'text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'
+    return '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
+         +   'text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px">'
          +   label + ' &nbsp;\u2014&nbsp; optimized hitter lineup</div>'
          + '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
          +   '<thead><tr style="border-bottom:1px solid #333">'
@@ -2362,19 +2510,121 @@ function _phase3RenderLineups() {{
          +   '</tr></thead><tbody>'
          + rows
          + '<tr style="border-top:1px solid #333">'
-         +   '<td style="padding:6px 8px;color:var(--muted);font-weight:700">Total</td>'
+         +   '<td style="padding:6px 8px;color:var(--muted);font-weight:700">Hit&nbsp;$</td>'
          +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + oldD + '</td>'
          +   '<td style="padding:6px 8px;color:#666;text-align:center">\u2192</td>'
          +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + newD
          +     '&nbsp;&nbsp;<span style="color:' + dCol + '">' + dSign
          +     '$' + Math.abs(dDelta).toFixed(1) + '</span></td>'
          + '</tr>'
-         + '</tbody></table></div>';
+         + '</tbody></table>';
   }}
 
-  lw.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap">'
-               + lineupTable('You',          L.sumOldUser, L.sumNewUser, '#4caf50')
-               + lineupTable('Counterparty', L.sumOldOpp,  L.sumNewOpp,  '#e05555')
+  // Pitcher staff: no slots, so show a union of before/after sorted by $.
+  // Added pitchers tinted green, removed tinted red, kept neutral.
+  function pitcherTable(oldSum, newSum) {{
+    var oldP = oldSum.pitchers || [];
+    var newP = newSum.pitchers || [];
+    var oldIds = {{}}; oldP.forEach(function(p) {{ oldIds[p.espn_id] = p; }});
+    var newIds = {{}}; newP.forEach(function(p) {{ newIds[p.espn_id] = p; }});
+    // Union, preserving order: new first (so kept pitchers stay in the
+    // dollar-sorted order you'll have after the trade), then any removed.
+    var union = newP.slice();
+    oldP.forEach(function(p) {{ if (!newIds[p.espn_id]) union.push(p); }});
+    if (!union.length) {{
+      return '<div style="color:var(--muted);font-size:.75rem;padding:4px">No pitchers.</div>';
+    }}
+    var rows = '';
+    union.forEach(function(p) {{
+      var inNew = !!newIds[p.espn_id];
+      var inOld = !!oldIds[p.espn_id];
+      var status, bg, beforeStr, afterStr;
+      if (inNew && inOld) {{
+        status = ''; bg = 'transparent';
+        beforeStr = fmtCell(p); afterStr = fmtCell(p);
+      }} else if (inNew && !inOld) {{
+        status = 'ADDED'; bg = '#1a2a1a';
+        beforeStr = '<span style="color:#666">\u2014</span>'; afterStr = fmtCell(p);
+      }} else {{
+        status = 'REMOVED'; bg = '#2a1a1a';
+        beforeStr = fmtCell(p); afterStr = '<span style="color:#666">\u2014</span>';
+      }}
+      var role = (p.IP || 0) >= 100 ? 'SP' : 'RP';
+      rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
+            +   '<td style="padding:4px 8px;color:var(--muted);font-weight:700;width:46px">'
+            +     role + '</td>'
+            +   '<td style="padding:4px 8px">' + beforeStr + '</td>'
+            +   '<td style="padding:4px 8px;color:#666;text-align:center;width:18px">\u2192</td>'
+            +   '<td style="padding:4px 8px">' + afterStr + '</td>'
+            + '</tr>';
+    }});
+    var oldD = (oldSum.pDollar || 0).toFixed(1);
+    var newD = (newSum.pDollar || 0).toFixed(1);
+    var dDelta = (newSum.pDollar || 0) - (oldSum.pDollar || 0);
+    var dCol = dDelta > 0.05 ? '#4caf50' : (dDelta < -0.05 ? '#e05555' : '#888');
+    var dSign = dDelta > 0 ? '+' : (dDelta < 0 ? '\u2212' : '');
+    return '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
+         +   'text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px">'
+         +   'Pitching staff</div>'
+         + '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
+         +   '<thead><tr style="border-bottom:1px solid #333">'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">Role</th>'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">Before</th>'
+         +     '<th></th>'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">After</th>'
+         +   '</tr></thead><tbody>'
+         + rows
+         + '<tr style="border-top:1px solid #333">'
+         +   '<td style="padding:6px 8px;color:var(--muted);font-weight:700">Pit&nbsp;$</td>'
+         +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + oldD + '</td>'
+         +   '<td style="padding:6px 8px;color:#666;text-align:center">\u2192</td>'
+         +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + newD
+         +     '&nbsp;&nbsp;<span style="color:' + dCol + '">' + dSign
+         +     '$' + Math.abs(dDelta).toFixed(1) + '</span></td>'
+         + '</tr>'
+         + '</tbody></table>';
+  }}
+
+  function teamLineupCard(label, oldSum, newSum, accent, isUser) {{
+    return '<div style="flex:1;min-width:340px;background:#141414;border-radius:8px;'
+         + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
+         +   hitterTable(label, oldSum, newSum, accent, isUser)
+         +   pitcherTable(oldSum, newSum)
+         + '</div>';
+  }}
+
+  // Active pickups summary (user side only) — shown above the tables so
+  // it's easy to see what hypothetical waiver adds are in play.
+  var pickupBanner = '';
+  if (_tradeRoster.pickups && _tradeRoster.pickups.length) {{
+    var chips = _tradeRoster.pickups.map(function(pk) {{
+      var slotLabel = '?';
+      var slots = PHASE3_LEAGUE ? PHASE3_LEAGUE.slots : [];
+      for (var i = 0; i < slots.length; i++) {{
+        if (slots[i][0] === pk.pickup_slot) {{ slotLabel = slots[i][1]; break; }}
+      }}
+      return '<span style="display:inline-flex;align-items:center;gap:5px;'
+           + 'background:#1e2a1e;border:1px solid #2e6b2e;border-radius:12px;'
+           + 'padding:3px 9px;margin-right:5px;font-size:.73rem">'
+           + '<span style="color:#f0c040;font-weight:700">+' + slotLabel + '</span>'
+           + '<span style="color:#ddd">' + pk.name + '</span>'
+           + '<span style="color:#888">$' + (pk.dollars||0).toFixed(1) + '</span>'
+           + '<button onmousedown="phase3RemovePickup(this.dataset.name)" '
+           + 'data-name="' + (pk.name||'').replace(/"/g,'&quot;') + '" '
+           + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.85rem;padding:0 2px">&#x2715;</button>'
+           + '</span>';
+    }}).join('');
+    pickupBanner = '<div style="margin-bottom:8px;padding:6px 9px;'
+                 + 'background:#0f1a0f;border-radius:6px;border-left:3px solid #4caf50">'
+                 + '<span style="font-size:.66rem;color:var(--muted);font-weight:700;'
+                 + 'text-transform:uppercase;letter-spacing:.05em;margin-right:6px">Waiver adds</span>'
+                 + chips + '</div>';
+  }}
+
+  lw.innerHTML = pickupBanner
+               + '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+               + teamLineupCard('You',          L.sumOldUser, L.sumNewUser, '#4caf50', true)
+               + teamLineupCard('Counterparty', L.sumOldOpp,  L.sumNewOpp,  '#e05555', false)
                + '</div>';
 }}
 
