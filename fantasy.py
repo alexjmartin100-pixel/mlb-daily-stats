@@ -861,7 +861,7 @@ def _render_season_projections(fdata: dict) -> str:
         'style="background:#1a1a1a;border:1px solid #333;color:#ddd;'
         'padding:7px 16px;border-radius:6px;cursor:pointer;'
         'font-size:.78rem;font-weight:600">'
-        '&#x1F3B2; Run finish-probability sim (8,000 trials)'
+        '&#x1F3B2; Run finish-probability sim (50,000 trials)'
         '</button>'
         '<div id="mc-proj-out" style="margin-top:12px"></div>'
         '</div>'
@@ -1067,7 +1067,7 @@ def _build_phase3_payload(fdata: dict) -> dict:
     # sim_cfg as None and the JS falls back to the legacy sim path.
     try:
         from sim_projections import build_sim_payload
-        sim_cfg = build_sim_payload(parsed, verbose=False)
+        sim_cfg = build_sim_payload(parsed, fantasy_data=fdata, verbose=False)
         if not sim_cfg.get("ok"):
             sim_cfg = None
     except Exception as _e:
@@ -2234,7 +2234,7 @@ function _phase3RecomputeZ(teams) {{
    for when sim_cfg isn't in the payload (caches missing, etc.).
    ───────────────────────────────────────────────────────────────────── */
 
-var _MC_TRIALS = 8000;
+var _MC_TRIALS = 50000;
 var _mcBaselineCache = null;
 
 /* ── Legacy knobs (fallback path only) ── */
@@ -2396,7 +2396,10 @@ function _mcSamplePlayer(player, roleModel, nTrials) {{
     }}
   }}
 
-  // Injury trimming — Beta(a, b) centred on expected_loss / volume_proj
+  // Injury trimming — Beta(a, b) centred on expected_loss / volume_proj.
+  // We record the (1-keep) * vol "missing volume" per trial so the team
+  // rollup can fill that gap with replacement-level production (a waiver
+  // pickup) instead of leaving the playing time empty.
   var expLoss = player.expected_loss || 0;
   if (vol > 0 && expLoss > 0) {{
     var frac = expLoss / vol;
@@ -2405,14 +2408,17 @@ function _mcSamplePlayer(player, roleModel, nTrials) {{
     var conc = 8.0;
     var aa = frac * conc;             if (aa < 0.05) aa = 0.05;
     var bb = (1 - frac) * conc;       if (bb < 0.05) bb = 0.05;
+    var missingVol = new Float64Array(nTrials);
     for (var t2 = 0; t2 < nTrials; t2++) {{
       var keep = 1.0 - _mcSampleBeta(aa, bb);
+      missingVol[t2] = (1.0 - keep) * vol;
       for (var i6 = 0; i6 < k; i6++) {{
         if (!have[i6]) continue;
         if (_MC_RATIO_STATS[stats[i6]]) continue;
         samples[stats[i6]][t2] *= keep;
       }}
     }}
+    samples.__missingVol = missingVol;
   }}
 
   return samples;
@@ -2441,10 +2447,15 @@ function _mcApplyCloserRoleChange(pitcherRecs, cfg, nTrials) {{
       var svMu = (closer.player.mu && closer.player.mu.SV) || 0;
       if (svMu <= cfg.sv_threshold) continue;
 
-      var prob = cfg.base_p;
-      var era  = (closer.player.mu && closer.player.mu.ERA) || 4.0;
-      if (era > 4.20)      prob += cfg.era_bump_420;
-      else if (era > 3.80) prob += cfg.era_bump_380;
+      // 4-tier ERA-bucketed fire probability. Elite closers (projected
+      // sub-3.00 ERA) almost always keep the job; average ones lose it
+      // ~20% of seasons; shaky/bad ones are more volatile.
+      var era = (closer.player.mu && closer.player.mu.ERA) || 4.0;
+      var prob;
+      if      (era <= cfg.elite_era)   prob = cfg.p_elite;
+      else if (era <= cfg.average_era) prob = cfg.p_average;
+      else if (era <= cfg.shaky_era)   prob = cfg.p_shaky;
+      else                              prob = cfg.p_bad;
       if (prob > cfg.p_cap) prob = cfg.p_cap;
 
       // Find successor: lowest-ERA RP on same team (excluding the closer)
@@ -2492,6 +2503,7 @@ function _mcRunSim(teams) {{
   var roleModels = cfg.role_models;
   var playerCfgs = cfg.players || {{}};
   var closerCfg  = cfg.closer_cfg;
+  var replRates  = cfg.replacement_rates || {{}};  // per-role injury gap-fill
 
   // Per-team: optimize hitter lineup (same LAP the dashboard already uses),
   // then sample starters + all pitchers.
@@ -2510,7 +2522,8 @@ function _mcRunSim(teams) {{
       var key = hit.espn_id != null ? String(hit.espn_id) : null;
       var pc  = (key && playerCfgs[key]) || _mcFallbackPlayerCfg(hit, false);
       var samp = _mcSamplePlayer(pc, roleModels.hitter, nTrials);
-      recs.push({{player: pc, samples: samp, is_pitcher: false}});
+      recs.push({{player: pc, samples: samp, is_pitcher: false,
+                  replacement: replRates.hitter || null}});
     }}
 
     for (var pi = 0; pi < pitchers.length; pi++) {{
@@ -2519,7 +2532,8 @@ function _mcRunSim(teams) {{
       var ppc  = (pkey && playerCfgs[pkey]) || _mcFallbackPlayerCfg(pit, true);
       var role = ppc.role === 'RP' ? 'RP' : 'SP';
       var psamp = _mcSamplePlayer(ppc, roleModels[role], nTrials);
-      var prec = {{player: ppc, samples: psamp, is_pitcher: true}};
+      var prec = {{player: ppc, samples: psamp, is_pitcher: true,
+                   replacement: replRates[role] || null}};
       recs.push(prec);
       pitcherRecs.push(prec);
     }}
@@ -2544,8 +2558,10 @@ function _mcRunSim(teams) {{
     var sumWHPxIP = new Float64Array(nTrials);
     var recs2 = teamSamples[ti];
     for (var ri = 0; ri < recs2.length; ri++) {{
-      var rec = recs2[ri];
-      var s   = rec.samples;
+      var rec  = recs2[ri];
+      var s    = rec.samples;
+      var miss = s.__missingVol || null;      // null if no injury trimming
+      var repl = rec.replacement || null;     // {{R, HR, ..., OBP}} or {{W, ERA, ..., WHIP}}
       if (rec.is_pitcher) {{
         if (s.W)   {{ var sW = s.W;   var oW = tot.W;    for (var t = 0; t < nTrials; t++) oW[t]   += sW[t]; }}
         if (s.SO)  {{ var sK = s.SO;  var oK = tot.SO_p; for (var t = 0; t < nTrials; t++) oK[t]   += sK[t]; }}
@@ -2560,6 +2576,23 @@ function _mcRunSim(teams) {{
             if (sWH) sumWHPxIP[t] += sWH[t] * ip;
           }}
         }}
+        // Replacement-level injury gap-fill (pitcher)
+        if (miss && repl) {{
+          var rW = repl.W || 0, rSO = repl.SO || 0, rSV = repl.SV || 0,
+              rHLD = repl.HLD || 0, rERA = repl.ERA || 0, rWHIP = repl.WHIP || 0;
+          var oW2 = tot.W, oK2 = tot.SO_p, oV2 = tot.SV, oH2 = tot.HLD;
+          for (var t = 0; t < nTrials; t++) {{
+            var mi = miss[t];
+            if (mi <= 0) continue;
+            oW2[t]  += rW   * mi;
+            oK2[t]  += rSO  * mi;
+            oV2[t]  += rSV  * mi;
+            oH2[t]  += rHLD * mi;
+            sumIP[t]     += mi;
+            sumERAxIP[t] += rERA  * mi;
+            sumWHPxIP[t] += rWHIP * mi;
+          }}
+        }}
       }} else {{
         if (s.R)   {{ var sR = s.R;   var oR = tot.R;    for (var t = 0; t < nTrials; t++) oR[t]   += sR[t]; }}
         if (s.HR)  {{ var sHr = s.HR; var oHr = tot.HR;  for (var t = 0; t < nTrials; t++) oHr[t]  += sHr[t]; }}
@@ -2572,6 +2605,23 @@ function _mcRunSim(teams) {{
             var pa = sPA[t];
             sumPA[t] += pa;
             if (sOBP) sumOBPxPA[t] += sOBP[t] * pa;
+          }}
+        }}
+        // Replacement-level injury gap-fill (hitter)
+        if (miss && repl) {{
+          var rR = repl.R || 0, rHR = repl.HR || 0, rRBI = repl.RBI || 0,
+              rSBh = repl.SB || 0, rSOh = repl.SO || 0, rOBP = repl.OBP || 0;
+          var oR3 = tot.R, oHr3 = tot.HR, oRb3 = tot.RBI, oSO3 = tot.SO_h, oSB3 = tot.SB;
+          for (var t = 0; t < nTrials; t++) {{
+            var mi = miss[t];
+            if (mi <= 0) continue;
+            oR3[t]  += rR   * mi;
+            oHr3[t] += rHR  * mi;
+            oRb3[t] += rRBI * mi;
+            oSO3[t] += rSOh * mi;
+            oSB3[t] += rSBh * mi;
+            sumPA[t]     += mi;
+            sumOBPxPA[t] += rOBP * mi;
           }}
         }}
       }}
@@ -2824,7 +2874,7 @@ function phase3ToggleMc() {{
 function _phase3RenderMcSim() {{
   var mw = document.getElementById('phase3-mc-wrap');
   if (!mw || !window._phase3Last || !window._phase3Last.newLeague) return;
-  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 8,000 trials\u2026</div>';
+  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 50,000 trials\u2026</div>';
   setTimeout(function() {{
     var L = window._phase3Last;
     var userTid = PHASE3_LEAGUE.user_team_id;
@@ -2841,7 +2891,7 @@ function mcRunSeasonProjSim() {{
   if (!PHASE3_LEAGUE) return;
   var out = document.getElementById('mc-proj-out');
   if (!out) return;
-  out.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 8,000 trials\u2026</div>';
+  out.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 50,000 trials\u2026</div>';
   setTimeout(function() {{
     var sim = _mcGetBaseline();
     var userTid = PHASE3_LEAGUE.user_team_id;
