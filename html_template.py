@@ -911,9 +911,16 @@ function showTab(nm,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(nm+'-panel').classList.add('active');
-  // Hide trade machine when switching away from fantasy tab
-  var tw=document.getElementById('fant-trade-wrap');
-  if(tw && nm!=='fantasy') tw.style.display='none';
+  // Hide fantasy sub-panels (trade machine + season projections) when
+  // switching away from the fantasy tab — they live as siblings of
+  // #fantasy-panel rather than children, so .tab-panel display:none
+  // doesn't catch them automatically.
+  if(nm!=='fantasy'){
+    var tw=document.getElementById('fant-trade-wrap');
+    if(tw) tw.style.display='none';
+    var pw=document.getElementById('fant-proj-wrap');
+    if(pw) pw.style.display='none';
+  }
 }
 
 function showGameLog(type, btn) {
