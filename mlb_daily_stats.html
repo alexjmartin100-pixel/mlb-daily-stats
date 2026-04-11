@@ -217,7 +217,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Thursday, April 9, 2026</strong>
       &nbsp;·&nbsp; 6 game(s)
-      &nbsp;·&nbsp; Updated Apr 10, 2026 8:45 PM
+      &nbsp;·&nbsp; Updated Apr 10, 2026 9:03 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -837,7 +837,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <footer>
   FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 8:45 PM
+  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated Apr 10, 2026 9:03 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2577,15 +2577,22 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
       &#x1F4CA; League impact (rebalanced lineups, full z-score recompute)
     </div>
     <div id="phase3-delta"></div>
-    <div style="margin-top:10px">
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="phase3-lineup-btn" onclick="phase3ToggleLineups()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show optimized lineups (before / after)
+      </button>
       <button id="phase3-toggle-btn" onclick="phase3ToggleTable()"
               style="background:#1a1a1a;border:1px solid #333;color:#bbb;
                      padding:6px 14px;border-radius:6px;cursor:pointer;
                      font-size:.78rem;font-weight:600">
         &#x25BC; Show full updated standings
       </button>
-      <div id="phase3-table-wrap" style="display:none;margin-top:10px"></div>
     </div>
+    <div id="phase3-lineup-wrap" style="display:none;margin-top:10px"></div>
+    <div id="phase3-table-wrap" style="display:none;margin-top:10px"></div>
   </div>
 </div>
 
@@ -3119,10 +3126,16 @@ function _phase3Hungarian(cost) {
 /* Pick the best 11-hitter lineup from the given roster.
    Returns the subset of `hitters` (player records) that fill starting
    slots — same shape as the Python optimize_hitter_lineup output. */
-function _phase3OptimizeHitters(hitters) {
-  if (!hitters || !hitters.length) return [];
+/* LAP-optimize hitters and ALSO return per-slot assignment so callers
+   can render the actual lineup the optimizer picked. */
+function _phase3OptimizeHittersFull(hitters) {
   var SLOTS = PHASE3_LEAGUE.slots;
   var nSlots = SLOTS.length;
+  var emptyAssigns = [];
+  for (var k = 0; k < nSlots; k++) {
+    emptyAssigns.push({slot_id: SLOTS[k][0], slot_label: SLOTS[k][1], player: null});
+  }
+  if (!hitters || !hitters.length) return {starters: [], assigns: emptyAssigns};
   var nPlayers = hitters.length;
   var n = Math.max(nPlayers, nSlots);
   var INELIG = 1e9;
@@ -3146,14 +3159,29 @@ function _phase3OptimizeHitters(hitters) {
   }
   var assign = _phase3Hungarian(cost);
   var starters = [];
+  var slotPlayer = {};   // slot_index -> player record (only for valid fills)
   for (var r = 0; r < n; r++) {
     var c = assign[r];
     if (c < 0 || c >= nSlots) continue;
     if (r >= nPlayers) continue;
-    if (cost[r][c] >= INELIG / 2) continue;
+    if (cost[r][c] >= INELIG / 2) continue;   // ineligible filler — skip
     starters.push(hitters[r]);
+    slotPlayer[c] = hitters[r];
   }
-  return starters;
+  var assigns = [];
+  for (var jj = 0; jj < nSlots; jj++) {
+    assigns.push({
+      slot_id:    SLOTS[jj][0],
+      slot_label: SLOTS[jj][1],
+      player:     slotPlayer[jj] || null
+    });
+  }
+  return {starters: starters, assigns: assigns};
+}
+
+/* Backwards-compatible wrapper used by the simulation pipeline. */
+function _phase3OptimizeHitters(hitters) {
+  return _phase3OptimizeHittersFull(hitters).starters;
 }
 
 /* Sum counting stats + PA-weighted OBP across the optimized lineup */
@@ -3332,17 +3360,17 @@ function _phase3RankColor(rank, n) {
   return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
 
-/* Compute the LAP-optimized lineup dollar value + starter list for one team.
+/* Compute the LAP-optimized lineup dollar value + slot assignments for one team.
    Used for the diagnostic display so the user can SEE why z changed. */
 function _phase3LineupSummary(team) {
-  var starters = _phase3OptimizeHitters(team.hitters || []);
+  var full = _phase3OptimizeHittersFull(team.hitters || []);
   var dollar = 0;
-  var names = [];
-  starters.forEach(function(s) {
-    dollar += (s.dollars || 0);
-    names.push((s.name || '?') + ' ($' + (s.dollars || 0).toFixed(1) + ')');
-  });
-  return { dollar: dollar, names: names, count: starters.length };
+  full.starters.forEach(function(s) { dollar += (s.dollars || 0); });
+  return {
+    dollar:   dollar,
+    count:    full.starters.length,
+    assigns:  full.assigns          // [{slot_id, slot_label, player|null}, ...]
+  };
 }
 
 /* Render the compact 2-team delta + (collapsed) full standings table */
@@ -3433,9 +3461,110 @@ function _phase3RenderImpact() {
     + teamCard('Counterparty', oldOpp,  newOpp,  sumOldOpp,  sumNewOpp,  '#e05555')
     + '</div>';
 
-  // Build the optional collapsible full table only when it's currently visible
+  // Stash summaries + new league so the toggle handlers can re-render
+  // their respective views without recomputing the simulation.
+  window._phase3Last = {
+    sumOldUser: sumOldUser, sumNewUser: sumNewUser,
+    sumOldOpp:  sumOldOpp,  sumNewOpp:  sumNewOpp,
+    oldUser:    oldUser,    newUser:    newUser,
+    oldOpp:     oldOpp,     newOpp:     newOpp,
+    newLeague:  newLeague
+  };
+
+  // Re-build any open sub-views
+  var lw = document.getElementById('phase3-lineup-wrap');
+  if (lw && lw.style.display !== 'none') _phase3RenderLineups();
   var tw = document.getElementById('phase3-table-wrap');
   if (tw && tw.style.display !== 'none') _phase3RenderTable(newLeague);
+}
+
+/* Toggle the optimized-lineup table (slot-by-slot before/after for both teams) */
+function phase3ToggleLineups() {
+  var lw  = document.getElementById('phase3-lineup-wrap');
+  var btn = document.getElementById('phase3-lineup-btn');
+  if (!lw) return;
+  var open = lw.style.display !== 'none';
+  if (open) {
+    lw.style.display = 'none';
+    btn.innerHTML = '▼ Show optimized lineups (before / after)';
+  } else {
+    if (!window._phase3Last) {
+      // No render has happened yet — bail quietly.
+      return;
+    }
+    _phase3RenderLineups();
+    lw.style.display = '';
+    btn.innerHTML = '▲ Hide optimized lineups';
+  }
+}
+
+/* Render a 2-column (You / Counterparty) slot-by-slot before/after lineup table.
+   Highlights any slot whose occupant changed. Uses the cached summaries from
+   the most recent _phase3RenderImpact() call so this is purely a render step. */
+function _phase3RenderLineups() {
+  var lw = document.getElementById('phase3-lineup-wrap');
+  if (!lw || !window._phase3Last) return;
+  var L = window._phase3Last;
+
+  function fmtCell(p) {
+    if (!p) return '<span style="color:#e05555;font-weight:700">(empty)</span>';
+    return '<span style="color:#ddd">' + (p.name || '?') + '</span>'
+         + '<span style="color:#888;margin-left:4px">$' + (p.dollars || 0).toFixed(1) + '</span>';
+  }
+  function lineupTable(label, oldSum, newSum, accent) {
+    var rows = '';
+    var oldA = oldSum.assigns || [];
+    var newA = newSum.assigns || [];
+    var n = Math.max(oldA.length, newA.length);
+    for (var i = 0; i < n; i++) {
+      var oa = oldA[i] || {slot_label: '?', player: null};
+      var na = newA[i] || {slot_label: '?', player: null};
+      var oid = oa.player ? oa.player.espn_id : null;
+      var nid = na.player ? na.player.espn_id : null;
+      var changed = (oid !== nid);
+      var bg = changed ? '#241a1a' : 'transparent';
+      var slotCol = changed ? '#f0c040' : 'var(--muted)';
+      rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
+            +   '<td style="padding:4px 8px;color:' + slotCol + ';font-weight:700;width:46px">'
+            +     (na.slot_label || oa.slot_label || '?') + '</td>'
+            +   '<td style="padding:4px 8px">' + fmtCell(oa.player) + '</td>'
+            +   '<td style="padding:4px 8px;color:#666;text-align:center;width:18px">→</td>'
+            +   '<td style="padding:4px 8px">' + fmtCell(na.player) + '</td>'
+            + '</tr>';
+    }
+    var oldD = (oldSum.dollar || 0).toFixed(1);
+    var newD = (newSum.dollar || 0).toFixed(1);
+    var dDelta = (newSum.dollar || 0) - (oldSum.dollar || 0);
+    var dCol = dDelta > 0.05 ? '#4caf50' : (dDelta < -0.05 ? '#e05555' : '#888');
+    var dSign = dDelta > 0 ? '+' : (dDelta < 0 ? '−' : '');
+    return '<div style="flex:1;min-width:320px;background:#141414;border-radius:8px;'
+         + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
+         + '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
+         +   'text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">'
+         +   label + ' &nbsp;—&nbsp; optimized hitter lineup</div>'
+         + '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
+         +   '<thead><tr style="border-bottom:1px solid #333">'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">Slot</th>'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">Before</th>'
+         +     '<th></th>'
+         +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">After</th>'
+         +   '</tr></thead><tbody>'
+         + rows
+         + '<tr style="border-top:1px solid #333">'
+         +   '<td style="padding:6px 8px;color:var(--muted);font-weight:700">Total</td>'
+         +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + oldD + '</td>'
+         +   '<td style="padding:6px 8px;color:#666;text-align:center">→</td>'
+         +   '<td style="padding:6px 8px;color:#bbb;font-weight:700">$' + newD
+         +     '&nbsp;&nbsp;<span style="color:' + dCol + '">' + dSign
+         +     '$' + Math.abs(dDelta).toFixed(1) + '</span></td>'
+         + '</tr>'
+         + '</tbody></table></div>';
+  }
+
+  lw.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap">'
+               + lineupTable('You',          L.sumOldUser, L.sumNewUser, '#4caf50')
+               + lineupTable('Counterparty', L.sumOldOpp,  L.sumNewOpp,  '#e05555')
+               + '</div>';
 }
 
 function phase3ToggleTable() {
