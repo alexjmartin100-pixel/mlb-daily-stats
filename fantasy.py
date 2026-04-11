@@ -861,7 +861,7 @@ def _render_season_projections(fdata: dict) -> str:
         'style="background:#1a1a1a;border:1px solid #333;color:#ddd;'
         'padding:7px 16px;border-radius:6px;cursor:pointer;'
         'font-size:.78rem;font-weight:600">'
-        '&#x1F3B2; Run finish-probability sim (10,000 trials)'
+        '&#x1F3B2; Run finish-probability sim (8,000 trials)'
         '</button>'
         '<div id="mc-proj-out" style="margin-top:12px"></div>'
         '</div>'
@@ -1060,6 +1060,19 @@ def _build_phase3_payload(fdata: dict) -> dict:
             "rank_pit":   tr.get("rank_pit"),
         })
 
+    # ── Sim cfg (per-player mu/role/injury + role_models) ─────────────────
+    # This is what the in-browser Monte Carlo uses to run the variability
+    # math (sim_module.py's sigma + Cholesky + injury + closer logic)
+    # rather than the old _MC_CV dict. If the caches are missing we leave
+    # sim_cfg as None and the JS falls back to the legacy sim path.
+    try:
+        from sim_projections import build_sim_payload
+        sim_cfg = build_sim_payload(parsed, verbose=False)
+        if not sim_cfg.get("ok"):
+            sim_cfg = None
+    except Exception as _e:
+        sim_cfg = None
+
     return {
         "ok": True,
         "user_team_id": user_team_id,
@@ -1072,6 +1085,8 @@ def _build_phase3_payload(fdata: dict) -> dict:
             [6, "MI"],   [7, "CI"], [12, "UTIL"],
         ],
         "teams": teams_payload,
+        # Sim cfg for the in-browser Monte Carlo — None if caches missing.
+        "sim_cfg": sim_cfg,
         # Internal-only: full roster name lookup including IL/NA. Caller strips
         # this before JSON-encoding for the JS payload.
         "_all_rostered": all_rostered,
@@ -2200,25 +2215,42 @@ function _phase3RecomputeZ(teams) {{
 }}
 
 /* ══ Monte Carlo finish-probability simulation ═════════════════════════
-   Roto-style standings sim: for each of _MC_TRIALS trials we perturb every
-   team's projected RoS total in each of the 12 league categories by
-   Normal(0, sigma_cat), rank the league per category (1 = best), sum roto
-   points (N for first down to 1 for last), sort by total roto points, and
-   tally each team's finish position. Final output per team: probability
-   vector over finish positions 1..N plus an expected-finish scalar.
-   Works on any "teams" array with a .stats map — PHASE3_LEAGUE.teams for
-   the baseline, or the post-trade newLeague returned by _phase3SimulateTrade.
+   PLAYER-LEVEL rotisserie sim that mirrors sim_module.py. For every
+   rostered player we:
+     1. Sample (n_trials × n_stats) correlated shocks using the Cholesky
+        factor of the MEASURED within-player residual correlation matrix
+        (sim_backtest_cache.json), scaled by the single-year sigma_cv
+        (yoy_sigma / sqrt(2)) per stat per role group.
+     2. Apply a Beta-distributed injury fraction using the Zimmerman
+        expected_loss from sim_data_cache.json.
+     3. Apply discrete closer role-change events for projected closers
+        on the same MLB team, transferring saves to the next-best RP.
+   We then roll up to team totals (optimized 11 hitters + all pitchers)
+   and score roto-style (rank each cat, sum points). _mcRunSim's external
+   contract is the same as before — called with a `teams` array, returns
+   {{team_id: {{probs, expFinish}}}} — so the Season Projections and Trade
+   Machine buttons keep working unchanged.
+   The old team-level sim (_MC_CV, _mcRunSimLegacy) is kept as a fallback
+   for when sim_cfg isn't in the payload (caches missing, etc.).
    ───────────────────────────────────────────────────────────────────── */
 
-/* Per-category coefficient of variation — stddev as a fraction of the RoS
-   projection. Tuned to roughly reflect how uncertain season-long numbers
-   are: counting stats 5–15%, ratio stats (OBP/ERA/WHIP) 1.5–5%. */
+var _MC_TRIALS = 8000;
+var _mcBaselineCache = null;
+
+/* ── Legacy knobs (fallback path only) ── */
 var _MC_CV = {{
   R: 0.05, HR: 0.08, RBI: 0.06, SB: 0.12, SO_h: 0.06, OBP: 0.015,
   W: 0.10, SO_p: 0.06, SV: 0.15, HLD: 0.15, ERA: 0.05, WHIP: 0.03
 }};
-var _MC_TRIALS = 10000;
-var _mcBaselineCache = null;
+
+/* ── New-sim constants (mirror sim_module.py) ── */
+var _MC_RATIO_STATS = {{OBP: 1, AVG: 1, ERA: 1, WHIP: 1, "K/9": 1, "BB/9": 1}};
+var _MC_CONF_ROOKIE = 1.15;
+var _MC_ROOKIE_PA   = 200;
+var _MC_ROOKIE_IP   = 50;
+var _MC_CATS        = ['R','HR','RBI','SO_h','SB','OBP',
+                       'W','SO_p','SV','HLD','ERA','WHIP'];
+var _MC_LOWER       = {{SO_h: 1, ERA: 1, WHIP: 1}};
 
 /* Box-Muller standard normal. */
 function _mcGaussian() {{
@@ -2226,7 +2258,381 @@ function _mcGaussian() {{
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }}
 
+/* Marsaglia-Tsang gamma sampler (shape a, scale 1). Uses the boost trick
+   for a < 1. Fast and numerically stable for the 0.05..20 range this sim
+   actually hits. */
+function _mcSampleGamma(a) {{
+  if (a < 1) {{
+    var x = _mcSampleGamma(a + 1);
+    var u = Math.random();
+    return x * Math.pow(u, 1 / a);
+  }}
+  var d = a - 1 / 3;
+  var c = 1 / Math.sqrt(9 * d);
+  for (;;) {{
+    var x, v;
+    do {{
+      x = _mcGaussian();
+      v = 1 + c * x;
+    }} while (v <= 0);
+    v = v * v * v;
+    var u2 = Math.random();
+    if (u2 < 1 - 0.0331 * x * x * x * x) return d * v;
+    if (Math.log(u2) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }}
+}}
+
+/* Beta(a, b) via gamma ratio. */
+function _mcSampleBeta(a, b) {{
+  var ga = _mcSampleGamma(a), gb = _mcSampleGamma(b);
+  return ga / (ga + gb);
+}}
+
+/* Build a fallback sim_cfg player entry from a raw team.hitters/pitchers
+   record. Used when a player (eg. a free-agent pickup added in the trade
+   machine) doesn't have a server-side sim_cfg entry. The sampler still
+   runs — just without a Zimmerman injury profile. */
+function _mcFallbackPlayerCfg(rec, isPit) {{
+  if (isPit) {{
+    var mu = {{
+      IP:   rec.IP   || 0, W:   rec.W    || 0, SO: rec.SO_p || 0,
+      ERA:  rec.ERA  || 0, WHIP: rec.WHIP || 0,
+      SV:   rec.SV   || 0, HLD: rec.HLD  || 0
+    }};
+    var role = (mu.IP < 80 || mu.SV >= 5) ? 'RP' : 'SP';
+    return {{
+      is_pitcher:    true,
+      role:          role,
+      mlb_team:      (rec.team || '').toUpperCase(),
+      mu:            mu,
+      volume_proj:   mu.IP,
+      expected_loss: 0
+    }};
+  }}
+  return {{
+    is_pitcher:    false,
+    role:          'hitter',
+    mlb_team:      (rec.team || '').toUpperCase(),
+    mu: {{
+      PA:  rec.PA  || 0, R:  rec.R  || 0, HR:  rec.HR  || 0,
+      RBI: rec.RBI || 0, SB: rec.SB || 0, SO:  rec.SO_h || 0,
+      OBP: rec.OBP || 0
+    }},
+    volume_proj:   rec.PA || 0,
+    expected_loss: 0
+  }};
+}}
+
+/* Sample a single player nTrials times. Returns {{statName: Float64Array}}.
+   Uses correlated shocks from the role's Cholesky factor, scales by the
+   measured single-year sigma, applies rookie confidence bump, applies a
+   Beta-distributed injury trim on counting stats. */
+function _mcSamplePlayer(player, roleModel, nTrials) {{
+  var stats = roleModel.stats;
+  var cvs   = roleModel.sigma_cv;
+  var chol  = roleModel.chol;
+  var k     = stats.length;
+
+  var muVec = new Float64Array(k);
+  var have  = new Uint8Array(k);
+  for (var i = 0; i < k; i++) {{
+    var v = (player.mu && player.mu[stats[i]] != null) ? player.mu[stats[i]] : null;
+    if (v !== null && v !== undefined) {{
+      muVec[i] = +v;
+      have[i]  = 1;
+    }}
+  }}
+
+  // Rookie confidence bump (wider sigma for low-volume samples)
+  var conf = 1.0;
+  var vol  = player.volume_proj || 0;
+  if (player.is_pitcher) {{
+    if (vol < _MC_ROOKIE_IP) conf = _MC_CONF_ROOKIE;
+  }} else {{
+    if (vol < _MC_ROOKIE_PA) conf = _MC_CONF_ROOKIE;
+  }}
+
+  // sigma[i] = |mu| × cv × conf (floored so tiny ratios don't collapse)
+  var sig = new Float64Array(k);
+  for (var i2 = 0; i2 < k; i2++) {{
+    if (!have[i2]) continue;
+    var m = Math.abs(muVec[i2]);
+    if (_MC_RATIO_STATS[stats[i2]]) {{
+      if (m < 0.01) m = 0.01;
+    }} else {{
+      if (m < 1.0) m = 1.0;
+    }}
+    sig[i2] = m * cvs[i2] * conf;
+  }}
+
+  // Output per-stat sample arrays
+  var samples = {{}};
+  for (var i3 = 0; i3 < k; i3++) {{
+    if (have[i3]) samples[stats[i3]] = new Float64Array(nTrials);
+  }}
+
+  // Scratch: iid normals and correlated shocks
+  var z = new Float64Array(k);
+  for (var t = 0; t < nTrials; t++) {{
+    for (var i4 = 0; i4 < k; i4++) z[i4] = _mcGaussian();
+    // shock[i] = Σ_{{j≤i}} chol[i][j] × z[j]  (chol is lower triangular)
+    for (var i5 = 0; i5 < k; i5++) {{
+      if (!have[i5]) continue;
+      var row = chol[i5];
+      var s = 0;
+      for (var j = 0; j <= i5; j++) s += row[j] * z[j];
+      var val = muVec[i5] + sig[i5] * s;
+      var sn = stats[i5];
+      var isRatio = _MC_RATIO_STATS[sn];
+      if (!isRatio) {{
+        if (val < 0) val = 0;                 // counting stats floored at 0
+      }} else if (sn === 'OBP' || sn === 'AVG') {{
+        if (val < 0) val = 0;
+        else if (val > 1) val = 1;
+      }} else {{                              // ERA/WHIP/K9/BB9
+        if (val < 0) val = 0;
+      }}
+      samples[sn][t] = val;
+    }}
+  }}
+
+  // Injury trimming — Beta(a, b) centred on expected_loss / volume_proj
+  var expLoss = player.expected_loss || 0;
+  if (vol > 0 && expLoss > 0) {{
+    var frac = expLoss / vol;
+    if (frac < 0) frac = 0;
+    if (frac > 0.9) frac = 0.9;
+    var conc = 8.0;
+    var aa = frac * conc;             if (aa < 0.05) aa = 0.05;
+    var bb = (1 - frac) * conc;       if (bb < 0.05) bb = 0.05;
+    for (var t2 = 0; t2 < nTrials; t2++) {{
+      var keep = 1.0 - _mcSampleBeta(aa, bb);
+      for (var i6 = 0; i6 < k; i6++) {{
+        if (!have[i6]) continue;
+        if (_MC_RATIO_STATS[stats[i6]]) continue;
+        samples[stats[i6]][t2] *= keep;
+      }}
+    }}
+  }}
+
+  return samples;
+}}
+
+/* Apply closer role-change in-place on pitcher samples. pitcherRecs is a
+   flat array of {{player, samples}} tuples for every rostered pitcher
+   across every team. Pitchers are grouped by MLB team — a projected
+   closer (mu.SV > threshold) rolls a fire event per trial; when fired,
+   a fraction of their saves is transferred to the best-ERA same-team RP. */
+function _mcApplyCloserRoleChange(pitcherRecs, cfg, nTrials) {{
+  // Group by MLB team
+  var byTeam = {{}};
+  for (var i = 0; i < pitcherRecs.length; i++) {{
+    var pr = pitcherRecs[i];
+    var tm = (pr.player.mlb_team || '').toUpperCase();
+    if (!tm) continue;
+    if (!byTeam[tm]) byTeam[tm] = [];
+    byTeam[tm].push(pr);
+  }}
+
+  for (var tm2 in byTeam) {{
+    var roster = byTeam[tm2];
+    for (var ci = 0; ci < roster.length; ci++) {{
+      var closer = roster[ci];
+      var svMu = (closer.player.mu && closer.player.mu.SV) || 0;
+      if (svMu <= cfg.sv_threshold) continue;
+
+      var prob = cfg.base_p;
+      var era  = (closer.player.mu && closer.player.mu.ERA) || 4.0;
+      if (era > 4.20)      prob += cfg.era_bump_420;
+      else if (era > 3.80) prob += cfg.era_bump_380;
+      if (prob > cfg.p_cap) prob = cfg.p_cap;
+
+      // Find successor: lowest-ERA RP on same team (excluding the closer)
+      var successor = null;
+      var bestEra = Infinity;
+      for (var si = 0; si < roster.length; si++) {{
+        if (si === ci) continue;
+        if (roster[si].player.role !== 'RP') continue;
+        var e2 = (roster[si].player.mu && roster[si].player.mu.ERA) || 99;
+        if (e2 < bestEra) {{
+          bestEra   = e2;
+          successor = roster[si];
+        }}
+      }}
+
+      var svArr  = closer.samples.SV;
+      var hldArr = closer.samples.HLD;
+      var sucSv  = (successor && successor.samples.SV) ? successor.samples.SV : null;
+      if (!svArr) continue;
+      var keep = 1.0 - cfg.saves_transfer;
+      for (var t3 = 0; t3 < nTrials; t3++) {{
+        if (Math.random() < prob) {{
+          var orig = svArr[t3];
+          svArr[t3] = orig * keep;
+          if (sucSv) sucSv[t3] += orig * cfg.saves_transfer;
+          if (hldArr) hldArr[t3] += cfg.hld_compensation;
+        }}
+      }}
+    }}
+  }}
+}}
+
+/* Player-level _mcRunSim. Returns {{team_id: {{probs, expFinish}}}}. */
 function _mcRunSim(teams) {{
+  var N = teams.length;
+  if (!N || !PHASE3_LEAGUE) return {{}};
+
+  var cfg = PHASE3_LEAGUE.sim_cfg;
+  if (!cfg || !cfg.ok || !cfg.role_models) {{
+    // Fallback: caches not available — use the legacy team-level CV sim
+    return _mcRunSimLegacy(teams);
+  }}
+
+  var nTrials    = _MC_TRIALS;
+  var roleModels = cfg.role_models;
+  var playerCfgs = cfg.players || {{}};
+  var closerCfg  = cfg.closer_cfg;
+
+  // Per-team: optimize hitter lineup (same LAP the dashboard already uses),
+  // then sample starters + all pitchers.
+  var teamSamples  = new Array(N);
+  var pitcherRecs  = [];
+
+  for (var i = 0; i < N; i++) {{
+    var team = teams[i];
+    var starters = _phase3OptimizeHitters(team.hitters || []);
+    var pitchers = team.pitchers || [];
+
+    var recs = [];
+
+    for (var h = 0; h < starters.length; h++) {{
+      var hit = starters[h];
+      var key = hit.espn_id != null ? String(hit.espn_id) : null;
+      var pc  = (key && playerCfgs[key]) || _mcFallbackPlayerCfg(hit, false);
+      var samp = _mcSamplePlayer(pc, roleModels.hitter, nTrials);
+      recs.push({{player: pc, samples: samp, is_pitcher: false}});
+    }}
+
+    for (var pi = 0; pi < pitchers.length; pi++) {{
+      var pit = pitchers[pi];
+      var pkey = pit.espn_id != null ? String(pit.espn_id) : null;
+      var ppc  = (pkey && playerCfgs[pkey]) || _mcFallbackPlayerCfg(pit, true);
+      var role = ppc.role === 'RP' ? 'RP' : 'SP';
+      var psamp = _mcSamplePlayer(ppc, roleModels[role], nTrials);
+      var prec = {{player: ppc, samples: psamp, is_pitcher: true}};
+      recs.push(prec);
+      pitcherRecs.push(prec);
+    }}
+
+    teamSamples[i] = recs;
+  }}
+
+  // Closer role-change across the full pitcher pool
+  _mcApplyCloserRoleChange(pitcherRecs, closerCfg, nTrials);
+
+  // Roll up per-team totals into Float64Arrays (one per cat)
+  var teamTotals = new Array(N);
+  for (var ti = 0; ti < N; ti++) {{
+    var tot = {{}};
+    for (var ci2 = 0; ci2 < _MC_CATS.length; ci2++) {{
+      tot[_MC_CATS[ci2]] = new Float64Array(nTrials);
+    }}
+    var sumPA     = new Float64Array(nTrials);
+    var sumOBPxPA = new Float64Array(nTrials);
+    var sumIP     = new Float64Array(nTrials);
+    var sumERAxIP = new Float64Array(nTrials);
+    var sumWHPxIP = new Float64Array(nTrials);
+    var recs2 = teamSamples[ti];
+    for (var ri = 0; ri < recs2.length; ri++) {{
+      var rec = recs2[ri];
+      var s   = rec.samples;
+      if (rec.is_pitcher) {{
+        if (s.W)   {{ var sW = s.W;   var oW = tot.W;    for (var t = 0; t < nTrials; t++) oW[t]   += sW[t]; }}
+        if (s.SO)  {{ var sK = s.SO;  var oK = tot.SO_p; for (var t = 0; t < nTrials; t++) oK[t]   += sK[t]; }}
+        if (s.SV)  {{ var sV = s.SV;  var oV = tot.SV;   for (var t = 0; t < nTrials; t++) oV[t]   += sV[t]; }}
+        if (s.HLD) {{ var sH = s.HLD; var oH = tot.HLD;  for (var t = 0; t < nTrials; t++) oH[t]   += sH[t]; }}
+        if (s.IP) {{
+          var sI = s.IP, sE = s.ERA, sWH = s.WHIP;
+          for (var t = 0; t < nTrials; t++) {{
+            var ip = sI[t];
+            sumIP[t] += ip;
+            if (sE)  sumERAxIP[t] += sE[t]  * ip;
+            if (sWH) sumWHPxIP[t] += sWH[t] * ip;
+          }}
+        }}
+      }} else {{
+        if (s.R)   {{ var sR = s.R;   var oR = tot.R;    for (var t = 0; t < nTrials; t++) oR[t]   += sR[t]; }}
+        if (s.HR)  {{ var sHr = s.HR; var oHr = tot.HR;  for (var t = 0; t < nTrials; t++) oHr[t]  += sHr[t]; }}
+        if (s.RBI) {{ var sRb = s.RBI; var oRb = tot.RBI; for (var t = 0; t < nTrials; t++) oRb[t] += sRb[t]; }}
+        if (s.SO)  {{ var sSO = s.SO; var oSO = tot.SO_h; for (var t = 0; t < nTrials; t++) oSO[t] += sSO[t]; }}
+        if (s.SB)  {{ var sSB = s.SB; var oSB = tot.SB;  for (var t = 0; t < nTrials; t++) oSB[t] += sSB[t]; }}
+        if (s.PA) {{
+          var sPA = s.PA, sOBP = s.OBP;
+          for (var t = 0; t < nTrials; t++) {{
+            var pa = sPA[t];
+            sumPA[t] += pa;
+            if (sOBP) sumOBPxPA[t] += sOBP[t] * pa;
+          }}
+        }}
+      }}
+    }}
+    // Finalize PA- and IP-weighted ratios
+    var oOBP = tot.OBP, oERA = tot.ERA, oWHIP = tot.WHIP;
+    for (var tx = 0; tx < nTrials; tx++) {{
+      var pa = sumPA[tx]; if (pa < 1) pa = 1;
+      var ip = sumIP[tx]; if (ip < 1) ip = 1;
+      oOBP[tx]  = sumOBPxPA[tx] / pa;
+      oERA[tx]  = sumERAxIP[tx] / ip;
+      oWHIP[tx] = sumWHPxIP[tx] / ip;
+    }}
+    teamTotals[ti] = tot;
+  }}
+
+  // Rank each cat per trial, sum roto points, accumulate finish counts
+  var counts = new Array(N);
+  for (var ci3 = 0; ci3 < N; ci3++) {{
+    counts[ci3] = new Int32Array(N);
+  }}
+  var roto = new Float64Array(N);
+  var idx  = new Array(N);
+  var nCats = _MC_CATS.length;
+
+  for (var t4 = 0; t4 < nTrials; t4++) {{
+    for (var ri2 = 0; ri2 < N; ri2++) roto[ri2] = 0;
+    for (var k2 = 0; k2 < nCats; k2++) {{
+      var c = _MC_CATS[k2];
+      for (var ii = 0; ii < N; ii++) idx[ii] = ii;
+      var isLower = _MC_LOWER[c] ? 1 : 0;
+      (function(catName, low, trial) {{
+        idx.sort(function(a, b) {{
+          var va = teamTotals[a][catName][trial];
+          var vb = teamTotals[b][catName][trial];
+          return low ? (va - vb) : (vb - va);
+        }});
+      }})(c, isLower, t4);
+      for (var jj = 0; jj < N; jj++) roto[idx[jj]] += (N - jj);
+    }}
+    for (var ii2 = 0; ii2 < N; ii2++) idx[ii2] = ii2;
+    idx.sort(function(a, b) {{ return roto[b] - roto[a]; }});
+    for (var jj2 = 0; jj2 < N; jj2++) counts[idx[jj2]][jj2]++;
+  }}
+
+  var result = {{}};
+  for (var fi = 0; fi < N; fi++) {{
+    var probs = new Array(N);
+    var exp   = 0;
+    for (var fj = 0; fj < N; fj++) {{
+      probs[fj] = counts[fi][fj] / nTrials;
+      exp += probs[fj] * (fj + 1);
+    }}
+    result[teams[fi].team_id] = {{probs: probs, expFinish: exp}};
+  }}
+  return result;
+}}
+
+/* Legacy team-level CV sim — kept as a fallback for when PHASE3_LEAGUE.sim_cfg
+   is missing (caches not present, etc.). This was the pre-refactor behaviour. */
+function _mcRunSimLegacy(teams) {{
   var N = teams.length;
   if (!N || !PHASE3_LEAGUE) return {{}};
   var cats  = PHASE3_LEAGUE.hit_cats.concat(PHASE3_LEAGUE.pit_cats);
@@ -2234,7 +2640,6 @@ function _mcRunSim(teams) {{
   var lower = {{}};
   PHASE3_LEAGUE.lower_better.forEach(function(c) {{ lower[c] = true; }});
 
-  // Pre-compute (mu, sigma) matrices so the inner loop stays hot
   var mu  = new Array(N);
   var sig = new Array(N);
   for (var i = 0; i < N; i++) {{
@@ -2249,11 +2654,9 @@ function _mcRunSim(teams) {{
       if (s < 1e-6) s = Math.max(1e-6, Math.abs(v) * 0.02);
       srow[k] = s;
     }}
-    mu[i]  = mrow;
+    mu[i] = mrow;
     sig[i] = srow;
   }}
-
-  // counts[i][j] = number of trials where team i finished in position j+1
   var counts = new Array(N);
   for (var i = 0; i < N; i++) {{
     counts[i] = new Array(N);
@@ -2263,15 +2666,14 @@ function _mcRunSim(teams) {{
   for (var i = 0; i < N; i++) sampled[i] = new Array(nCats);
   var roto = new Array(N);
   var idx  = new Array(N);
-
-  for (var trial = 0; trial < _MC_TRIALS; trial++) {{
+  var nTrials = _MC_TRIALS;
+  for (var trial = 0; trial < nTrials; trial++) {{
     for (var i = 0; i < N; i++) {{
       roto[i] = 0;
       for (var k = 0; k < nCats; k++) {{
         sampled[i][k] = mu[i][k] + sig[i][k] * _mcGaussian();
       }}
     }}
-    // Rank each category and add roto points
     for (var k = 0; k < nCats; k++) {{
       for (var i = 0; i < N; i++) idx[i] = i;
       var isLower = lower[cats[k]];
@@ -2282,21 +2684,19 @@ function _mcRunSim(teams) {{
       }});
       for (var i = 0; i < N; i++) roto[idx[i]] += (N - i);
     }}
-    // Final standings: sort teams DESC by total roto points
     for (var i = 0; i < N; i++) idx[i] = i;
     idx.sort(function(a, b) {{ return roto[b] - roto[a]; }});
     for (var i = 0; i < N; i++) counts[idx[i]][i]++;
   }}
-
   var result = {{}};
   for (var i = 0; i < N; i++) {{
     var probs = new Array(N);
-    var exp   = 0;
+    var exp = 0;
     for (var j = 0; j < N; j++) {{
-      probs[j] = counts[i][j] / _MC_TRIALS;
+      probs[j] = counts[i][j] / nTrials;
       exp += probs[j] * (j + 1);
     }}
-    result[teams[i].team_id] = {{ probs: probs, expFinish: exp }};
+    result[teams[i].team_id] = {{probs: probs, expFinish: exp}};
   }}
   return result;
 }}
@@ -2424,7 +2824,7 @@ function phase3ToggleMc() {{
 function _phase3RenderMcSim() {{
   var mw = document.getElementById('phase3-mc-wrap');
   if (!mw || !window._phase3Last || !window._phase3Last.newLeague) return;
-  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 10,000 trials\u2026</div>';
+  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 8,000 trials\u2026</div>';
   setTimeout(function() {{
     var L = window._phase3Last;
     var userTid = PHASE3_LEAGUE.user_team_id;
@@ -2441,7 +2841,7 @@ function mcRunSeasonProjSim() {{
   if (!PHASE3_LEAGUE) return;
   var out = document.getElementById('mc-proj-out');
   if (!out) return;
-  out.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 10,000 trials\u2026</div>';
+  out.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 8,000 trials\u2026</div>';
   setTimeout(function() {{
     var sim = _mcGetBaseline();
     var userTid = PHASE3_LEAGUE.user_team_id;
