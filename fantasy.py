@@ -1723,6 +1723,11 @@ function _tradeRender() {{
 /* \u2500\u2500 Trade Calc: verdict + per-stat breakdown \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
 // Counting stats are summed; rate stats (OBP/ERA/WHIP) are averaged across the side.
 var TRADE_RATE_STATS = {{'OBP':true,'ERA':true,'WHIP':true}};
+// Lower-is-better categories. NOTE: the display key 'K' is overloaded — it's
+// HITTER strikeouts (lower = better) when the trade is hitters-only, and
+// PITCHER strikeouts (higher = better) otherwise. The render loop in
+// _tradeCalc picks the correct direction dynamically, so 'K' is intentionally
+// not listed here as a static lower-better cat.
 var TRADE_LOWER_BETTER = {{'ERA':true,'WHIP':true}};
 // Stat order so hitter cats line up with sidebar order, pitcher cats too
 var TRADE_STAT_ORDER = ['R','HR','RBI','SB','OBP','W','SV','HLD','K','ERA','WHIP'];
@@ -1803,6 +1808,11 @@ function _tradeCalc() {{
     if (!seen[k]) {{ seen[k]=1; allKeys.push(k); }}
   }});
   if (!allKeys.length) {{ breakEl.innerHTML=''; return; }}
+  // Detect whether the trade involves any pitchers. If it's a hitters-only
+  // trade, the 'K' display key represents hitter strikeouts (lower = better).
+  // Otherwise 'K' represents pitcher strikeouts (higher = better).
+  var pitcherInTrade = false;
+  send.concat(recv).forEach(function(p) {{ if (p && p.is_pitcher) pitcherInTrade = true; }});
   var bHtml = '<div style="font-size:.66rem;color:var(--muted);text-transform:uppercase;'
             + 'letter-spacing:.06em;font-weight:700;margin:8px 0 4px;text-align:center">'
             + 'Projected Season \u0394</div>'
@@ -1810,9 +1820,13 @@ function _tradeCalc() {{
   allKeys.forEach(function(k) {{
     var sv = sendAgg[k]||0, rv = recvAgg[k]||0;
     var rawDiff = rv - sv;
-    var adjDiff = TRADE_LOWER_BETTER[k] ? -rawDiff : rawDiff;
-    // Significance threshold depends on stat type
-    var thresh = (k === 'OBP') ? 0.0005 : (TRADE_LOWER_BETTER[k] ? 0.005 : 0.5);
+    var kIsHitterSO = (k === 'K' && !pitcherInTrade);
+    var effectiveLowerBetter = TRADE_LOWER_BETTER[k] || kIsHitterSO;
+    var adjDiff = effectiveLowerBetter ? -rawDiff : rawDiff;
+    // Significance threshold depends on stat type. Hitter K is still a
+    // counting stat, so use the counting-stat threshold (0.5) for it.
+    var thresh = (k === 'OBP') ? 0.0005
+               : (TRADE_LOWER_BETTER[k] ? 0.005 : 0.5);
     var isPos = adjDiff >  thresh;
     var isNeg = adjDiff < -thresh;
     var col   = isPos ? '#4caf50' : isNeg ? '#e05555' : '#888';
