@@ -1939,8 +1939,9 @@ document.getElementById('cmp-search').addEventListener('keydown',function(e){
 
 // ── Column Visibility ─────────────────────────────────────────────────────
 const COL_H_DEFS=[
+  {k:'pa',label:'PA'},
   {k:'r',label:'R'},{k:'hr',label:'HR'},{k:'rbi',label:'RBI'},{k:'sb',label:'SB'},
-  {k:'obp',label:'OBP'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
+  {k:'avg',label:'AVG'},{k:'obp',label:'OBP'},{k:'woba',label:'wOBA'},{k:'xwoba',label:'xwOBA'},
   {k:'chase_pct',label:'Chase%'},{k:'whiff_pct',label:'Whiff%'},
   {k:'k_pct',label:'K%'},{k:'so',label:'SO'},{k:'bb_pct',label:'BB%'},
   {k:'hard_hit_pct',label:'Hard Hit%'},{k:'barrel_pct',label:'Barrel%'},

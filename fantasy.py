@@ -1281,7 +1281,8 @@ def render_fantasy_tab(fdata: dict) -> str:
                      "K_p":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
             "proj": {"W":_sfp(_p.get("W_p"),0),"ERA":_sfp(_p.get("ERA_p"),2),
                      "WHIP":_sfp(_p.get("WHIP_p"),2),"K_p":_sfp(_p.get("SO_p"),0),
-                     "SV":_sfp(_p.get("SV_p"),0),"HLD":_sfp(_p.get("HLD_p"),0)}
+                     "SV":_sfp(_p.get("SV_p"),0),"HLD":_sfp(_p.get("HLD_p"),0),
+                     "IP":_sfp(_p.get("IP_p"),1)}
         })
     _trade_h_json = _json.dumps(_trade_h)
     _trade_p_json = _json.dumps(_trade_p)
@@ -1359,6 +1360,11 @@ def render_fantasy_tab(fdata: dict) -> str:
               style="padding:8px 18px">
         &#x1F4CA; Season Projections
       </button>
+      <button id="fant-cmp-btn" class="tab-btn"
+              onclick="fantSwitch('cmp')"
+              style="padding:8px 18px">
+        &#x1F50D; Compare Players
+      </button>
     </div>
   </div>
 
@@ -1400,6 +1406,82 @@ def render_fantasy_tab(fdata: dict) -> str:
                     width:240px;outline:none;margin-left:12px">
     </div>
     {tbl_p}
+  </div>
+
+  <!-- Compare Players panel -->
+  <div id="fant-cmp-wrap" style="display:none;padding:6px 20px 20px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="position:relative;flex:1;min-width:260px;max-width:400px">
+        <input id="fcmp-search" type="text" placeholder="&#128269; Search any player…"
+               oninput="fcmpSearch()" autocomplete="off"
+               style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                      padding:8px 14px;border-radius:6px;font-size:.88rem;
+                      width:100%;box-sizing:border-box;outline:none">
+        <div id="fcmp-dropdown"
+             style="display:none;position:absolute;z-index:60;left:0;right:0;top:100%;
+                    background:#1e1e1e;border:1px solid #444;border-radius:0 0 8px 8px;
+                    max-height:280px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.6)">
+        </div>
+      </div>
+      <button onclick="fcmpClear()"
+              style="background:#333;color:#ccc;border:1px solid #555;border-radius:6px;
+                     padding:7px 14px;cursor:pointer;font-size:.82rem;font-weight:600">
+        Clear All
+      </button>
+      <span id="fcmp-cnt" style="color:var(--muted);font-size:.8rem"></span>
+    </div>
+    <div id="fcmp-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+
+    <!-- Hitters comparison -->
+    <div id="fcmp-h-section" style="display:none;margin-bottom:18px">
+      <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Hitters</h3>
+      <div class="table-wrap">
+        <table id="fcmp-h-tbl" class="stats-table">
+          <thead><tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th class="r">$</th>
+            <th class="r">PA</th>
+            <th class="r">R</th>
+            <th class="r">HR</th>
+            <th class="r">RBI</th>
+            <th class="r">SB</th>
+            <th class="r">K</th>
+            <th class="r">OBP</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fcmp-h-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pitchers comparison -->
+    <div id="fcmp-p-section" style="display:none">
+      <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Pitchers</h3>
+      <div class="table-wrap">
+        <table id="fcmp-p-tbl" class="stats-table">
+          <thead><tr>
+            <th>Pitcher</th>
+            <th>Team</th>
+            <th class="r">$</th>
+            <th class="r">IP</th>
+            <th class="r">W</th>
+            <th class="r">ERA</th>
+            <th class="r">WHIP</th>
+            <th class="r">K</th>
+            <th class="r">SV</th>
+            <th class="r">HLD</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fcmp-p-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="fcmp-empty" style="text-align:center;padding:40px 0;color:var(--muted)">
+      <div style="font-size:1.6rem;margin-bottom:8px">&#x1F50D;</div>
+      <p style="margin:0">Search for any player above to start comparing.</p>
+    </div>
   </div>
 </div>
 
@@ -1541,7 +1623,9 @@ function fantSwitch(which) {{
   document.getElementById('fant-trade-wrap').style.display = which==='trade' ? '' : 'none';
   var pw = document.getElementById('fant-proj-wrap');
   if (pw) pw.style.display = which==='proj' ? '' : 'none';
-  ['h','p','trade','proj'].forEach(function(w) {{
+  var cw = document.getElementById('fant-cmp-wrap');
+  if (cw) cw.style.display = which==='cmp' ? '' : 'none';
+  ['h','p','trade','proj','cmp'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     if (!btn) return;
     var on = (w === which);
@@ -1690,6 +1774,7 @@ function projSort(th) {{
 }}
 
 /* ── Column color coding (gold leader + red→white→blue gradient) ─── */
+/* Rankings always computed from ALL rows (full league), not just visible ones */
 function applyFantColors(tblId) {{
   var tbl = document.getElementById(tblId);
   if (!tbl) return;
@@ -1697,7 +1782,6 @@ function applyFantColors(tblId) {{
   if (!allRows.length) return;
   var nCols = allRows[0].cells.length;
   // Color columns 3+ (skip rank=0, name=1, team=2)
-  // Rankings always computed from ALL rows (full league), not just visible ones
   for (var c = 3; c < nCols; c++) {{
     var vals = [];
     allRows.forEach(function(tr) {{
@@ -1740,6 +1824,241 @@ function applyFantColors(tblId) {{
 // Apply colors on initial load
 applyFantColors('fant-h-tbl');
 applyFantColors('fant-p-tbl');
+
+/* ── Compare Players (Fantasy tab) ─────────────────────────────── */
+/* Uses TRADE_HITTERS / TRADE_PITCHERS — same data as the Fantasy $ tables.
+   Color coding uses applyFantColors (gold leader + red→white→blue gradient)
+   computed against the FULL league pool, not just the selected players. */
+var _fcmpHNames = new Set();   // selected hitter names
+var _fcmpPNames = new Set();   // selected pitcher names
+var _fcmpDdIdx = -1;
+
+function fcmpSearch() {{
+  var q = document.getElementById('fcmp-search').value.toLowerCase().trim();
+  var dd = document.getElementById('fcmp-dropdown');
+  if (!q) {{ dd.style.display='none'; _fcmpDdIdx=-1; return; }}
+  var hMatches = TRADE_HITTERS.filter(function(p) {{
+    return p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q);
+  }}).slice(0, 12);
+  var pMatches = TRADE_PITCHERS.filter(function(p) {{
+    return p.name.toLowerCase().includes(q) || (p.team||'').toLowerCase().includes(q);
+  }}).slice(0, 12);
+  var all = [];
+  hMatches.forEach(function(p) {{ all.push({{player:p, type:'h'}}); }});
+  pMatches.forEach(function(p) {{ all.push({{player:p, type:'p'}}); }});
+  if (!all.length) {{ dd.style.display='none'; _fcmpDdIdx=-1; return; }}
+  dd.innerHTML = all.map(function(item) {{
+    var p = item.player;
+    var isH = item.type === 'h';
+    var added = isH ? _fcmpHNames.has(p.name) : _fcmpPNames.has(p.name);
+    var tag = isH ? '<span style="color:#3d9be9;font-size:.7rem;font-weight:600;margin-right:4px">BAT</span>'
+                  : '<span style="color:#e8832a;font-size:.7rem;font-weight:600;margin-right:4px">' + (p.role==='sp'?'SP':'RP') + '</span>';
+    return '<div class="cmp-di" data-name="'+p.name.replace(/"/g,'&quot;')+'" data-type="'+item.type+'" onmousedown="fcmpAdd(\''+p.name.replace(/'/g,"\\'")+'\',\''+item.type+'\')">'
+      + tag + ' <span style="color:var(--muted);font-size:.78rem;margin-right:4px">' + (p.team||'') + '</span>'
+      + '<span>' + p.name + '</span>'
+      + (added ? '<span style="color:var(--muted);font-size:.72rem;margin-left:auto">Added</span>' : '')
+      + '</div>';
+  }}).join('');
+  dd.style.display = '';
+  _fcmpDdIdx = -1;
+}}
+
+function fcmpAdd(name, type) {{
+  if (type === 'h') _fcmpHNames.add(name); else _fcmpPNames.add(name);
+  document.getElementById('fcmp-search').value = '';
+  document.getElementById('fcmp-dropdown').style.display = 'none';
+  _fcmpDdIdx = -1;
+  fcmpRender();
+}}
+
+function fcmpRemove(name, type) {{
+  if (type === 'h') _fcmpHNames.delete(name); else _fcmpPNames.delete(name);
+  fcmpRender();
+}}
+
+function fcmpClear() {{
+  _fcmpHNames.clear();
+  _fcmpPNames.clear();
+  fcmpRender();
+}}
+
+/* Color compare-table cells using full-league data from TRADE arrays.
+   keys = ordered list of stat keys matching columns starting at col 2 (after Name, Team).
+   isHitter: true for hitters (K is negative = lower better), false for pitchers (ERA/WHIP negative). */
+function _fcmpColorize(tblId, pool, keys, isHitter) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  var rows = Array.from(tbl.querySelectorAll('tbody tr'));
+  if (!rows.length) return;
+  // For each stat column, compute full-league value distribution
+  keys.forEach(function(key, ki) {{
+    var colIdx = ki + 2; // columns start after Name(0) and Team(1)
+    // Gather all league values for this stat
+    var allVals = [];
+    pool.forEach(function(p) {{
+      var v;
+      if (key === 'dollars') v = p.dollars;
+      else if (key === 'PA' || key === 'IP') v = (p.proj || {{}})[key] || (p.cats || {{}})[key];
+      else v = (p.cats || {{}})[key];
+      if (v != null && !isNaN(v)) allVals.push(v);
+    }});
+    if (!allVals.length) return;
+    var best = Math.max.apply(null, allVals);
+    rows.forEach(function(tr) {{
+      var cell = tr.cells[colIdx];
+      if (!cell) return;
+      var v = parseFloat(cell.dataset.val);
+      if (isNaN(v)) return;
+      if (Math.abs(v - best) < 0.00001) {{
+        cell.style.color = '#f0c040';
+        cell.style.fontWeight = '700';
+        return;
+      }}
+      var better = allVals.filter(function(x) {{ return x > v + 0.00001; }}).length;
+      var total = allVals.length;
+      if (total <= 1) return;
+      var t = better / (total - 1);  // 0 = best, 1 = worst
+      var r, g, b;
+      if (t < 0.5) {{
+        var s = t * 2;
+        r = Math.round(255 + (235 - 255) * s);
+        g = Math.round(60  + (235 - 60)  * s);
+        b = Math.round(50  + (235 - 50)  * s);
+      }} else {{
+        var s2 = (t - 0.5) * 2;
+        r = Math.round(235 + ( 60 - 235) * s2);
+        g = Math.round(235 + (140 - 235) * s2);
+        b = Math.round(235 + (255 - 235) * s2);
+      }}
+      cell.style.color = 'rgb(' + r + ',' + g + ',' + b + ')';
+      cell.style.fontWeight = '600';
+    }});
+  }});
+}}
+
+function _fcmpFmtDol(v) {{
+  if (v == null) return '—';
+  var col = v >= 0 ? '#4CAF50' : '#e74c3c';
+  return '<span style="color:'+col+';font-weight:700">$' + v.toFixed(1) + '</span>';
+}}
+
+function fcmpRender() {{
+  var hNames = Array.from(_fcmpHNames);
+  var pNames = Array.from(_fcmpPNames);
+  var hasH = hNames.length > 0;
+  var hasP = pNames.length > 0;
+
+  document.getElementById('fcmp-empty').style.display = (hasH || hasP) ? 'none' : '';
+  document.getElementById('fcmp-h-section').style.display = hasH ? '' : 'none';
+  document.getElementById('fcmp-p-section').style.display = hasP ? '' : 'none';
+
+  var total = hNames.length + pNames.length;
+  document.getElementById('fcmp-cnt').textContent = total ? total + ' player' + (total === 1 ? '' : 's') : '';
+
+  // Chips
+  var chips = [];
+  hNames.forEach(function(name) {{
+    var p = TRADE_HITTERS.find(function(x) {{ return x.name === name; }});
+    if (!p) return;
+    chips.push('<span style="display:inline-flex;align-items:center;gap:4px;background:#1a2a3a;'
+      + 'border:1px solid #3d9be9;border-radius:14px;padding:3px 10px;font-size:.78rem;color:#7bb8e8">'
+      + (p.team||'') + ' ' + p.name
+      + ' <span onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'h\')" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
+  }});
+  pNames.forEach(function(name) {{
+    var p = TRADE_PITCHERS.find(function(x) {{ return x.name === name; }});
+    if (!p) return;
+    chips.push('<span style="display:inline-flex;align-items:center;gap:4px;background:#2a1f12;'
+      + 'border:1px solid #e8832a;border-radius:14px;padding:3px 10px;font-size:.78rem;color:#e8b87a">'
+      + (p.team||'') + ' ' + p.name
+      + ' <span onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'p\')" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
+  }});
+  document.getElementById('fcmp-chips').innerHTML = chips.join('');
+
+  // Hitter table — uses same columns as Fantasy $ hitter table
+  if (hasH) {{
+    var tb = document.getElementById('fcmp-h-body');
+    tb.innerHTML = hNames.map(function(name) {{
+      var p = TRADE_HITTERS.find(function(x) {{ return x.name === name; }});
+      if (!p) return '';
+      var c = p.cats || {{}};
+      var pr = p.proj || {{}};
+      return '<tr>'
+        + '<td class="nm">' + p.name + '</td>'
+        + '<td style="white-space:nowrap">' + (p.team||'') + '</td>'
+        + '<td class="r" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
+        + '<td class="r" data-val="' + (pr.PA||0) + '">' + (pr.PA != null ? Math.round(pr.PA) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.R||0) + '">' + (c.R != null ? c.R.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.HR||0) + '">' + (c.HR != null ? c.HR.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.RBI||0) + '">' + (c.RBI != null ? c.RBI.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.SB||0) + '">' + (c.SB != null ? c.SB.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.K_h||0) + '">' + (c.K_h != null ? c.K_h.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.OBP||0) + '">' + (c.OBP != null ? c.OBP.toFixed(3) : '—') + '</td>'
+        + '<td class="r"><button class="cmp-remove" onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'h\')">✕</button></td>'
+        + '</tr>';
+    }}).join('');
+    // Color against full league
+    _fcmpColorize('fcmp-h-tbl', TRADE_HITTERS, ['dollars','PA','R','HR','RBI','SB','K_h','OBP'], true);
+  }}
+
+  // Pitcher table — uses same columns as Fantasy $ pitcher table
+  if (hasP) {{
+    var ptb = document.getElementById('fcmp-p-body');
+    ptb.innerHTML = pNames.map(function(name) {{
+      var p = TRADE_PITCHERS.find(function(x) {{ return x.name === name; }});
+      if (!p) return '';
+      var c = p.cats || {{}};
+      var pr = p.proj || {{}};
+      return '<tr>'
+        + '<td class="nm">' + p.name + '</td>'
+        + '<td style="white-space:nowrap">' + (p.team||'') + '</td>'
+        + '<td class="r" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
+        + '<td class="r" data-val="' + (pr.IP||0) + '">' + (pr.IP != null ? pr.IP.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.W||0) + '">' + (c.W != null ? c.W.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.ERA||0) + '">' + (c.ERA != null ? c.ERA.toFixed(2) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.WHIP||0) + '">' + (c.WHIP != null ? c.WHIP.toFixed(2) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.K_p||0) + '">' + (c.K_p != null ? c.K_p.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.SV||0) + '">' + (c.SV != null ? c.SV.toFixed(1) : '—') + '</td>'
+        + '<td class="r" data-val="' + (c.HLD||0) + '">' + (c.HLD != null ? c.HLD.toFixed(1) : '—') + '</td>'
+        + '<td class="r"><button class="cmp-remove" onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'p\')">✕</button></td>'
+        + '</tr>';
+    }}).join('');
+    _fcmpColorize('fcmp-p-tbl', TRADE_PITCHERS, ['dollars','IP','W','ERA','WHIP','K_p','SV','HLD'], false);
+  }}
+}}
+
+// Keyboard nav for compare search
+(function() {{
+  var el = document.getElementById('fcmp-search');
+  if (!el) return;
+  el.addEventListener('keydown', function(e) {{
+    var dd = document.getElementById('fcmp-dropdown');
+    var items = Array.from(dd.querySelectorAll('.cmp-di'));
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {{
+      e.preventDefault();
+      _fcmpDdIdx = Math.min(_fcmpDdIdx + 1, items.length - 1);
+      items.forEach(function(el, i) {{ el.classList.toggle('active', i === _fcmpDdIdx); }});
+    }} else if (e.key === 'ArrowUp') {{
+      e.preventDefault();
+      _fcmpDdIdx = Math.max(_fcmpDdIdx - 1, 0);
+      items.forEach(function(el, i) {{ el.classList.toggle('active', i === _fcmpDdIdx); }});
+    }} else if (e.key === 'Enter') {{
+      e.preventDefault();
+      if (_fcmpDdIdx >= 0 && items[_fcmpDdIdx]) {{
+        var it = items[_fcmpDdIdx];
+        fcmpAdd(it.dataset.name, it.dataset.type);
+      }}
+    }} else if (e.key === 'Escape') {{
+      dd.style.display = 'none';
+      _fcmpDdIdx = -1;
+    }}
+  }});
+  el.addEventListener('blur', function() {{
+    setTimeout(function() {{ document.getElementById('fcmp-dropdown').style.display = 'none'; }}, 200);
+  }});
+}})();
+
 /* ── Trade Calculator ────────────────────────────────────────── */
 var TRADE_HITTERS  = {_trade_h_json};
 var TRADE_PITCHERS = {_trade_p_json};
