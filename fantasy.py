@@ -1138,7 +1138,12 @@ def render_fantasy_tab(fdata: dict) -> str:
     # ── build one HTML table ───────────────────────────────────────────────
     # Columns: # | Name | Team | Proj $ | [stat cols…]
     # Primary cell: projected stat (e.g. 48 HR); sub-text: dollar contribution
-    def _build_table(players: list, cats: list, table_id: str) -> str:
+    def _build_table(players: list, cats: list, table_id: str,
+                     info_cats: list | None = None) -> str:
+        """Build an HTML table.  *info_cats* are display-only columns
+        (e.g. PA, IP) shown between Proj $ and the scoring categories.
+        They render the projected stat value with no dollar contribution."""
+        info_cats = info_cats or []
         sort_js = f"fantSort('{table_id}',this)"
         def _th(label, col_idx):
             return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
@@ -1153,6 +1158,9 @@ def render_fantasy_tab(fdata: dict) -> str:
                      _th('Name', (col := col + 1)),
                      _th('Team', (col := col + 1)),
                      _th('Proj&nbsp;$', (col := col + 1))]
+        for ic in info_cats:
+            col += 1
+            hdr_parts.append(_th(ic, col))
         for c in cats:
             col += 1
             hdr_parts.append(_th(c, col))
@@ -1171,6 +1179,25 @@ def render_fantasy_tab(fdata: dict) -> str:
             fdol_val = fdol
 
             team_cell = _team_badge_py(tm)
+
+            # Info-only columns (PA / IP) — just the projected value, no $
+            info_cells = ""
+            for ic in info_cats:
+                raw = p.get(ic + "_p")
+                try:
+                    val = float(raw) if raw is not None else None
+                except (TypeError, ValueError):
+                    val = None
+                if val is not None:
+                    info_cells += (
+                        f'<td style="text-align:center;padding:3px 6px;'
+                        f'color:#999;font-size:.88rem" '
+                        f'data-val="{val:.1f}">{val:.0f}</td>'
+                    )
+                else:
+                    info_cells += (
+                        f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
+                    )
 
             stat_cells = ""
             for cat in cats:
@@ -1199,7 +1226,7 @@ def render_fantasy_tab(fdata: dict) -> str:
                 f'<td style="white-space:nowrap">{team_cell}</td>'
                 f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
                 f' data-val="{fdol_val}">{fdol_str}</td>'
-                f'{stat_cells}'
+                f'{info_cells}{stat_cells}'
                 f'</tr>'
             )
 
@@ -1215,8 +1242,8 @@ def render_fantasy_tab(fdata: dict) -> str:
         ip = float(ip_v) if ip_v is not None else 0.0
         entry["role"] = "sp" if ip >= 100 else "rp"
 
-    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl")
-    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl")
+    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl", info_cats=["PA"])
+    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl", info_cats=["IP"])
 
     # ── trade tab: embed player pool as JSON for client-side search ─────────
     import json as _json
