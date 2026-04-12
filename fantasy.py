@@ -779,14 +779,18 @@ def _render_season_projections(fdata: dict) -> str:
         for c in h_sub:
             raw_val = row["stats"][c]
             stat_str = _fmt_proj_stat(c, raw_val)
+            z_val = row["z"][c]
             rank = row["rank"][c]
             color = _proj_rank_color(rank, n_teams)
+            z_color = "#4caf50" if z_val > 0.05 else "#f44336" if z_val < -0.05 else "#888"
             cells.append(
                 f'<td data-sort="{raw_val}" '
                 f'style="text-align:center;padding:6px 6px">'
                 f'<div style="font-size:.82rem;font-weight:700;color:{color};'
                 f'line-height:1.1">{stat_str}</div>'
-                f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+                f'<div style="font-size:.6rem;color:{z_color};line-height:1.1;'
+                f'margin-top:1px">{z_val:+.2f}z</div>'
+                f'<div style="font-size:.55rem;color:#555;line-height:1.1;'
                 f'margin-top:1px">#{rank}</div>'
                 f'</td>'
             )
@@ -796,14 +800,18 @@ def _render_season_projections(fdata: dict) -> str:
         for c in p_sub:
             raw_val = row["stats"][c]
             stat_str = _fmt_proj_stat(c, raw_val)
+            z_val = row["z"][c]
             rank = row["rank"][c]
             color = _proj_rank_color(rank, n_teams)
+            z_color = "#4caf50" if z_val > 0.05 else "#f44336" if z_val < -0.05 else "#888"
             cells.append(
                 f'<td data-sort="{raw_val}" '
                 f'style="text-align:center;padding:6px 6px">'
                 f'<div style="font-size:.82rem;font-weight:700;color:{color};'
                 f'line-height:1.1">{stat_str}</div>'
-                f'<div style="font-size:.6rem;color:#666;line-height:1.1;'
+                f'<div style="font-size:.6rem;color:{z_color};line-height:1.1;'
+                f'margin-top:1px">{z_val:+.2f}z</div>'
+                f'<div style="font-size:.55rem;color:#555;line-height:1.1;'
                 f'margin-top:1px">#{rank}</div>'
                 f'</td>'
             )
@@ -2323,14 +2331,16 @@ function _tradeCalc() {{
   }}
   var arrowHtml, vc;
   if (net > 0.5) {{
+    // Sender (left side) receives more value than they give → sender wins
     arrowHtml = '<div style="font-size:3rem;color:#4caf50;line-height:1;margin:4px 0">&#x25B6;</div>'
               + '<div style="font-size:.75rem;color:#4caf50;font-weight:800;letter-spacing:.06em">'
-              + recvName.toUpperCase() + ' WINS</div>';
+              + sendName.toUpperCase() + ' WINS</div>';
     vc = '#4caf50';
   }} else if (net < -0.5) {{
+    // Sender gives more value than they get → receiver wins
     arrowHtml = '<div style="font-size:3rem;color:#e05555;line-height:1;margin:4px 0;transform:rotate(180deg)">&#x25B6;</div>'
               + '<div style="font-size:.75rem;color:#e05555;font-weight:800;letter-spacing:.06em">'
-              + sendName.toUpperCase() + ' WINS</div>';
+              + recvName.toUpperCase() + ' WINS</div>';
     vc = '#e05555';
   }} else {{
     arrowHtml = '<div style="font-size:2.4rem;color:#aaa;line-height:1;margin:4px 0">&#x21C6;</div>'
@@ -4441,21 +4451,44 @@ function _phase3RenderTable(newLeague) {{
     var nameAccent = isUser ? '#4caf50' : isOpp ? '#e05555' : '#ddd';
     var bg = (isUser || isOpp) ? '#1a1a1a' : 'transparent';
 
-    /* Build per-category z-score cells */
+    /* Format a raw stat value for display */
+    function fmtRaw(cat, v) {{
+      if (cat === 'OBP') return v.toFixed(3);
+      if (cat === 'ERA' || cat === 'WHIP') return v.toFixed(2);
+      return Math.round(v).toString();
+    }}
+
+    /* Build per-category cell: raw stat on top, z-score + raw delta below */
     function zCell(cat, borderLeft) {{
       var nz = t.z[cat] || 0;
       var oz = old.z[cat] || 0;
-      var d  = nz - oz;
-      var dStr = '';
-      if (Math.abs(d) > 0.005) {{
-        var dc = d > 0 ? '#4caf50' : '#e05555';
-        dStr = '<div style="font-size:.6rem;color:' + dc + ';line-height:1">'
-             + (d > 0 ? '+' : '\u2212') + Math.abs(d).toFixed(2) + '</div>';
+      var nv = t.stats[cat] || 0;
+      var ov = old.stats[cat] || 0;
+      var rawD = nv - ov;
+      var zd = nz - oz;
+
+      /* Raw stat change — color by whether the change is GOOD for this cat */
+      var isLower = lower[cat];
+      var rawGood = isLower ? (rawD < -0.0005) : (rawD > 0.0005);
+      var rawBad  = isLower ? (rawD > 0.0005)  : (rawD < -0.0005);
+      var rawChanged = Math.abs(rawD) > 0.0005;
+
+      var rawDStr = '';
+      if (rawChanged) {{
+        var rc = rawGood ? '#4caf50' : rawBad ? '#e05555' : '#888';
+        var rawSign = rawD >= 0 ? '+' : '\u2212';
+        rawDStr = '<div style="font-size:.58rem;color:' + rc + ';line-height:1;margin-top:1px">'
+                + rawSign + fmtRaw(cat, Math.abs(rawD)) + '</div>';
       }}
+
+      /* Z-score line */
+      var zStr = '<div style="font-size:.6rem;color:#666;line-height:1;margin-top:1px">z ' + nz.toFixed(2) + '</div>';
+
       var bl = borderLeft ? 'border-left:2px solid #444;' : '';
       return '<td style="' + bl + 'text-align:center;padding:2px 4px">'
-           + '<div style="line-height:1.15">' + nz.toFixed(2) + '</div>'
-           + dStr + '</td>';
+           + '<div style="font-size:.82rem;line-height:1.15;font-weight:600">' + fmtRaw(cat, nv) + '</div>'
+           + zStr
+           + rawDStr + '</td>';
     }}
 
     html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
