@@ -2397,11 +2397,7 @@ async function _togglePlayer(name, isOn){
     if(!names.some(n=>taNorm(n)===taNorm(name))) names.push(name);
   }
   _rosterNames=names;
-  try {
-    await _saveRosterUnified(names);
-  } catch(e) {
-    console.error('Failed to save roster:', e);
-  }
+  await _saveRosterUnified(names);
   _rebuildTA(names);
   _renderRosterList();
 }
@@ -2443,4 +2439,54 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
       <input id="roster-search" type="text" placeholder="Search players…" oninput="filterRosterSearch()"
         style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;margin-bottom:12px">
       <div class="toggle-group" style="margin-bottom:12px">
-        <but
+        <button class="tgl-btn active" id="roster-tab-h"  onclick="switchRosterTab('h',this)">🏏 Hitters</button>
+        <button class="tgl-btn"        id="roster-tab-sp" onclick="switchRosterTab('sp',this)">⚾ SP</button>
+        <button class="tgl-btn"        id="roster-tab-rp" onclick="switchRosterTab('rp',this)">🔥 RP</button>
+      </div>
+      <div id="roster-player-list" style="max-height:55vh;overflow-y:auto"></div>
+    </div>
+    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);text-align:center">
+      <div id="roster-count-info" style="font-size:.78rem;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+"""
+
+def render_html(date_display, ts, n_games, hitters, all_pitchers,
+                ta_hitters, ta_starters, ta_relievers,
+                lb_data=None, lb_pitch_data=None):
+    # Add is_starter flag to all pitchers for client-side filtering
+    starters = []
+    relievers = []
+    for p in all_pitchers:
+        p_copy = p.copy()
+        p_copy["is_starter"] = p_copy.get("ip_float", 0) >= 3
+        if p_copy["is_starter"]:
+            starters.append(p_copy)
+        else:
+            relievers.append(p_copy)
+
+    lb_sp = (lb_pitch_data or {}).get("starters", [])
+    lb_rp = (lb_pitch_data or {}).get("relievers", [])
+
+    return (HTML_TEMPLATE
+        .replace("__DATE_DISPLAY__", date_display)
+        .replace("__N_GAMES__", str(n_games))
+        .replace("__TS__", ts)
+        .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
+        .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
+        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
+        .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
+        .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
+        .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
+        .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
+        .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
+        .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
+        .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
+    )
+
+
+# ── Main ───────────────────────────────────────────────────────────────────
