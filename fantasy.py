@@ -1390,6 +1390,17 @@ def render_fantasy_tab(fdata: dict) -> str:
                   border-left:3px solid var(--accent)">
         &#x1F4E4; Sending
       </div>
+      <!-- Phase 3: send-side team selector -->
+      <div id="trade-send-wrap" style="display:none;margin-bottom:8px">
+        <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                       text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+          Trading from
+        </label>
+        <select id="trade-send-sel" onchange="tradeSetSender(this.value)"
+                style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                       padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+        </select>
+      </div>
       <div style="position:relative;margin-bottom:10px">
         <input id="trade-send-search" type="text" placeholder="&#128269; Add player&#8230;"
                oninput="tradeSearch('send',this.value)"
@@ -1710,7 +1721,7 @@ var TRADE_PITCHERS = {_trade_p_json};
    classic projected-stat-diff verdict only in that case. */
 var PHASE3_LEAGUE  = {_phase3_json};
 var _tradeRoster   = {{
-  send: [], recv: [], recvTeamId: null,
+  send: [], recv: [], sendTeamId: null, recvTeamId: null,
   pickups: [], pitcherPickups: [],          /* user-side waiver adds */
   oppPickups: [], oppPitcherPickups: [],    /* opponent-side waiver adds */
   drops: [], oppDrops: []                   /* roster drops when a side receives > sends */
@@ -1731,14 +1742,14 @@ function tradeSearch(side, q) {{
   if (!q) {{ dd.style.display = 'none'; return; }}
   var added = _tradeRoster.send.concat(_tradeRoster.recv).map(function(p) {{ return p.name; }});
   var pool  = TRADE_HITTERS.concat(TRADE_PITCHERS);
-  // Phase 3 filter: send side = user's team only, recv side = selected counterparty.
+  // Phase 3 filter: send side = selected send team, recv side = selected counterparty.
   // (If PHASE3 isn't loaded the pool stays unfiltered — old behavior.)
   if (PHASE3_LEAGUE) {{
-    var userTid = PHASE3_LEAGUE.user_team_id;
+    var sendTid = _tradeRoster.sendTeamId;
     var recvTid = _tradeRoster.recvTeamId;
     pool = pool.filter(function(p) {{
       if (p.team_id == null) return false;        // unrostered → drop
-      if (side === 'send') return p.team_id === userTid;
+      if (side === 'send') return sendTid != null && p.team_id === sendTid;
       if (side === 'recv') return recvTid != null && p.team_id === recvTid;
       return true;
     }});
@@ -1903,14 +1914,24 @@ function _tradeCalc() {{
   var recvTot = recv.reduce(function(s,p){{ return s + (p.dollars||0); }}, 0);
   var net = recvTot - sendTot;
 
+  // Resolve team names for the verdict
+  var sendName = 'Sender', recvName = 'Receiver';
+  if (PHASE3_LEAGUE) {{
+    var _sT = PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _tradeRoster.sendTeamId; }});
+    var _rT = PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _tradeRoster.recvTeamId; }});
+    if (_sT) sendName = _sT.name;
+    if (_rT) recvName = _rT.name;
+  }}
   var arrowHtml, vc;
   if (net > 0.5) {{
     arrowHtml = '<div style="font-size:3rem;color:#4caf50;line-height:1;margin:4px 0">&#x25B6;</div>'
-              + '<div style="font-size:.75rem;color:#4caf50;font-weight:800;letter-spacing:.06em">YOU WIN</div>';
+              + '<div style="font-size:.75rem;color:#4caf50;font-weight:800;letter-spacing:.06em">'
+              + recvName.toUpperCase() + ' WINS</div>';
     vc = '#4caf50';
   }} else if (net < -0.5) {{
     arrowHtml = '<div style="font-size:3rem;color:#e05555;line-height:1;margin:4px 0;transform:rotate(180deg)">&#x25B6;</div>'
-              + '<div style="font-size:.75rem;color:#e05555;font-weight:800;letter-spacing:.06em">YOU LOSE</div>';
+              + '<div style="font-size:.75rem;color:#e05555;font-weight:800;letter-spacing:.06em">'
+              + sendName.toUpperCase() + ' WINS</div>';
     vc = '#e05555';
   }} else {{
     arrowHtml = '<div style="font-size:2.4rem;color:#aaa;line-height:1;margin:4px 0">&#x21C6;</div>'
@@ -1986,39 +2007,57 @@ function _tradeCalc() {{
 /* One-time init: populate the counterparty dropdown and default to the
    first non-user team. Hides the whole UI if PHASE3_LEAGUE is unavailable. */
 function phase3Init() {{
-  var wrap = document.getElementById('trade-counter-wrap');
-  if (!PHASE3_LEAGUE) {{ if (wrap) wrap.style.display = 'none'; return; }}
-  if (!wrap) return;
-  var sel = document.getElementById('trade-counter-sel');
-  if (!sel) return;
-  var others = PHASE3_LEAGUE.teams.filter(function(t) {{
-    return t.team_id !== PHASE3_LEAGUE.user_team_id;
+  var sendWrap = document.getElementById('trade-send-wrap');
+  var recvWrap = document.getElementById('trade-counter-wrap');
+  if (!PHASE3_LEAGUE) {{
+    if (sendWrap) sendWrap.style.display = 'none';
+    if (recvWrap) recvWrap.style.display = 'none';
+    return;
+  }}
+  var allTeams = PHASE3_LEAGUE.teams.slice().sort(function(a,b) {{
+    return (a.name || '').localeCompare(b.name || '');
   }});
-  var html = '<option value="">— pick a team —</option>';
-  others.forEach(function(t) {{
-    html += '<option value="' + t.team_id + '">' + t.name + '</option>';
+  var optHtml = '<option value="">\u2014 pick a team \u2014</option>';
+  allTeams.forEach(function(t) {{
+    optHtml += '<option value="' + t.team_id + '">' + t.name + '</option>';
   }});
-  sel.innerHTML = html;
-  wrap.style.display = '';
+  // Send-side dropdown
+  var sendSel = document.getElementById('trade-send-sel');
+  if (sendSel) {{ sendSel.innerHTML = optHtml; }}
+  if (sendWrap) sendWrap.style.display = '';
+  // Recv-side dropdown
+  var recvSel = document.getElementById('trade-counter-sel');
+  if (recvSel) {{ recvSel.innerHTML = optHtml; }}
+  if (recvWrap) recvWrap.style.display = '';
 }}
 phase3Init();
+
+/* Send-side team change handler. Wipes the send side because old players
+   would belong to a different team. */
+function tradeSetSender(val) {{
+  _tradeRoster.sendTeamId = val ? parseInt(val, 10) : null;
+  _tradeRoster.send = [];
+  _tradeRoster.pickups = [];
+  _tradeRoster.pitcherPickups = [];
+  _tradeRoster.drops = [];
+  window._phase3PickerSlot = null;
+  window._phase3PitcherPicker = false;
+  window._phase3DropPicker = false;
+  var inp = document.getElementById('trade-send-search');
+  if (inp) inp.value = '';
+  _tradeRender();
+}}
 
 /* Counterparty change handler. Wipes the recv side because old players
    would belong to a different team. */
 function tradeSetCounter(val) {{
   _tradeRoster.recvTeamId = val ? parseInt(val, 10) : null;
   _tradeRoster.recv = [];
-  _tradeRoster.pickups = [];
-  _tradeRoster.pitcherPickups = [];
   _tradeRoster.oppPickups = [];
   _tradeRoster.oppPitcherPickups = [];
-  _tradeRoster.drops = [];
   _tradeRoster.oppDrops = [];
-  window._phase3PickerSlot = null;
   window._phase3OppPickerSlot = null;
-  window._phase3PitcherPicker = false;
   window._phase3OppPitcherPicker = false;
-  window._phase3DropPicker = false;
   window._phase3OppDropPicker = false;
   var inp = document.getElementById('trade-recv-search');
   if (inp) inp.value = '';
@@ -2877,7 +2916,7 @@ function _phase3RenderMcSim() {{
   mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 50,000 trials\u2026</div>';
   setTimeout(function() {{
     var L = window._phase3Last;
-    var userTid = PHASE3_LEAGUE.user_team_id;
+    var userTid = _tradeRoster.sendTeamId;
     var oppTid  = _tradeRoster.recvTeamId;
     var baseSim = _mcGetBaseline();
     var newSim  = _mcRunSim(L.newLeague);
@@ -2906,9 +2945,9 @@ function mcRunSeasonProjSim() {{
    and stats re-aggregated. Untouched teams keep their existing stats. */
 function _phase3SimulateTrade() {{
   var league = JSON.parse(JSON.stringify(PHASE3_LEAGUE.teams));
-  var userTid = PHASE3_LEAGUE.user_team_id;
+  var userTid = _tradeRoster.sendTeamId;
   var oppTid  = _tradeRoster.recvTeamId;
-  if (oppTid == null) return null;
+  if (userTid == null || oppTid == null) return null;
 
   var sendIds = {{}};   // espn_ids leaving the user
   var recvIds = {{}};   // espn_ids leaving the opponent
@@ -3050,7 +3089,7 @@ function _phase3RenderImpact() {{
   if (!newLeague || !wrap) {{ if (wrap) wrap.style.display = 'none'; return; }}
   wrap.style.display = '';
   var n = PHASE3_LEAGUE.teams.length;
-  var userTid = PHASE3_LEAGUE.user_team_id;
+  var userTid = _tradeRoster.sendTeamId;
   var oppTid  = _tradeRoster.recvTeamId;
   function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
   function findNew(tid) {{ return newLeague.find(function(t) {{ return t.team_id === tid; }}); }}
@@ -3409,7 +3448,7 @@ function _phase3FindRostered(teamId, espnId) {{
 function phase3AddDrop(espnIdStr) {{
   if (!PHASE3_LEAGUE) return;
   var espnId = isNaN(parseInt(espnIdStr, 10)) ? espnIdStr : parseInt(espnIdStr, 10);
-  var userTid = PHASE3_LEAGUE.user_team_id;
+  var userTid = _tradeRoster.sendTeamId;
   var found = _phase3FindRostered(userTid, espnId);
   if (!found) return;
   if (!_tradeRoster.drops) _tradeRoster.drops = [];
@@ -3492,7 +3531,7 @@ function _phase3RenderLineups() {{
   var lw = document.getElementById('phase3-lineup-wrap');
   if (!lw || !window._phase3Last) return;
   var L = window._phase3Last;
-  var userTid = PHASE3_LEAGUE ? PHASE3_LEAGUE.user_team_id : null;
+  var userTid = _tradeRoster.sendTeamId;
   var userPicker = window._phase3PickerSlot;
   var oppPicker  = window._phase3OppPickerSlot;
 
@@ -3874,7 +3913,7 @@ function _phase3RenderLineups() {{
   // and already-dropped players are excluded.
   function _renderDropPicker(side) {{
     if (!PHASE3_LEAGUE) return '';
-    var tid = (side === 'user') ? PHASE3_LEAGUE.user_team_id : _tradeRoster.recvTeamId;
+    var tid = (side === 'user') ? _tradeRoster.sendTeamId : _tradeRoster.recvTeamId;
     if (tid == null) return '';
     var tm = PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }});
     if (!tm) return '';
@@ -3983,7 +4022,7 @@ function _phase3RenderTable(newLeague) {{
     var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
     var rStr = rd === 0 ? '\u25A0 0'
              : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
-    var isUser = t.team_id === PHASE3_LEAGUE.user_team_id;
+    var isUser = t.team_id === _tradeRoster.sendTeamId;
     var isOpp  = t.team_id === _tradeRoster.recvTeamId;
     var nameAccent = isUser ? '#4caf50' : isOpp ? '#e05555' : '#ddd';
     var bg = (isUser || isOpp) ? '#1a1a1a' : 'transparent';
