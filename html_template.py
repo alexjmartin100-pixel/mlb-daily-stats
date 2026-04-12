@@ -2097,25 +2097,45 @@ document.addEventListener('click',function(e){
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// Firebase Auth + Firestore — dynamic roster editing
+// Roster persistence — localStorage (always) + Firestore (when logged in)
 // ══════════════════════════════════════════════════════════════════════════
 const _fbCfg = __FIREBASE_CONFIG__;
 let _fbAuth = null, _fbDb = null, _fbUser = null;
-let _rosterNames = null; // current roster as array of raw display names
+let _rosterNames = []; // current roster as array of raw display names (starts empty)
+const _LS_ROSTER_KEY    = 'mlb_my_team_roster';
+const _LS_TEAM_NAME_KEY = 'mlb_my_team_name';
+
+// ── localStorage load (runs immediately, before Firebase) ──
+(function _loadLocalRoster(){
+  try {
+    var raw = localStorage.getItem(_LS_ROSTER_KEY);
+    if (raw) {
+      var names = JSON.parse(raw);
+      if (Array.isArray(names) && names.length) {
+        _rosterNames = names;
+        _rebuildTA(names);
+      }
+    }
+    var tn = localStorage.getItem(_LS_TEAM_NAME_KEY);
+    if (tn) { _teamName = tn; _applyTeamName(tn); }
+  } catch(e) {}
+})();
+
+function _saveRosterLocal(names){
+  try { localStorage.setItem(_LS_ROSTER_KEY, JSON.stringify(names)); } catch(e) {}
+}
+function _saveTeamNameLocal(name){
+  try { localStorage.setItem(_LS_TEAM_NAME_KEY, name); } catch(e) {}
+}
 
 (function _initFirebase(){
-  if (!_fbCfg.apiKey || _fbCfg.apiKey.startsWith('REPLACE')) {
-    // Config not filled in yet — show setup hint
-    _updateAuthUI();
-    return;
-  }
+  _updateAuthUI();   // show Edit Roster immediately (works without login)
+  if (!_fbCfg.apiKey || _fbCfg.apiKey.startsWith('REPLACE')) return;
   try {
     firebase.initializeApp(_fbCfg);
     _fbAuth = firebase.auth();
     _fbDb   = firebase.firestore();
-    // Keep login persistent on this device forever
     _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
-    // Fires immediately with cached user (if previously logged in)
     _fbAuth.onAuthStateChanged(async user => {
       _fbUser = user;
       _updateAuthUI();
@@ -2130,22 +2150,21 @@ let _rosterNames = null; // current roster as array of raw display names
 function _updateAuthUI(){
   const area = document.getElementById('ta-auth-area');
   if (!area) return;
-  if (!_fbAuth) {
-    area.innerHTML = '<span style="font-size:.7rem;color:var(--muted);opacity:.7">⚙️ roster sync unavailable</span>';
-    return;
-  }
   const editBtn=document.getElementById('ta-name-edit-btn');
+  // Always show the Edit Roster button — roster works with localStorage even
+  // without a Firebase login. Login just adds cross-device sync.
+  var btns = `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`;
   if (_fbUser) {
     const email = _fbUser.email || '';
-    area.innerHTML =
-      `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`+
-      `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
+    btns += `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
+    if(editBtn) editBtn.style.display='inline';
+  } else if (_fbAuth) {
+    btns += `<button onclick="openLoginOverlay()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.78rem;color:var(--muted);cursor:pointer">🔑 Sync</button>`;
     if(editBtn) editBtn.style.display='inline';
   } else {
-    area.innerHTML =
-      `<button onclick="openLoginOverlay()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:.78rem;color:var(--muted);cursor:pointer">🔑 Login</button>`;
-    if(editBtn) editBtn.style.display='none';
+    if(editBtn) editBtn.style.display='inline';
   }
+  area.innerHTML = btns;
 }
 
 let _teamName = 'My Team';
@@ -2156,7 +2175,7 @@ function _applyTeamName(name){
     if(el) el.textContent=name;
   });
   const btn=document.getElementById('ta-name-edit-btn');
-  if(btn) btn.style.display=_fbUser?'inline':'none';
+  if(btn) btn.style.display='inline';
 }
 
 function startTeamNameEdit(){
@@ -2174,6 +2193,7 @@ function startTeamNameEdit(){
 async function saveTeamName(val){
   const name=(val||'').trim()||'My Team';
   _teamName=name;
+  _saveTeamNameLocal(name);
   const inp=document.getElementById('ta-name-input');
   if(inp) inp.outerHTML=`<span id="ta-team-name-hdr">${name}</span>`;
   const tab=document.getElementById('ta-team-name-tab');
@@ -2186,11 +2206,14 @@ async function _loadRoster(uid){
     const doc = await _fbDb.collection('users').doc(uid).get();
     let names;
     if (doc.exists && Array.isArray(doc.data().roster) && doc.data().roster.length > 0) {
+      // Firestore has a saved roster — use it (authoritative when logged in)
       names = doc.data().roster;
-    } else {
-      // First login — seed with current baked-in defaults
-      names = DEFAULT_TA_NAMES;
+    } else if (_rosterNames && _rosterNames.length > 0) {
+      // First login but localStorage already has a roster — push it to Firestore
+      names = _rosterNames;
       await _saveRoster(uid, names);
+    } else {
+      names = [];
     }
     // Load saved team name
     if (doc.exists && doc.data().teamName) {
@@ -2198,6 +2221,7 @@ async function _loadRoster(uid){
       _applyTeamName(_teamName);
     }
     _rosterNames = names;
+    _saveRosterLocal(names);   // keep localStorage in sync
     _rebuildTA(names);
   } catch(e) {
     console.error('Firestore load error:', e);
@@ -2210,6 +2234,10 @@ async function _saveRoster(uid, names){
   } catch(e) {
     console.error('Firestore save error:', e);
   }
+}
+async function _saveRosterUnified(names){
+  _saveRosterLocal(names);
+  if (_fbUser && _fbDb) await _saveRoster(_fbUser.uid, names);
 }
 
 function _rebuildTA(rosterNames){
@@ -2358,19 +2386,18 @@ function _renderRosterList(){
       </div>`;
     }).join('');
   }
-  const rc=_rosterNames?_rosterNames.length:DEFAULT_TA_NAMES.length;
+  const rc=_rosterNames?_rosterNames.length:0;
   document.getElementById('roster-count-info').textContent=rc+' players on roster';
 }
 async function _togglePlayer(name, isOn){
-  if(!_fbUser || _rosterNames===null) return;
-  let names=[..._rosterNames];
+  let names = _rosterNames ? [..._rosterNames] : [];
   if(isOn){
     names=names.filter(n=>taNorm(n)!==taNorm(name));
   } else {
     if(!names.some(n=>taNorm(n)===taNorm(name))) names.push(name);
   }
   _rosterNames=names;
-  await _saveRoster(_fbUser.uid, names);
+  await _saveRosterUnified(names);
   _rebuildTA(names);
   _renderRosterList();
 }

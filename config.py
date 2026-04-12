@@ -74,17 +74,10 @@ ALL_PT_CODES   = ["FF","FA","SI","FC","SL","ST","SV","CH","FS",
                   "CU","KC","KN","SC","FO","EP","CS"]
 
 # ── Team Alex roster ───────────────────────────────────────────────────────
-# Normalized (lowercase, no diacritics, no periods) for matching
-TEAM_ALEX_NAMES = {
-    "jose ramirez", "vladimir guerrero jr", "gunnar henderson",
-    "wyatt langford", "zach neto", "eury perez",
-    "freddy peralta", "matt chapman", "kyle bradish",
-    "tyler soderstrom", "bryson stott", "adley rutschman",
-    "taylor ward", "ryan pepiot", "ryan helsley",
-    "shane baz", "ian happ", "tanner bibee",
-    "ryan weathers", "mackenzie gore", "griffin jax",
-    "max meyer", "reid detmers", "matt brash",
-}
+# Starts EMPTY — the dashboard's "My Team" tab lets the user add/remove
+# players interactively (stored in Firestore when logged in, localStorage
+# otherwise). No hardcoded roster or ESPN-roster dependency.
+TEAM_ALEX_NAMES = set()
 
 # ── Firebase Web App Config ────────────────────────────────────────────────
 # Get these from Firebase Console → Project Settings → Your apps → Web app config.

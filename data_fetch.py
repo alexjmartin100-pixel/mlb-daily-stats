@@ -183,7 +183,31 @@ def get_player_info(ids: list) -> dict:
     except Exception as e:
         print(f"  pybaseball lookup warning: {e}")
 
-    # Fallback: MLB Stats API for any IDs not found above
+    # ── Authoritative names from MLB Stats API (batch call) ─────────────
+    # pybaseball's Chadwick register sometimes drops suffixes (e.g.
+    # "Vladimir Guerrero" instead of "Vladimir Guerrero Jr."). The MLB
+    # Stats API is authoritative, so we do a single batch call and prefer
+    # its fullName for all players. Also picks up any IDs pybaseball missed.
+    all_unique = list(set(ids))
+    BATCH = 200  # API handles ~200 comma-separated IDs per call
+    for start in range(0, len(all_unique), BATCH):
+        chunk = all_unique[start : start + BATCH]
+        try:
+            data = statsapi.get("people",
+                                {"personIds": ",".join(str(i) for i in chunk)})
+            for p in data.get("people", []):
+                mid = int(p.get("id", 0))
+                full = (p.get("fullName") or "").strip()
+                if not full:
+                    continue
+                if mid in result:
+                    result[mid]["name"] = title_name(full)   # keep fg_id, fix name
+                else:
+                    result[mid] = {"name": title_name(full), "fg_id": None}
+        except Exception:
+            pass
+
+    # Legacy single-player fallback for any still-missing IDs
     missing = [pid for pid in set(ids) if pid not in result]
     if missing:
         print(f"  Looking up {len(missing)} missing player(s) via MLB Stats API…")
