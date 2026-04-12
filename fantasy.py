@@ -1436,18 +1436,31 @@ def render_fantasy_tab(fdata: dict) -> str:
     <div id="fcmp-h-section" style="display:none;margin-bottom:18px">
       <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Hitters</h3>
       <div class="table-wrap">
-        <table id="fcmp-h-tbl" class="stats-table">
+        <table id="fcmp-h-tbl" class="stats-table" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:140px">
+            <col style="width:55px">
+            <col style="width:70px">
+            <col style="width:60px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:36px">
+          </colgroup>
           <thead><tr>
             <th>Player</th>
             <th>Team</th>
-            <th class="r">$</th>
-            <th class="r">PA</th>
-            <th class="r">R</th>
-            <th class="r">HR</th>
-            <th class="r">RBI</th>
-            <th class="r">SB</th>
-            <th class="r">K</th>
-            <th class="r">OBP</th>
+            <th style="text-align:center">$</th>
+            <th style="text-align:center">PA</th>
+            <th style="text-align:center">R</th>
+            <th style="text-align:center">HR</th>
+            <th style="text-align:center">RBI</th>
+            <th style="text-align:center">SB</th>
+            <th style="text-align:center">K</th>
+            <th style="text-align:center">OBP</th>
             <th></th>
           </tr></thead>
           <tbody id="fcmp-h-body"></tbody>
@@ -1459,18 +1472,31 @@ def render_fantasy_tab(fdata: dict) -> str:
     <div id="fcmp-p-section" style="display:none">
       <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Pitchers</h3>
       <div class="table-wrap">
-        <table id="fcmp-p-tbl" class="stats-table">
+        <table id="fcmp-p-tbl" class="stats-table" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:140px">
+            <col style="width:55px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:36px">
+          </colgroup>
           <thead><tr>
             <th>Pitcher</th>
             <th>Team</th>
-            <th class="r">$</th>
-            <th class="r">IP</th>
-            <th class="r">W</th>
-            <th class="r">ERA</th>
-            <th class="r">WHIP</th>
-            <th class="r">K</th>
-            <th class="r">SV</th>
-            <th class="r">HLD</th>
+            <th style="text-align:center">$</th>
+            <th style="text-align:center">IP</th>
+            <th style="text-align:center">W</th>
+            <th style="text-align:center">ERA</th>
+            <th style="text-align:center">WHIP</th>
+            <th style="text-align:center">K</th>
+            <th style="text-align:center">SV</th>
+            <th style="text-align:center">HLD</th>
             <th></th>
           </tr></thead>
           <tbody id="fcmp-p-body"></tbody>
@@ -1942,6 +1968,33 @@ function _fcmpFmtDol(v) {{
   return '<span style="color:'+col+';font-weight:700">$' + v.toFixed(1) + '</span>';
 }}
 
+function _fcmpStatCell(dolVal, projVal, cat) {{
+  /* Two-line cell: dollar contribution on top, projected stat below */
+  if (dolVal == null) return '<td style="text-align:center;padding:3px 6px;opacity:.5" data-val="0">—</td>';
+  var dv = parseFloat(dolVal);
+  var dStr = (dv >= 0 ? '$' : '\u2212$') + Math.abs(dv).toFixed(1);
+  var proj = '';
+  if (projVal != null) {{
+    var pv = parseFloat(projVal);
+    var pStr;
+    if (cat === 'OBP') pStr = pv.toFixed(3);
+    else if (cat === 'ERA' || cat === 'WHIP') pStr = pv.toFixed(2);
+    else pStr = Math.round(pv).toString();
+    proj = '<div style="font-size:.68rem;color:#777;font-weight:400;line-height:1.1;margin-top:1px">(' + pStr + ')</div>';
+  }}
+  return '<td style="text-align:center;padding:3px 6px" data-val="' + dv + '">'
+    + '<div style="font-size:.9rem;line-height:1.15">' + dStr + '</div>'
+    + proj + '</td>';
+}}
+
+function _fcmpInfoCell(val, decimals) {{
+  /* Info-only cell (PA, IP) — just the projected value, no dollar */
+  if (val == null) return '<td style="text-align:center;padding:3px 6px;opacity:.5" data-val="0">—</td>';
+  var v = parseFloat(val);
+  var s = decimals > 0 ? v.toFixed(decimals) : Math.round(v).toString();
+  return '<td style="text-align:center;padding:3px 6px;color:#999;font-size:.88rem" data-val="' + v.toFixed(1) + '">' + s + '</td>';
+}}
+
 function fcmpRender() {{
   var hNames = Array.from(_fcmpHNames);
   var pNames = Array.from(_fcmpPNames);
@@ -1986,15 +2039,15 @@ function fcmpRender() {{
       return '<tr>'
         + '<td class="nm">' + p.name + '</td>'
         + '<td style="white-space:nowrap">' + (p.team||'') + '</td>'
-        + '<td class="r" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
-        + '<td class="r" data-val="' + (pr.PA||0) + '">' + (pr.PA != null ? Math.round(pr.PA) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.R||0) + '">' + (c.R != null ? c.R.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.HR||0) + '">' + (c.HR != null ? c.HR.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.RBI||0) + '">' + (c.RBI != null ? c.RBI.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.SB||0) + '">' + (c.SB != null ? c.SB.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.K_h||0) + '">' + (c.K_h != null ? c.K_h.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.OBP||0) + '">' + (c.OBP != null ? c.OBP.toFixed(3) : '—') + '</td>'
-        + '<td class="r"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="h" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
+        + '<td style="text-align:center;padding:3px 6px" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
+        + _fcmpInfoCell(pr.PA, 0)
+        + _fcmpStatCell(c.R, pr.R, 'R')
+        + _fcmpStatCell(c.HR, pr.HR, 'HR')
+        + _fcmpStatCell(c.RBI, pr.RBI, 'RBI')
+        + _fcmpStatCell(c.SB, pr.SB, 'SB')
+        + _fcmpStatCell(c.K_h, pr.K_h, 'K_h')
+        + _fcmpStatCell(c.OBP, pr.OBP, 'OBP')
+        + '<td style="text-align:center"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="h" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
         + '</tr>';
     }}).join('');
     // Color against full league
@@ -2012,15 +2065,15 @@ function fcmpRender() {{
       return '<tr>'
         + '<td class="nm">' + p.name + '</td>'
         + '<td style="white-space:nowrap">' + (p.team||'') + '</td>'
-        + '<td class="r" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
-        + '<td class="r" data-val="' + (pr.IP||0) + '">' + (pr.IP != null ? pr.IP.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.W||0) + '">' + (c.W != null ? c.W.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.ERA||0) + '">' + (c.ERA != null ? c.ERA.toFixed(2) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.WHIP||0) + '">' + (c.WHIP != null ? c.WHIP.toFixed(2) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.K_p||0) + '">' + (c.K_p != null ? c.K_p.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.SV||0) + '">' + (c.SV != null ? c.SV.toFixed(1) : '—') + '</td>'
-        + '<td class="r" data-val="' + (c.HLD||0) + '">' + (c.HLD != null ? c.HLD.toFixed(1) : '—') + '</td>'
-        + '<td class="r"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="p" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
+        + '<td style="text-align:center;padding:3px 6px" data-val="' + (p.dollars||0) + '">' + _fcmpFmtDol(p.dollars) + '</td>'
+        + _fcmpInfoCell(pr.IP, 1)
+        + _fcmpStatCell(c.W, pr.W, 'W')
+        + _fcmpStatCell(c.ERA, pr.ERA, 'ERA')
+        + _fcmpStatCell(c.WHIP, pr.WHIP, 'WHIP')
+        + _fcmpStatCell(c.K_p, pr.K_p, 'K_p')
+        + _fcmpStatCell(c.SV, pr.SV, 'SV')
+        + _fcmpStatCell(c.HLD, pr.HLD, 'HLD')
+        + '<td style="text-align:center"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="p" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
         + '</tr>';
     }}).join('');
     _fcmpColorize('fcmp-p-tbl', TRADE_PITCHERS, ['dollars','IP','W','ERA','WHIP','K_p','SV','HLD'], false);
