@@ -271,7 +271,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <!-- Hitters sub-panel -->
   <div id="gl-h-section">
     <div class="legend">
-      <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
       <div class="leg-item"><span class="leg-dot" style="background:#2ecc71"></span>HR = grand slam</div>
     </div>
     <div class="controls">
@@ -292,7 +291,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable r" data-col="k" data-k="k"          onclick="srtH(this,'k')">K</th>
           <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtH(this,'bb')">BB</th>
           <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtH(this,'sb')">SB</th>
-          <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtH(this,'sba')">SBA</th>
           <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtH(this,'hard_hits')">Hard Hits</th>
           <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtH(this,'barrels')">Barrels</th>
           <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtH(this,'max_ev')">Max EV</th>
@@ -310,9 +308,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
       <span class="gs">S+</span> = game Stuff+ for that pitch type.
       <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
-    </div>
-    <div class="legend">
-      <div class="leg-item"><span class="leg-dot" style="background:var(--gold)"></span>Leader in category</div>
     </div>
     <div class="controls">
       <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
@@ -409,7 +404,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable r" data-col="k" data-k="k"          onclick="srtTA(this,'h','k')">K</th>
         <th class="sortable r" data-col="bb" data-k="bb"        onclick="srtTA(this,'h','bb')">BB</th>
         <th class="sortable r" data-col="sb" data-k="sb"        onclick="srtTA(this,'h','sb')">SB</th>
-        <th class="sortable r" data-col="sba" data-k="sba"       onclick="srtTA(this,'h','sba')">SBA</th>
         <th class="sortable r" data-col="hard_hits" data-k="hard_hits" onclick="srtTA(this,'h','hard_hits')">Hard Hits</th>
         <th class="sortable r" data-col="barrels" data-k="barrels"   onclick="srtTA(this,'h','barrels')">Barrels</th>
         <th class="sortable r" data-col="max_ev" data-k="max_ev"    onclick="srtTA(this,'h','max_ev')">Max EV</th>
@@ -852,8 +846,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </main>
 
 <footer>
-  FanGraphs (Stuff+/Loc+) · Statcast · MLB Stats API (SB) &nbsp;·&nbsp;
-  Hard Hit = EV ≥ 95 mph &nbsp;·&nbsp; Starters only &nbsp;·&nbsp; Generated __TS__
+  Generated __TS__
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -1032,7 +1025,7 @@ function renderH(){
   const tb=document.getElementById('h-body');
   const ct=document.getElementById('h-cnt');
   document.getElementById('h-tc').textContent=hD.length;
-  if(!hD.length){tb.innerHTML='<tr><td colspan="14"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
+  if(!hD.length){tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
   ct.textContent=`${hD.length} player${hD.length===1?'':'s'}`;
   tb.innerHTML=hD.map(h=>`<tr>
     <td class="nm">${h.name}</td>
@@ -1044,8 +1037,7 @@ function renderH(){
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
-    <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
-    <td class="r">${gl(h.sba,hL.sba)||(h.sba>0?`${h.sba}`:'0')}</td>
+    <td class="r">${(h.sb||0)}${h.sba>0?`<span class="c-dim" style="font-size:.68rem">/${h.sba}</span>`:''}</td>
     <td class="r">${gl(h.hard_hits,hL.hard_hits)||fHrd(h.hard_hits)}</td>
     <td class="r">${gl(h.barrels,hL.barrels)||fBar(h.barrels)}</td>
     <td class="r">${gl(h.max_ev,hL.max_ev)||fEV(h.max_ev,h.bip)}</td>
@@ -1275,7 +1267,7 @@ function renderTAH(){
   const tb=document.getElementById('ta-h-body');
   document.getElementById('ta-h-tc').textContent=taHD.length;
   if(!taHD.length){
-    tb.innerHTML='<tr><td colspan="14"><div class="empty"><div class="ico">😴</div><p>No roster hitters appeared yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No roster hitters appeared yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taHD.map(h=>`<tr>
@@ -1288,8 +1280,7 @@ function renderTAH(){
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
-    <td class="r">${gl(h.sb,hL.sb)||fSB(h.sb)}</td>
-    <td class="r">${gl(h.sba,hL.sba)||(h.sba>0?`${h.sba}`:'0')}</td>
+    <td class="r">${(h.sb||0)}${h.sba>0?`<span class="c-dim" style="font-size:.68rem">/${h.sba}</span>`:''}</td>
     <td class="r">${gl(h.hard_hits,hL.hard_hits)||fHrd(h.hard_hits)}</td>
     <td class="r">${gl(h.barrels,hL.barrels)||fBar(h.barrels)}</td>
     <td class="r">${gl(h.max_ev,hL.max_ev)||fEV(h.max_ev,h.bip)}</td>

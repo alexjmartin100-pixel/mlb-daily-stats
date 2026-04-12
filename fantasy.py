@@ -1336,7 +1336,6 @@ def render_fantasy_tab(fdata: dict) -> str:
     <p style="color:var(--muted);font-size:.82rem;margin:0 0 14px">
       10-team H2H &nbsp;&bull;&nbsp; $260/team &nbsp;&bull;&nbsp; 6&times;6
       &nbsp;&bull;&nbsp; 35&nbsp;IP&nbsp;min
-      &nbsp;|&nbsp; <strong>$</strong>: avg(OOPSY&nbsp;DC&nbsp;RoS,&nbsp;Bat&nbsp;X&nbsp;RoS) directly from FanGraphs&nbsp;Auction&nbsp;Calculator
       &nbsp;&bull;&nbsp; Click any column header to sort
     </p>
     <div style="display:flex;gap:10px;margin-bottom:14px">
@@ -1694,19 +1693,20 @@ function projSort(th) {{
 function applyFantColors(tblId) {{
   var tbl = document.getElementById(tblId);
   if (!tbl) return;
-  var rows = Array.from(tbl.querySelectorAll('tbody tr:not([style*="display: none"])'));
-  if (!rows.length) return;
-  var nCols = rows[0].cells.length;
+  var allRows = Array.from(tbl.querySelectorAll('tbody tr'));
+  if (!allRows.length) return;
+  var nCols = allRows[0].cells.length;
   // Color columns 3+ (skip rank=0, name=1, team=2)
+  // Rankings always computed from ALL rows (full league), not just visible ones
   for (var c = 3; c < nCols; c++) {{
     var vals = [];
-    rows.forEach(function(tr) {{
+    allRows.forEach(function(tr) {{
       var v = parseFloat(tr.cells[c] && tr.cells[c].dataset.val);
       if (!isNaN(v)) vals.push(v);
     }});
     if (!vals.length) continue;
     var best = Math.max.apply(null, vals);
-    rows.forEach(function(tr) {{
+    allRows.forEach(function(tr) {{
       var cell = tr.cells[c];
       if (!cell) return;
       var v = parseFloat(cell.dataset.val);
