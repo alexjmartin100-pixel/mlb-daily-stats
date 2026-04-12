@@ -1853,7 +1853,7 @@ function fcmpSearch() {{
     var added = isH ? _fcmpHNames.has(p.name) : _fcmpPNames.has(p.name);
     var tag = isH ? '<span style="color:#3d9be9;font-size:.7rem;font-weight:600;margin-right:4px">BAT</span>'
                   : '<span style="color:#e8832a;font-size:.7rem;font-weight:600;margin-right:4px">' + (p.role==='sp'?'SP':'RP') + '</span>';
-    return '<div class="cmp-di" data-name="'+p.name.replace(/"/g,'&quot;')+'" data-type="'+item.type+'" onmousedown="fcmpAdd(\''+p.name.replace(/'/g,"\\'")+'\',\''+item.type+'\')">'
+    return '<div class="cmp-di" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="'+item.type+'" onmousedown="fcmpAdd(this.dataset.name,this.dataset.type)">'
       + tag + ' <span style="color:var(--muted);font-size:.78rem;margin-right:4px">' + (p.team||'') + '</span>'
       + '<span>' + p.name + '</span>'
       + (added ? '<span style="color:var(--muted);font-size:.72rem;margin-left:auto">Added</span>' : '')
@@ -1963,7 +1963,7 @@ function fcmpRender() {{
     chips.push('<span style="display:inline-flex;align-items:center;gap:4px;background:#1a2a3a;'
       + 'border:1px solid #3d9be9;border-radius:14px;padding:3px 10px;font-size:.78rem;color:#7bb8e8">'
       + (p.team||'') + ' ' + p.name
-      + ' <span onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'h\')" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
+      + ' <span data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="h" onclick="fcmpRemove(this.dataset.name,this.dataset.type)" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
   }});
   pNames.forEach(function(name) {{
     var p = TRADE_PITCHERS.find(function(x) {{ return x.name === name; }});
@@ -1971,7 +1971,7 @@ function fcmpRender() {{
     chips.push('<span style="display:inline-flex;align-items:center;gap:4px;background:#2a1f12;'
       + 'border:1px solid #e8832a;border-radius:14px;padding:3px 10px;font-size:.78rem;color:#e8b87a">'
       + (p.team||'') + ' ' + p.name
-      + ' <span onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'p\')" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
+      + ' <span data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="p" onclick="fcmpRemove(this.dataset.name,this.dataset.type)" style="cursor:pointer;color:#888;font-weight:700;margin-left:2px">✕</span></span>');
   }});
   document.getElementById('fcmp-chips').innerHTML = chips.join('');
 
@@ -1994,7 +1994,7 @@ function fcmpRender() {{
         + '<td class="r" data-val="' + (c.SB||0) + '">' + (c.SB != null ? c.SB.toFixed(1) : '—') + '</td>'
         + '<td class="r" data-val="' + (c.K_h||0) + '">' + (c.K_h != null ? c.K_h.toFixed(1) : '—') + '</td>'
         + '<td class="r" data-val="' + (c.OBP||0) + '">' + (c.OBP != null ? c.OBP.toFixed(3) : '—') + '</td>'
-        + '<td class="r"><button class="cmp-remove" onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'h\')">✕</button></td>'
+        + '<td class="r"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="h" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
         + '</tr>';
     }}).join('');
     // Color against full league
@@ -2020,7 +2020,7 @@ function fcmpRender() {{
         + '<td class="r" data-val="' + (c.K_p||0) + '">' + (c.K_p != null ? c.K_p.toFixed(1) : '—') + '</td>'
         + '<td class="r" data-val="' + (c.SV||0) + '">' + (c.SV != null ? c.SV.toFixed(1) : '—') + '</td>'
         + '<td class="r" data-val="' + (c.HLD||0) + '">' + (c.HLD != null ? c.HLD.toFixed(1) : '—') + '</td>'
-        + '<td class="r"><button class="cmp-remove" onclick="fcmpRemove(\''+p.name.replace(/'/g,"\\'")+'\',\'p\')">✕</button></td>'
+        + '<td class="r"><button class="cmp-remove" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="p" onclick="fcmpRemove(this.dataset.name,this.dataset.type)">✕</button></td>'
         + '</tr>';
     }}).join('');
     _fcmpColorize('fcmp-p-tbl', TRADE_PITCHERS, ['dollars','IP','W','ERA','WHIP','K_p','SV','HLD'], false);
