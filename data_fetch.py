@@ -252,11 +252,21 @@ def build_hitter_stats(df: pd.DataFrame, sb_map: dict) -> list:
             pd.notna(row.get("on_3b"))
             for _, row in hr_rows.iterrows()
         )
+        # Hits and at-bats from plate-appearance outcomes
+        _hit_events = {"single", "double", "triple", "home_run"}
+        _non_ab_events = {"walk", "intent_walk", "hit_by_pitch",
+                          "sac_fly", "sac_bunt", "sac_fly_double_play",
+                          "sac_bunt_double_play", "catcher_interf"}
+        h_count  = int(evts.isin(_hit_events).sum())
+        ab_count = int((~evts.isin(_non_ab_events)).sum())
+
         rows.append({
             "id":         int(bid),
             "game_pk":    int(gpk),
             "team":       bat_t,
             "opp":        opp_t,
+            "h":          h_count,
+            "ab":         ab_count,
             "r":          sb_data[2] if len(sb_data) > 2 else 0,
             "hr":         int((evts == "home_run").sum()),
             "rbi":        sb_data[3] if len(sb_data) > 3 else 0,

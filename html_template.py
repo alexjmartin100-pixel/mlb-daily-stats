@@ -285,6 +285,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
           <th class="sortable"   data-k="name"      onclick="srtH(this,'name')">Player</th>
           <th class="sortable"   data-col="team" data-k="team"      onclick="srtH(this,'team')">Team</th>
           <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtH(this,'opp')">Opp</th>
+          <th class="sortable r" data-col="h" data-k="h"          onclick="srtH(this,'h')">H/AB</th>
           <th class="sortable r" data-col="r" data-k="r"          onclick="srtH(this,'r')">R</th>
           <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtH(this,'hr')">HR</th>
           <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtH(this,'rbi')">RBI</th>
@@ -401,6 +402,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <th class="sortable"   data-k="name"      onclick="srtTA(this,'h','name')">Player</th>
         <th class="sortable"   data-col="team" data-k="team"      onclick="srtTA(this,'h','team')">Team</th>
         <th class="sortable"   data-col="opp" data-k="opp"       onclick="srtTA(this,'h','opp')">Opp</th>
+        <th class="sortable r" data-col="h" data-k="h"          onclick="srtTA(this,'h','h')">H/AB</th>
         <th class="sortable r" data-col="r" data-k="r"          onclick="srtTA(this,'h','r')">R</th>
         <th class="sortable r" data-col="hr" data-k="hr"        onclick="srtTA(this,'h','hr')">HR</th>
         <th class="sortable r" data-col="rbi" data-k="rbi"      onclick="srtTA(this,'h','rbi')">RBI</th>
@@ -1026,12 +1028,13 @@ function renderH(){
   const tb=document.getElementById('h-body');
   const ct=document.getElementById('h-cnt');
   document.getElementById('h-tc').textContent=hD.length;
-  if(!hD.length){tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
+  if(!hD.length){tb.innerHTML='<tr><td colspan="14"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
   ct.textContent=`${hD.length} player${hD.length===1?'':'s'}`;
   tb.innerHTML=hD.map(h=>`<tr>
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
+    <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
     <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
     <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
@@ -1266,13 +1269,14 @@ function renderTAH(){
   const tb=document.getElementById('ta-h-body');
   document.getElementById('ta-h-tc').textContent=taHD.length;
   if(!taHD.length){
-    tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No roster hitters appeared yesterday.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="14"><div class="empty"><div class="ico">😴</div><p>No roster hitters appeared yesterday.</p></div></td></tr>';
     return;
   }
   tb.innerHTML=taHD.map(h=>`<tr>
     <td class="nm">${h.name}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
+    <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
     <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
     <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
@@ -2446,54 +2450,4 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
       <input id="roster-search" type="text" placeholder="Search players…" oninput="filterRosterSearch()"
         style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;margin-bottom:12px">
       <div class="toggle-group" style="margin-bottom:12px">
-        <button class="tgl-btn active" id="roster-tab-h"  onclick="switchRosterTab('h',this)">🏏 Hitters</button>
-        <button class="tgl-btn"        id="roster-tab-sp" onclick="switchRosterTab('sp',this)">⚾ SP</button>
-        <button class="tgl-btn"        id="roster-tab-rp" onclick="switchRosterTab('rp',this)">🔥 RP</button>
-      </div>
-      <div id="roster-player-list" style="max-height:55vh;overflow-y:auto"></div>
-    </div>
-    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);text-align:center">
-      <div id="roster-count-info" style="font-size:.78rem;color:var(--muted)"></div>
-    </div>
-  </div>
-</div>
-
-</body>
-</html>
-"""
-
-def render_html(date_display, ts, n_games, hitters, all_pitchers,
-                ta_hitters, ta_starters, ta_relievers,
-                lb_data=None, lb_pitch_data=None):
-    # Add is_starter flag to all pitchers for client-side filtering
-    starters = []
-    relievers = []
-    for p in all_pitchers:
-        p_copy = p.copy()
-        p_copy["is_starter"] = p_copy.get("ip_float", 0) >= 3
-        if p_copy["is_starter"]:
-            starters.append(p_copy)
-        else:
-            relievers.append(p_copy)
-
-    lb_sp = (lb_pitch_data or {}).get("starters", [])
-    lb_rp = (lb_pitch_data or {}).get("relievers", [])
-
-    return (HTML_TEMPLATE
-        .replace("__DATE_DISPLAY__", date_display)
-        .replace("__N_GAMES__", str(n_games))
-        .replace("__TS__", ts)
-        .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
-        .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
-        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
-        .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
-        .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
-        .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
-        .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
-        .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
-        .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
-        .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
-    )
-
-
-# ── Main ───────────────────────────────────────────────────────────────────
+     
