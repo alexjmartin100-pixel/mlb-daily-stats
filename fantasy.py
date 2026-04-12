@@ -81,14 +81,14 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
 
     League settings match _FANT:
       10 teams, $260, 6×6 Roto (R/HR/RBI/SB/SO/OBP + W/SV/ERA/WHIP/SO/HLD),
-      C/1B/2B/3B/SS/CI/MI/OF(3)/UTIL/P/SP(3)/RP(2)/Bench(6), 35 IP min.
+      C/1B/2B/3B/SS/CI/MI/OF(3)/UTIL/P/SP(7)/RP(2)/Bench(6), 35 IP min.
     Projection codes confirmed from FanGraphs dropdown:
       'roopsydc'  = OOPYS DC (RoS)
       'rthebatx'  = THE BAT X (RoS)
     """
     from urllib.parse import urlencode
     # points=c|1,2,3,4,9|0,1,12,2,3,4  encodes batting|pitching category IDs.
-    # pos=1,1,1,1,3,1,1,1,0,1,3,2,1,6,35 encodes slot counts + MinIP.
+    # pos=1,1,1,1,3,1,1,1,0,1,7,2,1,6,35 encodes slot counts + MinIP (SP=7 to match actual rostered SP count).
     params = {
         "teams": 10, "lg": "MLB", "dollars": 260, "mb": 1,
         "mp": 20, "msp": 5, "mrp": 5,
@@ -97,7 +97,7 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
         "points": "c|1,2,3,4,9,5|0,1,12,2,3,4",  # 5=OBP added to hitting cats
         "rep": 0, "drp": 0,
         "pp": "C,SS,2B,3B,OF,1B",
-        "pos": "1,1,1,1,3,1,1,1,0,1,3,2,1,6,35",
+        "pos": "1,1,1,1,3,1,1,1,0,1,7,2,1,6,35",
         "sort": "", "view": 0,
     }
     url = "https://www.fangraphs.com/api/fantasy/auction-calculator/data"
@@ -160,7 +160,7 @@ def _fetch_fg_auction_full(proj: str, player_type: str = "bat") -> list:
         "points": "c|1,2,3,4,9,5|0,1,12,2,3,4",  # 5=OBP added to hitting cats
         "rep": 0, "drp": 0,
         "pp": "C,SS,2B,3B,OF,1B",
-        "pos": "1,1,1,1,3,1,1,1,0,1,3,2,1,6,35",
+        "pos": "1,1,1,1,3,1,1,1,0,1,7,2,1,6,35",
         "sort": "", "view": 0,
     }
     url = ("https://www.fangraphs.com/api/fantasy/auction-calculator/data"
