@@ -4403,14 +4403,29 @@ function _phase3RenderTable(newLeague) {{
   var n = newLeague.length;
   function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
   var sorted = newLeague.slice().sort(function(a,b) {{ return a.rank_total - b.rank_total; }});
-  var html = '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
+
+  /* Category display labels */
+  var hCats = PHASE3_LEAGUE.hit_cats || [];
+  var pCats = PHASE3_LEAGUE.pit_cats || [];
+  var allCats = hCats.concat(pCats);
+  var catLabel = {{'R':'R','HR':'HR','RBI':'RBI','SO_h':'K','SB':'SB','OBP':'OBP',
+                  'W':'W','SO_p':'K','SV':'SV','HLD':'HLD','ERA':'ERA','WHIP':'WHIP'}};
+  var thSt = 'padding:3px 5px;text-align:center;color:var(--muted);font-size:.7rem;white-space:nowrap';
+
+  /* Header row */
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
            + '<thead><tr style="border-bottom:1px solid #333">'
-           + '<th style="text-align:left;padding:6px 8px;color:var(--muted)">#</th>'
-           + '<th style="text-align:left;padding:6px 8px;color:var(--muted)">Team</th>'
-           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">Z Total</th>'
-           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">\u0394 Z</th>'
-           + '<th style="text-align:right;padding:6px 8px;color:var(--muted)">\u0394 Rank</th>'
-           + '</tr></thead><tbody>';
+           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">#</th>'
+           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">Team</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">Z Tot</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Z</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Rk</th>'
+           + '<th style="border-left:2px solid #444;' + thSt + '">H Z</th>';
+  hCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
+  html += '<th style="border-left:2px solid #444;' + thSt + '">P Z</th>';
+  pCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
+  html += '</tr></thead><tbody>';
+
   sorted.forEach(function(t) {{
     var old = findOld(t.team_id);
     var rkC = _phase3RankColor(t.rank_total, n);
@@ -4425,16 +4440,57 @@ function _phase3RenderTable(newLeague) {{
     var isOpp  = t.team_id === _tradeRoster.recvTeamId;
     var nameAccent = isUser ? '#4caf50' : isOpp ? '#e05555' : '#ddd';
     var bg = (isUser || isOpp) ? '#1a1a1a' : 'transparent';
+
+    /* Build per-category z-score cells */
+    function zCell(cat, borderLeft) {{
+      var nz = t.z[cat] || 0;
+      var oz = old.z[cat] || 0;
+      var d  = nz - oz;
+      var dStr = '';
+      if (Math.abs(d) > 0.005) {{
+        var dc = d > 0 ? '#4caf50' : '#e05555';
+        dStr = '<div style="font-size:.6rem;color:' + dc + ';line-height:1">'
+             + (d > 0 ? '+' : '\u2212') + Math.abs(d).toFixed(2) + '</div>';
+      }}
+      var bl = borderLeft ? 'border-left:2px solid #444;' : '';
+      return '<td style="' + bl + 'text-align:center;padding:2px 4px">'
+           + '<div style="line-height:1.15">' + nz.toFixed(2) + '</div>'
+           + dStr + '</td>';
+    }}
+
     html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
-          + '<td style="padding:5px 8px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
-          + '<td style="padding:5px 8px;color:' + nameAccent + ';font-weight:600">' + t.name + '</td>'
-          + '<td style="padding:5px 8px;text-align:right;color:' + rkC + ';font-weight:700">'
+          + '<td style="padding:3px 6px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
+          + '<td style="padding:3px 6px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
+          + '<td style="padding:3px 6px;text-align:center;color:' + rkC + ';font-weight:700">'
           +   t.z_total.toFixed(2) + '</td>'
-          + '<td style="padding:5px 8px;text-align:right;color:' + zCol + '">' + zStr + '</td>'
-          + '<td style="padding:5px 8px;text-align:right;color:' + rCol + '">' + rStr + '</td>'
-          + '</tr>';
+          + '<td style="padding:3px 6px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
+          + '<td style="padding:3px 6px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
+
+    /* Hitter subtotal + per-cat */
+    var hzd = (t.z_hit||0) - (old.z_hit||0);
+    var hzCol = hzd > 0.005 ? '#4caf50' : hzd < -0.005 ? '#e05555' : '#888';
+    var hzDStr = Math.abs(hzd) > 0.005
+               ? '<div style="font-size:.6rem;color:' + hzCol + ';line-height:1">'
+                 + (hzd > 0 ? '+' : '\u2212') + Math.abs(hzd).toFixed(2) + '</div>'
+               : '';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
+          + '<div style="line-height:1.15">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
+    hCats.forEach(function(c) {{ html += zCell(c, false); }});
+
+    /* Pitcher subtotal + per-cat */
+    var pzd = (t.z_pit||0) - (old.z_pit||0);
+    var pzCol = pzd > 0.005 ? '#4caf50' : pzd < -0.005 ? '#e05555' : '#888';
+    var pzDStr = Math.abs(pzd) > 0.005
+               ? '<div style="font-size:.6rem;color:' + pzCol + ';line-height:1">'
+                 + (pzd > 0 ? '+' : '\u2212') + Math.abs(pzd).toFixed(2) + '</div>'
+               : '';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
+          + '<div style="line-height:1.15">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
+    pCats.forEach(function(c) {{ html += zCell(c, false); }});
+
+    html += '</tr>';
   }});
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   tw.innerHTML = html;
 }}
 </script>
