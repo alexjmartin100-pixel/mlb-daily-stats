@@ -245,6 +245,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
   </button>
+  <button class="tab-btn" onclick="showTab('fantasy',this)">
+    💰 Fantasy
+  </button>
+  <button class="tab-btn" onclick="showTab('playercards',this)">
+    🃏 Player Cards
+  </button>
 </div>
 
 <main>
