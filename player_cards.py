@@ -679,10 +679,10 @@ def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
     """Inject the Fantasy dollar-values tab button and panel into the dashboard HTML."""
     panel_html = render_fantasy_tab(fantasy_data)
 
-    # Insert tab button after the Compare button
-    compare_anchor = "showTab('compare'"
-    if compare_anchor in html:
-        idx     = html.index(compare_anchor)
+    # Insert tab button after the Season Leaders button
+    lb_anchor = "showTab('leaderboard'"
+    if lb_anchor in html:
+        idx     = html.index(lb_anchor)
         end_btn = html.index("</button>", idx) + len("</button>")
         btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
         html    = html[:end_btn] + btn_html + html[end_btn:]

@@ -245,12 +245,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
   </button>
-  <button class="tab-btn" onclick="showTab('fantasy',this)">
-    💰 Fantasy
-  </button>
-  <button class="tab-btn" onclick="showTab('playercards',this)">
-    🃏 Player Cards
-  </button>
 </div>
 
 <main>
@@ -309,8 +303,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       ⓘ &nbsp;<strong>Stuff+</strong> and <strong>Loc+</strong> are per-game values from FanGraphs (season avg when unavailable).
       Arsenal: game velocity <span class="vd">(season avg)</span> —
       fastball shown in <span style="color:var(--red);font-weight:700">red</span> if &gt;1 mph above season avg, in <span style="color:var(--blue);font-weight:700">blue</span> if &gt;1 mph below.
-      <span class="gs">S+</span> = game Stuff+ for that pitch type.
-      <strong>SV</strong> = Saves, <strong>HLD</strong> = Holds, <strong>BS</strong> = Blown Saves.
     </div>
     <div class="controls">
       <input id="p-search" type="text" placeholder="Search pitcher or team…" oninput="filterP()">
