@@ -423,10 +423,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <table id="ta-lb-tbl">
       <thead><tr>
         <th class="sortable"   data-k="name"           onclick="srtTALB(this,'name')">Player</th>
+        <th class="sortable r" data-col="pa" data-k="pa"             onclick="srtTALB(this,'pa')">PA</th>
         <th class="sortable r" data-col="r" data-k="r"              onclick="srtTALB(this,'r')">R</th>
         <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtTALB(this,'hr')">HR</th>
         <th class="sortable r" data-col="rbi" data-k="rbi"            onclick="srtTALB(this,'rbi')">RBI</th>
         <th class="sortable r" data-col="sb" data-k="sb"             onclick="srtTALB(this,'sb')">SB</th>
+        <th class="sortable r" data-col="avg" data-k="avg"            onclick="srtTALB(this,'avg')">AVG</th>
         <th class="sortable r" data-col="obp" data-k="obp"            onclick="srtTALB(this,'obp')">OBP</th>
         <th class="sortable r" data-col="woba" data-k="woba"           onclick="srtTALB(this,'woba')">wOBA</th>
         <th class="sortable r" data-col="xwoba" data-k="xwoba"          onclick="srtTALB(this,'xwoba')">xwOBA</th>
@@ -614,10 +616,12 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <thead><tr>
           <th class="sortable"   data-k="name"           onclick="srtLB(this,'name')">Player</th>
           <th>Team</th>
+          <th class="sortable r" data-col="pa" data-k="pa"             onclick="srtLB(this,'pa')">PA</th>
           <th class="sortable r" data-col="r" data-k="r"              onclick="srtLB(this,'r')">R</th>
           <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
           <th class="sortable r" data-col="rbi" data-k="rbi"            onclick="srtLB(this,'rbi')">RBI</th>
           <th class="sortable r" data-col="sb" data-k="sb"             onclick="srtLB(this,'sb')">SB</th>
+          <th class="sortable r" data-col="avg" data-k="avg"            onclick="srtLB(this,'avg')">AVG</th>
           <th class="sortable r" data-col="obp" data-k="obp"            onclick="srtLB(this,'obp')">OBP</th>
           <th class="sortable r" data-col="woba" data-k="woba"           onclick="srtLB(this,'woba')">wOBA</th>
           <th class="sortable r" data-col="xwoba" data-k="xwoba"          onclick="srtLB(this,'xwoba')">xwOBA</th>
@@ -1151,14 +1155,16 @@ function showTAHView(view,btn){
 function renderTALB(){
   const tb=document.getElementById('ta-lb-body');
   if(!taLBD.length){
-    tb.innerHTML='<tr><td colspan="22"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
+    tb.innerHTML='<tr><td colspan="24"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
     <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="r" data-col="pa">${fmtInt('pa',  p.pa)}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
     <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
     <td class="r" data-col="rbi">${fmtInt('rbi', p.rbi)}</td>
     <td class="r" data-col="sb">${fmtSB(p)}</td>
+    <td class="r" data-col="avg">${fmtRate('avg',   p.avg)}</td>
     <td class="r" data-col="obp">${fmtRate('obp',   p.obp)}</td>
     <td class="r" data-col="woba">${fmtRate('woba',  p.woba)}</td>
     <td class="r" data-col="xwoba">${fmtRate('xwoba', p.xwoba)}</td>
@@ -1564,17 +1570,19 @@ function renderLB(){
   const tb=document.getElementById('lb-body');
   const ct=document.getElementById('lb-cnt');
   if(!lbD.length){
-    tb.innerHTML='<tr><td colspan="24"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="26"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
     <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
+    <td class="r" data-col="pa">${fmtInt('pa',  p.pa)}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
     <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
     <td class="r" data-col="rbi">${fmtInt('rbi', p.rbi)}</td>
     <td class="r" data-col="sb">${fmtSB(p)}</td>
+    <td class="r" data-col="avg">${fmtRate('avg',   p.avg)}</td>
     <td class="r" data-col="obp">${fmtRate('obp',   p.obp)}</td>
     <td class="r" data-col="woba">${fmtRate('woba',  p.woba)}</td>
     <td class="r" data-col="xwoba">${fmtRate('xwoba', p.xwoba)}</td>
@@ -2450,4 +2458,52 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
       <input id="roster-search" type="text" placeholder="Search players…" oninput="filterRosterSearch()"
         style="width:100%;box-sizing:border-box;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.88rem;margin-bottom:12px">
       <div class="toggle-group" style="margin-bottom:12px">
+        <button class="tgl-btn active" id="roster-tab-h"  onclick="switchRosterTab('h',this)">🏏 Hitters</button>
+        <button class="tgl-btn"        id="roster-tab-sp" onclick="switchRosterTab('sp',this)">⚾ SP</button>
+        <button class="tgl-btn"        id="roster-tab-rp" onclick="switchRosterTab('rp',this)">🔥 RP</button>
+      </div>
+      <div id="roster-player-list" style="max-height:55vh;overflow-y:auto"></div>
+    </div>
+    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);text-align:center">
+      <div id="roster-count-info" style="font-size:.78rem;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+"""
+
+def render_html(date_display, ts, n_games, hitters, all_pitchers,
+                ta_hitters, ta_starters, ta_relievers,
+                lb_data=None, lb_pitch_data=None):
+    # Add is_starter flag to all pitchers for client-side filtering
+    starters = []
+    relievers = []
+    for p in all_pitchers:
+        p_copy = p.copy()
+        p_copy["is_starter"] = p_copy.get("ip_float", 0) >= 3
+        if p_copy["is_starter"]:
+            starters.append(p_copy)
+        else:
+            relievers.append(p_copy)
+
+    lb_sp = (lb_pitch_data or {}).get("starters", [])
+    lb_rp = (lb_pitch_data or {}).get("relievers", [])
+
+    return (HTML_TEMPLATE
+        .replace("__DATE_DISPLAY__", date_display)
+        .replace("__N_GAMES__", str(n_games))
+        .replace("__TS__", ts)
+        .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
+        .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
+        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
+        .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
+        .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
+        .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
+        .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
+        .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
+        .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
+        .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
+    )
      
