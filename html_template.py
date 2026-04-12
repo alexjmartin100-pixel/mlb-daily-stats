@@ -2371,20 +2371,27 @@ function _renderRosterList(){
     if(aN!==bN) return aN?-1:1;
     return a.name<b.name?-1:1;
   });
-  if(!_rQ) players=players.slice(0,80); // cap unfiltered list
   const el=document.getElementById('roster-player-list');
   if(!players.length){
     el.innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem">No players found</div>';
   } else {
-    el.innerHTML=players.map(p=>{
+    el.innerHTML=players.map((p,i)=>{
       const on=TA_ROSTER_NORMS.has(taNorm(p.name));
-      const safe=encodeURIComponent(p.name);
       const badge=p.team?`<span style="margin-left:5px">${tm(p.team)}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
         <span>${p.name}${badge}</span>
-        <button onclick="_togglePlayer(decodeURIComponent('${safe}'),${on})" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
+        <button data-rp="${i}" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');
+    // Use event delegation — avoids inline onclick escaping issues with names
+    // containing apostrophes or other special characters
+    el.querySelectorAll('button[data-rp]').forEach(btn=>{
+      const idx=parseInt(btn.getAttribute('data-rp'),10);
+      const p=players[idx];
+      if(!p) return;
+      const on=TA_ROSTER_NORMS.has(taNorm(p.name));
+      btn.addEventListener('click',()=>_togglePlayer(p.name,on));
+    });
   }
   const rc=_rosterNames?_rosterNames.length:0;
   document.getElementById('roster-count-info').textContent=rc+' players on roster';
