@@ -245,9 +245,6 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
   <button class="tab-btn lb-btn" onclick="showTab('leaderboard',this)">
     📊 Season Leaders <span class="tab-count" id="lb-tc">—</span>
   </button>
-  <button class="tab-btn cmp-btn" onclick="showTab('compare',this)">
-    🔍 Compare
-  </button>
 </div>
 
 <main>
@@ -580,6 +577,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <button class="tgl-btn active" onclick="showLBType('h',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
     <button class="tgl-btn" onclick="showLBType('sp',this)">⚾ SP</button>
     <button class="tgl-btn" onclick="showLBType('rp',this)">🔥 RP</button>
+    <button class="tgl-btn" onclick="showLBType('cmp',this)">🔍 Compare</button>
   </div>
 
   <!-- ── Hitters view ── -->
@@ -744,101 +742,101 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       </table>
     </div>
   </div>
-</div>
 
-<!-- ══ COMPARE PLAYERS ══ -->
-<div id="compare-panel" class="tab-panel">
-  <div class="toggle-group" style="margin-bottom:14px">
-    <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
-    <button class="tgl-btn" id="cmp-p-btn" onclick="showCmpType(\'p\',this)">⚾ Pitchers</button>
-  </div>
-  <div class="cmp-search-wrap">
-    <div class="cmp-input-wrap">
-      <input id="cmp-search" type="text" placeholder="Search and add a player…" oninput="cmpSearch()" autocomplete="off">
-      <div id="cmp-dropdown" class="cmp-dropdown" style="display:none"></div>
+  <!-- ── Compare Players (subtab within Season Leaders) ── -->
+  <div id="lb-cmp-wrap" style="display:none">
+    <div class="toggle-group" style="margin-bottom:14px">
+      <button class="tgl-btn active" id="cmp-h-btn" onclick="showCmpType(\'h\',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
+      <button class="tgl-btn" id="cmp-p-btn" onclick="showCmpType(\'p\',this)">⚾ Pitchers</button>
     </div>
-    <button class="tgl-btn" onclick="clearCmp()" style="font-size:.75rem;padding:6px 14px">Clear All</button>
-    <div class="col-picker-wrap">
-      <button class="tgl-btn col-picker-btn" id="cmp-col-btn" onclick="toggleColPicker(cmpType==='h'?'h':'rp',this)" style="font-size:.74rem;padding:5px 10px">⚙ Columns ▾</button>
-      <div id="col-picker-cmp" class="col-picker-panel" style="display:none"></div>
+    <div class="cmp-search-wrap">
+      <div class="cmp-input-wrap">
+        <input id="cmp-search" type="text" placeholder="Search and add a player…" oninput="cmpSearch()" autocomplete="off">
+        <div id="cmp-dropdown" class="cmp-dropdown" style="display:none"></div>
+      </div>
+      <button class="tgl-btn" onclick="clearCmp()" style="font-size:.75rem;padding:6px 14px">Clear All</button>
+      <div class="col-picker-wrap">
+        <button class="tgl-btn col-picker-btn" id="cmp-col-btn" onclick="toggleColPicker(cmpType==='h'?'h':'rp',this)" style="font-size:.74rem;padding:5px 10px">⚙ Columns ▾</button>
+        <div id="col-picker-cmp" class="col-picker-panel" style="display:none"></div>
+      </div>
+      <span class="row-count" id="cmp-cnt"></span>
     </div>
-    <span class="row-count" id="cmp-cnt"></span>
-  </div>
 
-  <!-- Hitters comparison table -->
-  <div id="cmp-h-wrap">
-    <div class="table-wrap">
-      <table id="cmp-h-tbl">
-        <thead><tr>
-          <th>Player</th>
-          <th>Team</th>
-          <th class="r" data-col="r">R</th>
-          <th class="r" data-col="hr">HR</th>
-          <th class="r" data-col="rbi">RBI</th>
-          <th class="r" data-col="sb">SB</th>
-          <th class="r" data-col="obp">OBP</th>
-          <th class="r" data-col="woba">wOBA</th>
-          <th class="r" data-col="xwoba">xwOBA</th>
-          <th class="r" data-col="chase_pct">Chase%</th>
-          <th class="r" data-col="whiff_pct">Whiff%</th>
-          <th class="r" data-col="k_pct">K%</th>
-          <th class="r" data-col="so">SO</th>
-          <th class="r" data-col="bb_pct">BB%</th>
-          <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
-          <th class="r" data-col="barrel_pct">Barrel%</th>
-          <th class="r" data-col="barrels">Barrels</th>
-          <th class="r" data-col="sweet_spot_pct">Swt Spot%</th>
-          <th class="r" data-col="avg_ev">Avg EV</th>
-          <th class="r" data-col="max_ev">Max EV</th>
-          <th class="r" data-col="bat_speed">Bat Spd</th>
-          <th class="r" data-col="sprint_speed">Sprt Spd</th>
-          <th></th>
-        </tr></thead>
-        <tbody id="cmp-h-body">
-          <tr><td colspan="23"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>
-        </tbody>
-      </table>
+    <!-- Hitters comparison table -->
+    <div id="cmp-h-wrap">
+      <div class="table-wrap">
+        <table id="cmp-h-tbl">
+          <thead><tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th class="r" data-col="r">R</th>
+            <th class="r" data-col="hr">HR</th>
+            <th class="r" data-col="rbi">RBI</th>
+            <th class="r" data-col="sb">SB</th>
+            <th class="r" data-col="obp">OBP</th>
+            <th class="r" data-col="woba">wOBA</th>
+            <th class="r" data-col="xwoba">xwOBA</th>
+            <th class="r" data-col="chase_pct">Chase%</th>
+            <th class="r" data-col="whiff_pct">Whiff%</th>
+            <th class="r" data-col="k_pct">K%</th>
+            <th class="r" data-col="so">SO</th>
+            <th class="r" data-col="bb_pct">BB%</th>
+            <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
+            <th class="r" data-col="barrel_pct">Barrel%</th>
+            <th class="r" data-col="barrels">Barrels</th>
+            <th class="r" data-col="sweet_spot_pct">Swt Spot%</th>
+            <th class="r" data-col="avg_ev">Avg EV</th>
+            <th class="r" data-col="max_ev">Max EV</th>
+            <th class="r" data-col="bat_speed">Bat Spd</th>
+            <th class="r" data-col="sprint_speed">Sprt Spd</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="cmp-h-body">
+            <tr><td colspan="23"><div class="cmp-empty">Search for a hitter above and click to add them.</div></td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
 
-  <!-- Pitchers comparison table -->
-  <div id="cmp-p-wrap" style="display:none">
-    <div class="table-wrap">
-      <table id="cmp-p-tbl">
-        <thead><tr>
-          <th>Pitcher</th>
-          <th>Team</th>
-          <th class="r" data-col="role">Role</th>
-          <th class="r" data-col="ip_f">IP</th>
-          <th class="r" data-col="w">W</th>
-          <th class="r" data-col="sv">SV/SVO</th>
-          <th class="r" data-col="hld">HLD</th>
-          <th class="r" data-col="gm_li">gmLI</th>
-          <th class="r" data-col="era">ERA</th>
-          <th class="r" data-col="whip">WHIP</th>
-          <th class="r" data-col="k">K</th>
-          <th class="r" data-col="xera">xERA</th>
-          <th class="r" data-col="siera">SIERA</th>
-          <th class="r" data-col="stuff_plus">Stf+</th>
-          <th class="r" data-col="loc_plus">Loc+</th>
-          <th class="r" data-col="k_bb_pct">K-BB%</th>
-          <th class="r" data-col="k_pct">K%</th>
-          <th class="r" data-col="bb_pct">BB%</th>
-          <th class="r" data-col="chase_pct">Chase%</th>
-          <th class="r" data-col="whiff_pct">Whiff%</th>
-          <th class="r" data-col="barrel_pct">Barrel%</th>
-          <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
-          <th class="r" data-col="gb_pct">GB%</th>
-          <th class="r" data-col="woba">wOBA</th>
-          <th class="r" data-col="xwoba">xwOBA</th>
-          <th class="r" data-col="avg_ev">Avg EV</th>
-          <th class="r" data-col="fb_velo">FB Velo</th>
-          <th></th>
-        </tr></thead>
-        <tbody id="cmp-p-body">
-          <tr><td colspan="28"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
-        </tbody>
-      </table>
+    <!-- Pitchers comparison table -->
+    <div id="cmp-p-wrap" style="display:none">
+      <div class="table-wrap">
+        <table id="cmp-p-tbl">
+          <thead><tr>
+            <th>Pitcher</th>
+            <th>Team</th>
+            <th class="r" data-col="role">Role</th>
+            <th class="r" data-col="ip_f">IP</th>
+            <th class="r" data-col="w">W</th>
+            <th class="r" data-col="sv">SV/SVO</th>
+            <th class="r" data-col="hld">HLD</th>
+            <th class="r" data-col="gm_li">gmLI</th>
+            <th class="r" data-col="era">ERA</th>
+            <th class="r" data-col="whip">WHIP</th>
+            <th class="r" data-col="k">K</th>
+            <th class="r" data-col="xera">xERA</th>
+            <th class="r" data-col="siera">SIERA</th>
+            <th class="r" data-col="stuff_plus">Stf+</th>
+            <th class="r" data-col="loc_plus">Loc+</th>
+            <th class="r" data-col="k_bb_pct">K-BB%</th>
+            <th class="r" data-col="k_pct">K%</th>
+            <th class="r" data-col="bb_pct">BB%</th>
+            <th class="r" data-col="chase_pct">Chase%</th>
+            <th class="r" data-col="whiff_pct">Whiff%</th>
+            <th class="r" data-col="barrel_pct">Barrel%</th>
+            <th class="r" data-col="hard_hit_pct">Hard Hit%</th>
+            <th class="r" data-col="gb_pct">GB%</th>
+            <th class="r" data-col="woba">wOBA</th>
+            <th class="r" data-col="xwoba">xwOBA</th>
+            <th class="r" data-col="avg_ev">Avg EV</th>
+            <th class="r" data-col="fb_velo">FB Velo</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="cmp-p-body">
+            <tr><td colspan="28"><div class="cmp-empty">Search for a pitcher above and click to add them.</div></td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -1540,13 +1538,16 @@ function fmtSB(p){
 let lbType='h';
 function showLBType(type, btn){
   lbType=type;
-  document.querySelectorAll('#leaderboard-panel .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#leaderboard-panel > .toggle-group > .tgl-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('lb-h-wrap').style.display  = type==='h'  ? '' : 'none';
-  document.getElementById('lb-sp-wrap').style.display = type==='sp' ? '' : 'none';
-  document.getElementById('lb-rp-wrap').style.display = type==='rp' ? '' : 'none';
-  const cnt = type==='h' ? LB_QUAL.length : type==='sp' ? LB_SP_QUAL.length : LB_RP_QUAL.length;
-  document.getElementById('lb-tc').textContent = cnt;
+  document.getElementById('lb-h-wrap').style.display   = type==='h'   ? '' : 'none';
+  document.getElementById('lb-sp-wrap').style.display  = type==='sp'  ? '' : 'none';
+  document.getElementById('lb-rp-wrap').style.display  = type==='rp'  ? '' : 'none';
+  document.getElementById('lb-cmp-wrap').style.display = type==='cmp' ? '' : 'none';
+  if(type!=='cmp'){
+    const cnt = type==='h' ? LB_QUAL.length : type==='sp' ? LB_SP_QUAL.length : LB_RP_QUAL.length;
+    document.getElementById('lb-tc').textContent = cnt;
+  }
   if(type==='sp') renderLBSP();
   if(type==='rp') renderLBRP();
 }
@@ -1762,7 +1763,7 @@ buildCfg(PL_CMP_COL_CFG, LB_P_QUAL_CMP);
 
 function showCmpType(type,btn){
   cmpType=type;
-  document.querySelectorAll('#compare-panel .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#lb-cmp-wrap .toggle-group .tgl-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('cmp-h-wrap').style.display=type==='h'?'':'none';
   document.getElementById('cmp-p-wrap').style.display=type==='p'?'':'none';
