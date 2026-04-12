@@ -4413,6 +4413,8 @@ function _phase3RenderTable(newLeague) {{
   var n = newLeague.length;
   function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
   var sorted = newLeague.slice().sort(function(a,b) {{ return a.rank_total - b.rank_total; }});
+  var lower = {{}};
+  PHASE3_LEAGUE.lower_better.forEach(function(c) {{ lower[c] = true; }});
 
   /* Category display labels */
   var hCats = PHASE3_LEAGUE.hit_cats || [];
