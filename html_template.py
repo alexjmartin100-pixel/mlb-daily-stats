@@ -892,9 +892,9 @@ const rpL={};RP_LEAD_COLS.forEach(c=>rpL[c]=maxOf(RELIEVERS,c));
 // Pitcher H/R/BB/hard_hits/barrels: lower is better → gold goes to lowest
 const spMin={hits:minOf(STARTERS,'hits'),r:minOf(STARTERS,'r'),bb:minOf(STARTERS,'bb'),hard_hits:minOf(STARTERS,'hard_hits'),barrels:minOf(STARTERS,'barrels')};
 const rpMin={hits:minOf(RELIEVERS,'hits'),r:minOf(RELIEVERS,'r'),bb:minOf(RELIEVERS,'bb'),hard_hits:minOf(RELIEVERS,'hard_hits'),barrels:minOf(RELIEVERS,'barrels')};
-// Gold if value equals category leader
-const gl=(v,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${v}</span>`:null;
-const glMin=(v,min)=>(min!=null&&v!=null&&v===min)?`<span class="c-gold">${v}</span>`:null;
+// Game log color coding disabled — plain values only
+const gl=(v,max)=>null;
+const glMin=(v,min)=>null;
 // EV gradient: red (high) → blue (low)
 const _evVals=HITTERS.filter(h=>h.max_ev!=null&&h.bip>0).map(h=>h.max_ev);
 const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.max(..._evVals):115;
@@ -995,7 +995,7 @@ const fBB_h= v=>v>0?`${v}`:'0';
 const fSB  = v=>v>0?`${v}`:'0';
 const fHrd = v=>v>0?`${v}`:'0';
 const fBar = v=>v>0?`${v}`:'0';
-const fEV  = (v,b)=>{if(v==null||b===0)return D();const t=Math.max(0,Math.min(1,(v-_evMin)/(_evMax-_evMin||1)));let r,g,bl;if(t<0.5){const s=t*2;r=Math.round(50+(235-50)*s);g=Math.round(110+(235-110)*s);bl=Math.round(255+(235-255)*s);}else{const s=(t-0.5)*2;r=Math.round(235+(255-235)*s);g=Math.round(235+(60-235)*s);bl=Math.round(235+(50-235)*s);}return `<span style="color:rgb(${r},${g},${bl});font-weight:600">${v}</span>`;};
+const fEV  = (v,b)=>{if(v==null||b===0)return D();return `${v}`;};
 const fIP  = (v,s)=>s;
 const fH_p = v=>v>0?`${v}`:'0';
 const fR   = v=>v>0?`${v}`:'0';
@@ -1005,7 +1005,7 @@ const fWh  = v=>v>0?`${v}`:'0';
 const fKBB = v=>`${v}%`;
 const fSP  = v=>v==null?D():`${v}`;
 const fLP  = v=>v==null?D():`${v}`;
-const glIP = (v,s,max)=>(max!=null&&v!=null&&v===max)?`<span class="c-gold">${s}</span>`:null;
+const glIP = (v,s,max)=>null;
 
 function pitchArsenal(types){
   if(!types||!types.length) return D();
@@ -1040,7 +1040,7 @@ function renderH(){
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
     <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
     <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
-    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
+    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:fHR(h.hr)}</td>
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
@@ -1284,7 +1284,7 @@ function renderTAH(){
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
     <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
     <td class="r">${gl(h.r,hL.r)||(h.r>0?`${h.r}`:'0')}</td>
-    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:gl(h.hr,hL.hr)||fHR(h.hr)}</td>
+    <td class="r">${h.grand_slam&&h.hr>0?`<span style="color:#2ecc71;font-weight:700">${h.hr}</span>`:fHR(h.hr)}</td>
     <td class="r">${gl(h.rbi,hL.rbi)||(h.rbi>0?`${h.rbi}`:'0')}</td>
     <td class="r">${gl(h.k,hL.k)||fK_h(h.k)}</td>
     <td class="r">${gl(h.bb,hL.bb)||fBB_h(h.bb)}</td>
@@ -1460,6 +1460,7 @@ function mkRankColor(cfg_obj, col, val){
 // ── Hitter leaderboard column config ──────────────────────────────────────
 // inv=true → lower is better (for hitters)
 const LB_COL_CFG = {
+  pa:            {inv:false}, avg:           {inv:false},
   r:             {inv:false}, hr:            {inv:false}, rbi:          {inv:false},
   sb:            {inv:false}, obp:           {inv:false}, woba:         {inv:false},
   xwoba:         {inv:false}, chase_pct:     {inv:true},  whiff_pct:    {inv:true},
