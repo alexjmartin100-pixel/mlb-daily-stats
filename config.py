@@ -102,4 +102,7 @@ FIREBASE_WEB_CONFIG = {
 FG_ID_OVERRIDES: dict = {
     # Only needed for players whose Chadwick entry has a WRONG (not missing) FG ID.
     # Players with a blank Chadwick key_fangraphs are handled automatically via the
-    # xMLBAMID→playerid mapping extracted from the FanGraphs leaderboard at s
+    # xMLBAMID→playerid mapping extracted from the FanGraphs leaderboard at startup.
+    691725: 30091,   # Andrew Painter (PHI) — Chadwick has stale minor-league ID sa3017880
+}
+

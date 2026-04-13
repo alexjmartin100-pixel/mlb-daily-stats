@@ -351,4 +351,13 @@ if __name__ == "__main__":
         print("  No fdata cache — please run with cached pickle for now.")
         sys.exit(2)
 
-    parsed = parse_league(sys.argv[1], fdata, verbose=True
+    parsed = parse_league(sys.argv[1], fdata, verbose=True)
+    rows = build_season_projections(parsed, verbose=True)
+    print()
+    print("  Top team detail:")
+    top = rows[0]
+    print(f"    {top['name']}")
+    for cat in TEAM_CAT_ORDER:
+        label = CAT_LABELS.get(cat, cat)
+        print(f"      {label:5}  {top['stats'][cat]:>10}   "
+              f"z={top['z'][cat]:+.2f}  rank={top['rank'][cat]}")
