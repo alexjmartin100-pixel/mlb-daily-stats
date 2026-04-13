@@ -5492,19 +5492,17 @@ function _wwStreamComputeProfile() {{
   }}
 
   // Average their RoS projections
-  var avg = {{ W:0, K_p:0, SV:0, HLD:0, ERA:0, WHIP:0, IP:0, dollars:0 }};
+  var avg = {{ W:0, K_p:0, ERA:0, WHIP:0, IP:0, dollars:0 }};
   top5.forEach(function(p) {{
     avg.W    += (p.proj && p.proj.W)    || 0;
     avg.K_p  += (p.proj && p.proj.K_p)  || 0;
-    avg.SV   += (p.proj && p.proj.SV)   || 0;
-    avg.HLD  += (p.proj && p.proj.HLD)  || 0;
     avg.ERA  += (p.proj && p.proj.ERA)  || 0;
     avg.WHIP += (p.proj && p.proj.WHIP) || 0;
     avg.IP   += (p.proj && p.proj.IP)   || 0;
     avg.dollars += (p.dollars || 0);
   }});
   var cnt = top5.length;
-  avg.W /= cnt; avg.K_p /= cnt; avg.SV /= cnt; avg.HLD /= cnt;
+  avg.W /= cnt; avg.K_p /= cnt;
   avg.ERA /= cnt; avg.WHIP /= cnt; avg.IP /= cnt; avg.dollars /= cnt;
 
   // Per-start decomposition: compute per-start rates from the top-5 average,
@@ -5528,17 +5526,16 @@ function _wwStreamComputeProfile() {{
   var avgStartsRoS = Math.max(1, avg.IP / IP_PER_START);
   var wPerStart  = avg.W   / avgStartsRoS;
   var kPerStart  = avg.K_p / avgStartsRoS;
-  var svPerStart = avg.SV  / avgStartsRoS;
-  var hdPerStart = avg.HLD / avgStartsRoS;
   var ipPerStart = IP_PER_START;
 
   // Scale counting stats and IP by total streamer starts;
-  // rate stats (ERA, WHIP) stay as the top-5 average (they're per-inning rates)
+  // rate stats (ERA, WHIP) stay as the top-5 average (they're per-inning rates).
+  // SV and HLD are forced to 0: streaming SPs never earn saves or holds.
   var profile = {{
     W:    wPerStart  * streamerStarts,
     SO_p: kPerStart  * streamerStarts,
-    SV:   svPerStart * streamerStarts,
-    HLD:  hdPerStart * streamerStarts,
+    SV:   0,
+    HLD:  0,
     ERA:  avg.ERA,
     WHIP: avg.WHIP,
     IP:   ipPerStart * streamerStarts,
