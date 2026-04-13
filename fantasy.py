@@ -1129,7 +1129,7 @@ def _build_phase3_payload(fdata: dict) -> dict:
     }
 
 
-def render_fantasy_tab(fdata: dict) -> str:
+def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
     """Generate the full HTML for the Fantasy tab panel."""
     if not fdata:
         return '<div id="fantasy-panel" class="tab-panel"></div>'
@@ -1174,8 +1174,11 @@ def render_fantasy_tab(fdata: dict) -> str:
     # ── build one HTML table ───────────────────────────────────────────────
     # Columns: # | Name | Team | Proj $ | [stat cols…]
     # Primary cell: projected stat (e.g. 48 HR); sub-text: dollar contribution
+    _pos_lk = pos_lookup or {}
+
     def _build_table(players: list, cats: list, table_id: str,
-                     info_cats: list | None = None) -> str:
+                     info_cats: list | None = None,
+                     show_pos: bool = False) -> str:
         """Build an HTML table.  *info_cats* are display-only columns
         (e.g. PA, IP) shown between Proj $ and the scoring categories.
         They render the projected stat value with no dollar contribution."""
@@ -1255,10 +1258,18 @@ def render_fantasy_tab(fdata: dict) -> str:
                         f'{dol_html}{proj_html}</td>'
                     )
 
+            # Position badge (ESPN elig → fg_pos fallback)
+            _pos_str = ""
+            if show_pos:
+                _pos_str = _pos_lk.get(nm, "") or p.get("fg_pos", "")
+                if _pos_str:
+                    _pos_str = (f'<span style="color:#777;font-size:.58rem;'
+                                f'font-weight:700;margin-left:4px">{_pos_str}</span>')
+
             rows_html.append(
                 f'<tr data-role="{role}">'
                 f'<td class="rank-col" data-val="{rank}">{rank}</td>'
-                f'<td class="name-col">{nm}</td>'
+                f'<td class="name-col">{nm}{_pos_str}</td>'
                 f'<td style="white-space:nowrap">{team_cell}</td>'
                 f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
                 f' data-val="{fdol_val}">{fdol_str}</td>'
@@ -1278,7 +1289,7 @@ def render_fantasy_tab(fdata: dict) -> str:
         ip = float(ip_v) if ip_v is not None else 0.0
         entry["role"] = "sp" if ip >= 100 else "rp"
 
-    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl", info_cats=["PA"])
+    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl", info_cats=["PA"], show_pos=True)
     tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl", info_cats=["IP"])
 
     # ── trade tab: embed player pool as JSON for client-side search ─────────

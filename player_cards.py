@@ -675,9 +675,9 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
     return html
 
 
-def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
+def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = None) -> str:
     """Inject the Fantasy dollar-values tab button and panel into the dashboard HTML."""
-    panel_html = render_fantasy_tab(fantasy_data)
+    panel_html = render_fantasy_tab(fantasy_data, pos_lookup=pos_lookup)
 
     # Insert tab button after the Season Leaders button
     lb_anchor = "showTab('leaderboard'"

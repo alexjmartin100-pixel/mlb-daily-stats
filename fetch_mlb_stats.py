@@ -167,7 +167,7 @@ def main():
                        pos_lookup=pos_lookup)
     lb_data = compute_hitter_percentiles(lb_data)
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
-    html = inject_fantasy_tab(html, fantasy_data)
+    html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup)
     html = inject_player_cards_tab(html, lb_data, fantasy_data,
                                     lb_pitch_data=lb_pitch_data)
 
@@ -200,3 +200,12 @@ _FANT = {
     #   pitchers: ERA and WHIP are negative — lower is better
     "h_neg_cats": {"K"},
     "p_neg_cats": {"ERA", "WHIP"},
+    "neg_cats":   {"ERA", "WHIP"},  # legacy key kept for any direct references
+    "min_ip":   35,   # minimum IP for a pitcher to qualify for the pool
+}
+
+
+
+
+if __name__ == "__main__":
+    main()
