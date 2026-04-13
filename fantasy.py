@@ -1797,7 +1797,7 @@ def render_fantasy_tab(fdata: dict) -> str:
         <strong style="color:var(--accent)">How it works:</strong>
         This simulates streaming <strong>4 starting pitchers per week</strong> for the
         rest of the season. The streamer stats are the average RoS projections of the
-        <strong>top 5 SP in free agency</strong> by dollar value. If your roster is full,
+        <strong>top 8 SP in free agency</strong> (100+ proj IP) by dollar value. If your roster is full,
         drop a player first to make room.
       </div>
 
@@ -1814,7 +1814,7 @@ def render_fantasy_tab(fdata: dict) -> str:
       <div id="ww-stream-preview" style="display:none;margin-bottom:14px">
         <div style="font-size:.75rem;color:#4caf50;font-weight:700;
                     text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
-          &#x1F525; Streamer profile (avg of top 5 waiver SP)
+          &#x1F525; Streamer profile (avg of top 8 waiver SP, 100+ IP)
         </div>
         <div id="ww-stream-stats" style="background:#1a1a1a;border:1px solid #333;
                                           border-radius:8px;padding:10px 14px"></div>
@@ -4841,7 +4841,7 @@ var _wwState = {{
 var _wwStreamState = {{
   teamId: null,
   drop: null,      // single player dropped (or null if open spot)
-  streamerProfile: null  // computed avg stats of top 5 SP
+  streamerProfile: null  // computed avg stats of top 8 SP (100+ IP)
 }};
 
 /* ── Sub-tab toggle ── */
@@ -5476,15 +5476,18 @@ function _wwStreamGetTeam() {{
   return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _wwStreamState.teamId; }});
 }}
 
-/* Compute the "average streamer" from top 5 unrostered SP by $ value.
+/* Compute the "average streamer" from top 8 unrostered SP by $ value.
+   Only includes pitchers with SP role AND 100+ projected IP (filters out
+   relievers who happen to have SP eligibility).
    Returns per-start stats scaled to 4 starts/week for the remaining season. */
 function _wwStreamComputeProfile() {{
-  // Find top 5 unrostered SP by dollar value
+  // Find top 8 unrostered SP by dollar value, requiring 100+ proj IP
   var sps = TRADE_PITCHERS.filter(function(p) {{
-    return p.team_id == null && p.role === 'sp';
+    return p.team_id == null && p.role === 'sp'
+        && p.proj && p.proj.IP >= 100;
   }});
   sps.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
-  var top5 = sps.slice(0, 5);
+  var top5 = sps.slice(0, 8);
 
   if (!top5.length) {{
     _wwStreamState.streamerProfile = null;
@@ -5505,7 +5508,7 @@ function _wwStreamComputeProfile() {{
   avg.W /= cnt; avg.K_p /= cnt;
   avg.ERA /= cnt; avg.WHIP /= cnt; avg.IP /= cnt; avg.dollars /= cnt;
 
-  // Per-start decomposition: compute per-start rates from the top-5 average,
+  // Per-start decomposition: compute per-start rates from the top-8 average,
   // then multiply by total streamer starts (4/week * weeksLeft).
   // Use ESPN matchup schedule data when available; fall back to date calc.
   var weeksLeft;
@@ -5521,7 +5524,7 @@ function _wwStreamComputeProfile() {{
   }}
   var streamerStarts = 4 * weeksLeft;
 
-  // Derive per-start rates from the average top-5 SP full-season projection
+  // Derive per-start rates from the average top-8 SP full-season projection
   var IP_PER_START = 5.3;
   var avgStartsRoS = Math.max(1, avg.IP / IP_PER_START);
   var wPerStart  = avg.W   / avgStartsRoS;
@@ -5529,7 +5532,7 @@ function _wwStreamComputeProfile() {{
   var ipPerStart = IP_PER_START;
 
   // Scale counting stats and IP by total streamer starts;
-  // rate stats (ERA, WHIP) stay as the top-5 average (they're per-inning rates).
+  // rate stats (ERA, WHIP) stay as the top-8 average (they're per-inning rates).
   // SV and HLD are forced to 0: streaming SPs never earn saves or holds.
   var profile = {{
     W:    wPerStart  * streamerStarts,
