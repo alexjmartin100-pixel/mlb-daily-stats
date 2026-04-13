@@ -408,9 +408,14 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
                     "_ip":  _avg_field("IP"),   # SP/RP classification
                 }
             else:
+                # Extract FG position for ESPN slot filtering.
+                # FG uses "POS" or "minpos" — e.g. "C", "1B", "2B/SS", "OF".
+                _fg_pos = (ref.get("POS") or ref.get("minpos") or
+                           ref.get("position") or ref.get("Pos") or "")
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
+                    "fg_pos": _fg_pos,
                     # Marginal dollar contributions (FG auction calc) — sort/color
                     "R":   _avg_field("mR"),
                     "HR":  _avg_field("mHR"),
@@ -1028,17 +1033,21 @@ def _build_phase3_payload(fdata: dict) -> dict:
             return (s or "").strip().lower().replace(".", "").replace("-", " ")
 
     all_rostered: dict = {}
-    def _add_key(key: str, ptid, eid) -> None:
+    all_elig: dict = {}  # name_key → [slot_id, ...] for ESPN position eligibility
+    def _add_key(key: str, ptid, eid, elig_list=None) -> None:
         if key:
             all_rostered.setdefault(key, (ptid, eid))
+            if elig_list is not None:
+                all_elig.setdefault(key, elig_list)
 
     for pt in parsed.get("teams", []):
         ptid = pt.get("team_id")
         for rec in pt.get("hitters", []) + pt.get("pitchers", []):
             eid = rec.get("espn_id")
+            _elig_raw = list(rec.get("elig") or [])
             espn_nm = (rec.get("name") or "").strip()
-            _add_key(espn_nm.lower(), ptid, eid)
-            _add_key(_norm_nm(espn_nm), ptid, eid)
+            _add_key(espn_nm.lower(), ptid, eid, _elig_raw)
+            _add_key(_norm_nm(espn_nm), ptid, eid, _elig_raw)
             # Also key on the FG projection name if available — this catches
             # cases where FG and ESPN disagree on first-name spelling
             # (Cam/Cameron, Nicky/Nick, Matt/Matthew, etc.).
@@ -1046,8 +1055,8 @@ def _build_phase3_payload(fdata: dict) -> dict:
             fg_p = fd.get("player") or {}
             fg_nm = (fg_p.get("name") or "").strip()
             if fg_nm:
-                _add_key(fg_nm.lower(), ptid, eid)
-                _add_key(_norm_nm(fg_nm), ptid, eid)
+                _add_key(fg_nm.lower(), ptid, eid, _elig_raw)
+                _add_key(_norm_nm(fg_nm), ptid, eid, _elig_raw)
 
     teams_payload = []
     user_team_id = None
@@ -1116,6 +1125,7 @@ def _build_phase3_payload(fdata: dict) -> dict:
         # Internal-only: full roster name lookup including IL/NA. Caller strips
         # this before JSON-encoding for the JS payload.
         "_all_rostered": all_rostered,
+        "_all_elig": all_elig,
     }
 
 
@@ -1287,6 +1297,7 @@ def render_fantasy_tab(fdata: dict) -> str:
         _p = _e["player"]
         _trade_h.append({
             "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
+            "fg_pos": _p.get("fg_pos", ""),
             "dollars": _sf(_e["dollar"]), "is_pitcher": False,
             "cats": {"R":_sf(_p.get("R")),"HR":_sf(_p.get("HR")),"RBI":_sf(_p.get("RBI")),
                      "SB":_sf(_p.get("SB")),"K_h":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))},
@@ -1333,6 +1344,7 @@ def render_fantasy_tab(fdata: dict) -> str:
         # _phase3["teams"] (which excludes them) so IL stars don't slip back
         # into the free-agent picker with a null team_id.
         _all_rostered = _phase3.get("_all_rostered") or {}
+        _all_elig_map = _phase3.get("_all_elig") or {}
         try:
             from utils import norm_name as _norm_nm_caller
         except Exception:
@@ -1340,18 +1352,25 @@ def render_fantasy_tab(fdata: dict) -> str:
                 return (s or "").strip().lower().replace(".", "").replace("-", " ")
         for _rec in _trade_h + _trade_p:
             _nm_raw = (_rec["name"] or "").strip()
-            _tid_eid = (_all_rostered.get(_nm_raw.lower())
-                        or _all_rostered.get(_norm_nm_caller(_nm_raw)))
+            _nm_low = _nm_raw.lower()
+            _nm_norm = _norm_nm_caller(_nm_raw)
+            _tid_eid = (_all_rostered.get(_nm_low)
+                        or _all_rostered.get(_nm_norm))
             if _tid_eid is not None:
                 _rec["team_id"], _rec["espn_id"] = _tid_eid
             else:
                 _rec["team_id"] = None
                 _rec["espn_id"] = None
-        # Re-serialise with the new team_id / espn_id fields baked in.
+            # Attach ESPN position eligibility for hitters (rostered players)
+            _elig_val = _all_elig_map.get(_nm_low) or _all_elig_map.get(_nm_norm)
+            if _elig_val is not None:
+                _rec["elig"] = _elig_val
+        # Re-serialise with the new team_id / espn_id / elig fields baked in.
         _trade_h_json = _json.dumps(_trade_h)
         _trade_p_json = _json.dumps(_trade_p)
-        # Strip the internal-only _all_rostered map before shipping to JS.
+        # Strip the internal-only maps before shipping to JS.
         _phase3.pop("_all_rostered", None)
+        _phase3.pop("_all_elig", None)
         _phase3_json = _json.dumps(_phase3)
     else:
         _phase3_json = "null"
@@ -2070,9 +2089,11 @@ function fcmpSearch() {{
     var added = isH ? _fcmpHNames.has(p.name) : _fcmpPNames.has(p.name);
     var tag = isH ? '<span style="color:#3d9be9;font-size:.7rem;font-weight:600;margin-right:4px">BAT</span>'
                   : '<span style="color:#e8832a;font-size:.7rem;font-weight:600;margin-right:4px">' + (p.role==='sp'?'SP':'RP') + '</span>';
+    var _pl = isH ? _posLabel(p) : '';
+    var posStr = _pl ? '<span style="color:#777;font-size:.6rem;font-weight:700;margin-left:4px">' + _pl + '</span>' : '';
     return '<div class="cmp-di" data-name="'+p.name.replace(/"/g,'&amp;quot;')+'" data-type="'+item.type+'" onmousedown="fcmpAdd(this.dataset.name,this.dataset.type)">'
       + tag + ' <span style="color:var(--muted);font-size:.78rem;margin-right:4px">' + (p.team||'') + '</span>'
-      + '<span>' + p.name + '</span>'
+      + '<span>' + p.name + '</span>' + posStr
       + (added ? '<span style="color:var(--muted);font-size:.72rem;margin-left:auto">Added</span>' : '')
       + '</div>';
   }}).join('');
@@ -2352,11 +2373,13 @@ function tradeSearch(side, q) {{
   }} else {{
     dd.innerHTML = hits.map(function(p) {{
       var meta = p.team + (p.role ? ' ' + p.role.toUpperCase() : '') + '  $' + p.dollars.toFixed(1);
+      var _plt = !p.is_pitcher ? _posLabel(p) : '';
+      var posTag = _plt ? '<span style="color:#777;font-size:.6rem;font-weight:700;margin-left:4px">' + _plt + '</span>' : '';
       return '<div data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
         + ' onmousedown="tradeAdd(this.dataset.side,this.dataset.name)"'
         + ' style="padding:7px 12px;cursor:pointer;border-bottom:1px solid #252525;font-size:.83rem"'
         + '>'
-        + '<span style="font-weight:600">' + p.name + '</span>'
+        + '<span style="font-weight:600">' + p.name + '</span>' + posTag
         + '<span style="opacity:.55;font-size:.77rem;margin-left:7px">' + meta + '</span>'
         + '</div>';
     }}).join('');
@@ -2405,9 +2428,14 @@ function _tradePlayerRow(side, p) {{
   var dStr = (d >= 0 ? '$' : '−$') + Math.abs(d).toFixed(1);
   var dCol = d >= 10 ? '#f0c040' : d >= 0 ? '#7ec87e' : '#e05555';
   var roleTag = p.role ? '<span style="opacity:.45;font-size:.68rem;margin-left:3px">' + p.role.toUpperCase() + '</span>' : '';
+  var posTag = '';
+  if (!p.is_pitcher) {{
+    var lbl = _posLabel(p);
+    if (lbl) posTag = '<span style="color:#888;font-size:.62rem;font-weight:700;margin-left:4px">' + lbl + '</span>';
+  }}
   return '<div style="display:flex;align-items:center;justify-content:space-between;'
     + 'padding:5px 8px;background:#1a1a1a;border-radius:5px;margin-bottom:3px">'
-    + '<div><span style="font-size:.83rem;font-weight:600">' + p.name + '</span>'
+    + '<div><span style="font-size:.83rem;font-weight:600">' + p.name + '</span>' + posTag
     + '<span style="font-size:.73rem;color:var(--muted);margin-left:5px">' + p.team + roleTag + '</span></div>'
     + '<div style="display:flex;align-items:center;gap:7px">'
     + '<span style="color:' + dCol + ';font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
@@ -3575,6 +3603,7 @@ function _phase3SimulateTrade() {{
     var isUserTeam = (team.team_id === userTid);
     var rmIds = isUserTeam ? sendIds : recvIds;
     var addList = isUserTeam ? recvPlayers : sendPlayers;
+    var origPitIds = team.pitchers.map(function(p){{ return p.espn_id; }}).sort().join();
     team.hitters  = team.hitters .filter(function(p) {{ return !rmIds[p.espn_id]; }});
     team.pitchers = team.pitchers.filter(function(p) {{ return !rmIds[p.espn_id]; }});
     addList.forEach(function(p) {{
@@ -3612,24 +3641,27 @@ function _phase3SimulateTrade() {{
       ? (_tradeRoster.pitcherPickups || [])
       : (_tradeRoster.oppPitcherPickups || []);
     pitPickups.forEach(function(pk) {{ team.pitchers.push(pk); }});
-    // Re-optimize lineup + re-aggregate
+    // Re-optimize hitter lineup
     var starters = _phase3OptimizeHitters(team.hitters);
     var hAgg = _phase3AggHit(starters);
-    var pAgg = _phase3AggPit(team.pitchers);
-    team.stats = {{
-      R:    Math.round(hAgg.R    * 10) / 10,
-      HR:   Math.round(hAgg.HR   * 10) / 10,
-      RBI:  Math.round(hAgg.RBI  * 10) / 10,
-      SO_h: Math.round(hAgg.SO_h * 10) / 10,
-      SB:   Math.round(hAgg.SB   * 10) / 10,
-      OBP:  Math.round(hAgg.OBP  * 10000) / 10000,
-      W:    Math.round(pAgg.W    * 10) / 10,
-      SO_p: Math.round(pAgg.SO_p * 10) / 10,
-      SV:   Math.round(pAgg.SV   * 10) / 10,
-      HLD:  Math.round(pAgg.HLD  * 10) / 10,
-      ERA:  Math.round(pAgg.ERA  * 1000) / 1000,
-      WHIP: Math.round(pAgg.WHIP * 1000) / 1000,
-    }};
+    team.stats.R    = Math.round(hAgg.R    * 10) / 10;
+    team.stats.HR   = Math.round(hAgg.HR   * 10) / 10;
+    team.stats.RBI  = Math.round(hAgg.RBI  * 10) / 10;
+    team.stats.SO_h = Math.round(hAgg.SO_h * 10) / 10;
+    team.stats.SB   = Math.round(hAgg.SB   * 10) / 10;
+    team.stats.OBP  = Math.round(hAgg.OBP  * 10000) / 10000;
+    // Only recompute pitcher stats if pitcher roster actually changed —
+    // avoids floating-point drift from JS re-aggregating IP-weighted ERA/WHIP
+    var newPitIds = team.pitchers.map(function(p){{ return p.espn_id; }}).sort().join();
+    if (origPitIds !== newPitIds) {{
+      var pAgg = _phase3AggPit(team.pitchers);
+      team.stats.W    = Math.round(pAgg.W    * 10) / 10;
+      team.stats.SO_p = Math.round(pAgg.SO_p * 10) / 10;
+      team.stats.SV   = Math.round(pAgg.SV   * 10) / 10;
+      team.stats.HLD  = Math.round(pAgg.HLD  * 10) / 10;
+      team.stats.ERA  = Math.round(pAgg.ERA  * 1000) / 1000;
+      team.stats.WHIP = Math.round(pAgg.WHIP * 1000) / 1000;
+    }}
   }});
 
   _phase3RecomputeZ(league);
@@ -3656,6 +3688,59 @@ function _phase3RankColor(rank, n) {{
     b = Math.round(235 + (255 - 235) * s2);
   }}
   return 'rgb(' + r + ',' + g + ',' + b + ')';
+}}
+
+/* Convert an ESPN elig slot-ID array to a compact position label string.
+   Filters to real positions (C/1B/2B/3B/SS/OF/DH), skips MI/CI/UTIL. */
+var _ELIG_MAP = {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}};
+function _eligLabel(elig) {{
+  if (!elig || !elig.length) return '';
+  return elig.map(function(e){{ return _ELIG_MAP[e] || ''; }})
+             .filter(function(x){{ return x; }}).join('/');
+}}
+
+/* Map FanGraphs position string → array of ESPN slot IDs.
+   FG uses strings like "C", "1B", "2B/SS", "OF", "DH". We parse all
+   slash-separated tokens and map to slot IDs. Also add composite slots
+   (MI=6 for 2B/SS, CI=7 for 1B/3B, UTIL=12 for any). */
+var _FG_POS_TO_SLOT = {{'C':0,'1B':1,'2B':2,'3B':3,'SS':4,'OF':5,'DH':19}};
+function _fgPosToSlots(fgPos) {{
+  if (!fgPos) return [];
+  var parts = fgPos.split('/');
+  var slots = [];
+  parts.forEach(function(p) {{
+    var s = _FG_POS_TO_SLOT[p.trim()];
+    if (s !== undefined) slots.push(s);
+  }});
+  // Add composite positions
+  var has2B = slots.indexOf(2) >= 0, hasSS = slots.indexOf(4) >= 0;
+  var has1B = slots.indexOf(1) >= 0, has3B = slots.indexOf(3) >= 0;
+  if (has2B || hasSS) slots.push(6);  // MI
+  if (has1B || has3B) slots.push(7);  // CI
+  slots.push(12); // UTIL — every hitter qualifies
+  return slots;
+}}
+
+/* Check if a player (with elig array or fg_pos string) can fill a given slot ID.
+   Returns true if the player is eligible for that slot. */
+function _canFillSlot(player, slotId) {{
+  // ESPN elig takes priority (more accurate)
+  if (player.elig && player.elig.length) {{
+    return player.elig.indexOf(slotId) >= 0;
+  }}
+  // Fall back to FG position
+  if (player.fg_pos) {{
+    var slots = _fgPosToSlots(player.fg_pos);
+    return slots.indexOf(slotId) >= 0;
+  }}
+  return true; // no position data → don't filter out
+}}
+
+/* For FA hitters without ESPN elig, derive a label from fg_pos. */
+function _posLabel(player) {{
+  if (player.elig && player.elig.length) return _eligLabel(player.elig);
+  if (player.fg_pos) return player.fg_pos;
+  return '';
 }}
 
 /* Compute the LAP-optimized lineup dollar value + slot assignments for one team.
@@ -4138,15 +4223,21 @@ function _phase3RenderLineups() {{
     var tag = p.is_pickup
       ? '<span style="color:#f0c040;font-size:.62rem;font-weight:700;margin-left:4px">PICKUP</span>'
       : '';
-    return '<span style="color:#ddd">' + (p.name || '?') + '</span>'
+    var posTag = (p.elig && !p.is_pitcher) ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:3px">' + _eligLabel(p.elig) + '</span>' : '';
+    return '<span style="color:#ddd">' + (p.name || '?') + '</span>' + posTag
          + '<span style="color:#888;margin-left:4px">$' + (p.dollars || 0).toFixed(1) + '</span>'
          + tag;
   }}
 
   // Picker sub-row: list of top FA hitters. `side` is 'user' or 'opp' and
   // determines which add/close handlers get wired.
-  function renderPicker(side, slotLabel) {{
-    var fas = _phase3FreeAgentHitters(12);
+  function renderPicker(side, slotLabel, slotId) {{
+    var fas = _phase3FreeAgentHitters(50);
+    // Filter to position-eligible players for the target slot
+    if (slotId != null) {{
+      fas = fas.filter(function(p) {{ return _canFillSlot(p, slotId); }});
+    }}
+    fas = fas.slice(0, 15);
     var closeFn = (side === 'user') ? 'phase3ClosePickupMenu' : 'phase3CloseOppPickupMenu';
     var addFn   = (side === 'user') ? 'phase3AddPickup'       : 'phase3AddOppPickup';
     var headerTxt = (side === 'user' ? 'Pick up a FA hitter for ' : 'Opponent picks up a FA hitter for ') + slotLabel;
@@ -4164,12 +4255,14 @@ function _phase3RenderLineups() {{
       html += '<div style="display:flex;flex-wrap:wrap;gap:3px">';
       fas.forEach(function(p) {{
         var dCol = p.dollars >= 10 ? '#f0c040' : p.dollars >= 0 ? '#7ec87e' : '#888';
+        var pl = _posLabel(p);
+        var posLbl = pl ? '<span style="color:#777;font-size:.56rem;font-weight:700">' + pl + '</span>' : '';
         html += '<button onmousedown="' + addFn + '(this.dataset.name)" '
              +  'data-name="' + (p.name || '').replace(/"/g,'&quot;') + '" '
              +  'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
              +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
              +  'display:inline-flex;align-items:center;gap:4px">'
-             +  '<span style="font-weight:600">' + p.name + '</span>'
+             +  '<span style="font-weight:600">' + p.name + '</span>' + posLbl
              +  '<span style="color:#777;font-size:.68rem">' + (p.team||'') + '</span>'
              +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
              +  '</button>';
@@ -4220,7 +4313,7 @@ function _phase3RenderLineups() {{
       // render the inline FA list as a full-width sub-row below.
       if (side && picker && picker.slot_id === na.slot_id && !na.player) {{
         rows += '<tr><td colspan="4" style="padding:0 8px 6px">'
-              + renderPicker(side, picker.slot_label)
+              + renderPicker(side, picker.slot_label, picker.slot_id)
               + '</td></tr>';
       }}
     }}
@@ -4552,13 +4645,14 @@ function _phase3RenderLineups() {{
         var roleTag = item.is_pitcher
           ? '<span style="color:#e08484;font-size:.66rem;margin-left:2px">'
             + (((p.IP || 0) >= 100) ? 'SP' : 'P') + '</span>'
-          : '<span style="color:#7ec87e;font-size:.66rem;margin-left:2px">H</span>';
+          : '';
+        var posLbl = (!item.is_pitcher && p.elig) ? '<span style="color:#777;font-size:.56rem;font-weight:700;margin-left:2px">' + _eligLabel(p.elig) + '</span>' : '';
         html += '<button onmousedown="' + addFn + '(this.dataset.eid)" '
              +  'data-eid="' + p.espn_id + '" '
              +  'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
              +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
              +  'display:inline-flex;align-items:center;gap:4px">'
-             +  '<span style="font-weight:600">' + (p.name || '?') + '</span>'
+             +  '<span style="font-weight:600">' + (p.name || '?') + '</span>' + posLbl
              +  '<span style="color:#777;font-size:.68rem">' + (p.team || '') + '</span>'
              +  roleTag
              +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
@@ -4686,11 +4780,14 @@ function _phase3RenderTable(newLeague) {{
 
       /* Z-score line */
       var zStr = '<div style="font-size:.68rem;color:#666;line-height:1;margin-top:2px">z ' + nz.toFixed(2) + '</div>';
+      /* Rank number line */
+      var rkNum = catRanks[cat][t.team_id];
+      var rkStr = '<div style="font-size:.55rem;color:#555;line-height:1;margin-top:1px">#' + rkNum + '</div>';
 
       var bl = borderLeft ? 'border-left:2px solid #444;' : '';
       return '<td style="' + bl + 'text-align:center;padding:4px 6px">'
            + '<div style="font-size:.92rem;line-height:1.15;font-weight:600;color:' + _phase3RankColor(catRanks[cat][t.team_id], n) + '">' + fmtRaw(cat, nv) + '</div>'
-           + zStr
+           + zStr + rkStr
            + rawDStr + '</td>';
     }}
 
@@ -4836,9 +4933,7 @@ function _wwRenderRoster() {{
     var dc = _dollarRankColor(p.dollars || 0);
     var opacity = dropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
-    var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
-      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}}[e] || '';
-    }}).filter(function(x){{ return x; }}).join('/') : '');
+    var posLabel = isPitcher ? role : _eligLabel(p.elig);
     var html = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
              + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
              + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
@@ -4966,7 +5061,9 @@ function wwSearchFA(q) {{
           + 'border-bottom:1px solid #2a2a2a;font-size:.82rem" '
           + 'onmouseover="this.style.background=\\\\x27#2a2a2a\\\\x27" onmouseout="this.style.background=\\\\x27\\\\x27">'
           + '<span style="color:#888;font-size:.68rem;font-weight:700;width:28px">' + role + '</span>'
-          + '<span style="flex:1;color:#ddd;font-weight:600">' + p.name + '</span>'
+          + '<span style="flex:1;color:#ddd;font-weight:600">' + p.name
+          + (function(){{ var pl = !p.is_pitcher ? _posLabel(p) : ''; return pl ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">' + pl + '</span>' : ''; }})()
+          + '</span>'
           + '<span style="color:#888;font-size:.75rem">' + (p.team || '') + '</span>'
           + '<span style="color:' + dc + ';font-weight:700;width:50px;text-align:right">$' + (p.dollars||0).toFixed(1) + '</span>'
           + '</div>';
@@ -5041,6 +5138,7 @@ function _wwSimulate() {{
     // Remove dropped players
     var dropIds = {{}};
     _wwState.drops.forEach(function(d) {{ dropIds[d.espn_id] = true; }});
+    var origPitIds = team.pitchers.map(function(p){{ return p.espn_id; }}).sort().join();
     team.hitters  = team.hitters.filter(function(p)  {{ return !dropIds[p.espn_id]; }});
     team.pitchers = team.pitchers.filter(function(p) {{ return !dropIds[p.espn_id]; }});
 
@@ -5078,24 +5176,26 @@ function _wwSimulate() {{
       }}
     }});
 
-    // Re-optimize lineup + re-aggregate
+    // Re-optimize hitter lineup
     var starters = _phase3OptimizeHitters(team.hitters);
     var hAgg = _phase3AggHit(starters);
-    var pAgg = _phase3AggPit(team.pitchers);
-    team.stats = {{
-      R:    Math.round(hAgg.R    * 10) / 10,
-      HR:   Math.round(hAgg.HR   * 10) / 10,
-      RBI:  Math.round(hAgg.RBI  * 10) / 10,
-      SO_h: Math.round(hAgg.SO_h * 10) / 10,
-      SB:   Math.round(hAgg.SB   * 10) / 10,
-      OBP:  Math.round(hAgg.OBP  * 10000) / 10000,
-      W:    Math.round(pAgg.W    * 10) / 10,
-      SO_p: Math.round(pAgg.SO_p * 10) / 10,
-      SV:   Math.round(pAgg.SV   * 10) / 10,
-      HLD:  Math.round(pAgg.HLD  * 10) / 10,
-      ERA:  Math.round(pAgg.ERA  * 1000) / 1000,
-      WHIP: Math.round(pAgg.WHIP * 1000) / 1000,
-    }};
+    team.stats.R    = Math.round(hAgg.R    * 10) / 10;
+    team.stats.HR   = Math.round(hAgg.HR   * 10) / 10;
+    team.stats.RBI  = Math.round(hAgg.RBI  * 10) / 10;
+    team.stats.SO_h = Math.round(hAgg.SO_h * 10) / 10;
+    team.stats.SB   = Math.round(hAgg.SB   * 10) / 10;
+    team.stats.OBP  = Math.round(hAgg.OBP  * 10000) / 10000;
+    // Only recompute pitcher stats if pitcher roster actually changed
+    var newPitIds = team.pitchers.map(function(p){{ return p.espn_id; }}).sort().join();
+    if (origPitIds !== newPitIds) {{
+      var pAgg = _phase3AggPit(team.pitchers);
+      team.stats.W    = Math.round(pAgg.W    * 10) / 10;
+      team.stats.SO_p = Math.round(pAgg.SO_p * 10) / 10;
+      team.stats.SV   = Math.round(pAgg.SV   * 10) / 10;
+      team.stats.HLD  = Math.round(pAgg.HLD  * 10) / 10;
+      team.stats.ERA  = Math.round(pAgg.ERA  * 1000) / 1000;
+      team.stats.WHIP = Math.round(pAgg.WHIP * 1000) / 1000;
+    }}
   }});
 
   _phase3RecomputeZ(league);
@@ -5251,10 +5351,12 @@ function _wwRenderStandingsTable(newLeague, containerId) {{
                 + rawSign + fmtRaw(cat, Math.abs(rawD)) + '</div>';
       }}
       var zStr2 = '<div style="font-size:.68rem;color:#666;line-height:1;margin-top:2px">z ' + nz.toFixed(2) + '</div>';
+      var rkNum = catRanks[cat][t.team_id];
+      var rkStr2 = '<div style="font-size:.55rem;color:#555;line-height:1;margin-top:1px">#' + rkNum + '</div>';
       var bl = borderLeft ? 'border-left:2px solid #444;' : '';
       return '<td style="' + bl + 'text-align:center;padding:4px 6px">'
            + '<div style="font-size:.92rem;line-height:1.15;font-weight:600;color:' + _phase3RankColor(catRanks[cat][t.team_id], n) + '">' + fmtRaw(cat, nv) + '</div>'
-           + zStr2
+           + zStr2 + rkStr2
            + rawDStr + '</td>';
     }}
 
@@ -5471,9 +5573,7 @@ function _wwStreamRender() {{
     var dc = _dollarRankColor(p.dollars || 0);
     var opacity = isDropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
-    var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
-      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}}[e] || '';
-    }}).filter(function(x){{ return x; }}).join('/') : '');
+    var posLabel = isPitcher ? role : _eligLabel(p.elig);
     var r = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
           + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
           + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
