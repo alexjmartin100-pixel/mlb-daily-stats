@@ -934,6 +934,21 @@ def _build_phase3_payload(fdata: dict) -> dict:
     except Exception as e:
         return {"ok": False, "reason": f"build: {e}"}
 
+    # Extract matchup schedule info from ESPN snapshot for weeks-remaining calc
+    matchup_total = None
+    matchup_current = None
+    try:
+        import json as _json_mod
+        with open(snap_path, "r", encoding="utf-8") as _sf:
+            _snap_raw = _json_mod.load(_sf)
+        _raw = _snap_raw.get("raw", _snap_raw)
+        _sched = (_raw.get("settings") or {}).get("scheduleSettings") or {}
+        matchup_total = _sched.get("matchupPeriodCount")
+        _status = _raw.get("status") or {}
+        matchup_current = _status.get("currentMatchupPeriod")
+    except Exception:
+        pass
+
     if not team_rows:
         return {"ok": False, "reason": "empty league"}
 
@@ -1095,6 +1110,9 @@ def _build_phase3_payload(fdata: dict) -> dict:
         "teams": teams_payload,
         # Sim cfg for the in-browser Monte Carlo — None if caches missing.
         "sim_cfg": sim_cfg,
+        # ESPN H2H matchup schedule — used by Waiver Wire for weeks remaining
+        "matchup_total": matchup_total,      # e.g. 21 regular-season weeks
+        "matchup_current": matchup_current,  # e.g. 2 = in week 2
         # Internal-only: full roster name lookup including IL/NA. Caller strips
         # this before JSON-encoding for the JS payload.
         "_all_rostered": all_rostered,
@@ -2913,7 +2931,7 @@ function _mcFallbackPlayerCfg(rec, isPit) {{
       SV:   rec.SV   || 0, HLD: rec.HLD  || 0
     }};
     var role = (mu.IP < 80 || mu.SV >= 5) ? 'RP' : 'SP';
-    return {{
+    var out = {{
       is_pitcher:    true,
       role:          role,
       mlb_team:      (rec.team || '').toUpperCase(),
@@ -2921,6 +2939,9 @@ function _mcFallbackPlayerCfg(rec, isPit) {{
       volume_proj:   mu.IP,
       expected_loss: 0
     }};
+    // Pass through variance_scale for composite/streaming pitchers
+    if (rec.variance_scale != null) out.variance_scale = rec.variance_scale;
+    return out;
   }}
   return {{
     is_pitcher:    false,
@@ -2965,7 +2986,10 @@ function _mcSamplePlayer(player, roleModel, nTrials) {{
     if (vol < _MC_ROOKIE_PA) conf = _MC_CONF_ROOKIE;
   }}
 
-  // sigma[i] = |mu| × cv × conf (floored so tiny ratios don't collapse)
+  // sigma[i] = |mu| × cv × conf × variance_scale
+  // variance_scale < 1 for composite/streaming pitchers (diversification)
+  var vScale = player.variance_scale || 1.0;
+
   var sig = new Float64Array(k);
   for (var i2 = 0; i2 < k; i2++) {{
     if (!have[i2]) continue;
@@ -2975,7 +2999,7 @@ function _mcSamplePlayer(player, roleModel, nTrials) {{
     }} else {{
       if (m < 1.0) m = 1.0;
     }}
-    sig[i2] = m * cvs[i2] * conf;
+    sig[i2] = m * cvs[i2] * conf * vScale;
   }}
 
   // Output per-stat sample arrays
@@ -4928,7 +4952,7 @@ function wwSearchFA(q) {{
           + ' onmousedown="wwAddFA(this.dataset.pname)"'
           + ' style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;'
           + 'border-bottom:1px solid #2a2a2a;font-size:.82rem" '
-          + 'onmouseover="this.style.background=\'#2a2a2a\'" onmouseout="this.style.background=\'\'">'
+          + 'onmouseover="this.style.background=\\\\x27#2a2a2a\\\\x27" onmouseout="this.style.background=\\\\x27\\\\x27">'
           + '<span style="color:#888;font-size:.68rem;font-weight:700;width:28px">' + role + '</span>'
           + '<span style="flex:1;color:#ddd;font-weight:600">' + p.name + '</span>'
           + '<span style="color:#888;font-size:.75rem">' + (p.team || '') + '</span>'
@@ -5334,29 +5358,40 @@ function _wwStreamComputeProfile() {{
   avg.W /= cnt; avg.K_p /= cnt; avg.SV /= cnt; avg.HLD /= cnt;
   avg.ERA /= cnt; avg.WHIP /= cnt; avg.IP /= cnt; avg.dollars /= cnt;
 
-  // The "one pitcher" has the average RoS projection of those top 5.
-  // But they get 4 starts per week instead of whatever the average SP gets.
-  // Calculate how many weeks remain in the season (roughly late March to late Sept = ~26 weeks).
-  // We scale the counting stats by (4 starts/wk * weeks) / (avg starts for those SPs).
-  // Average SP gets about IP/6 starts over RoS. So starts_ros = avg.IP / 6.
-  // Streamer gets 4 * weeksRemaining starts.
-  var today = new Date();
-  var seasonEnd = new Date(today.getFullYear(), 8, 28); // Sept 28
-  var msPerWeek = 7 * 24 * 3600 * 1000;
-  var weeksLeft = Math.max(1, Math.round((seasonEnd - today) / msPerWeek));
+  // Per-start decomposition: compute per-start rates from the top-5 average,
+  // then multiply by total streamer starts (4/week * weeksLeft).
+  // Use ESPN matchup schedule data when available; fall back to date calc.
+  var weeksLeft;
+  if (PHASE3_LEAGUE && PHASE3_LEAGUE.matchup_total && PHASE3_LEAGUE.matchup_current) {{
+    // ESPN H2H: remaining matchup periods (including current in-progress week)
+    weeksLeft = Math.max(1, PHASE3_LEAGUE.matchup_total - PHASE3_LEAGUE.matchup_current + 1);
+  }} else {{
+    var today = new Date();
+    var seasonEnd = new Date(today.getFullYear(), 8, 28); // Sept 28 fallback
+    var msPerWeek = 7 * 24 * 3600 * 1000;
+    weeksLeft = Math.max(1, Math.round((seasonEnd - today) / msPerWeek));
+  }}
   var streamerStarts = 4 * weeksLeft;
-  var avgStarts = Math.max(1, avg.IP / 6);  // ~6 IP per start
-  var scale = streamerStarts / avgStarts;
 
-  // Scale counting stats, keep rate stats (ERA, WHIP) as-is
+  // Derive per-start rates from the average top-5 SP full-season projection
+  var IP_PER_START = 5.3;
+  var avgStartsRoS = Math.max(1, avg.IP / IP_PER_START);
+  var wPerStart  = avg.W   / avgStartsRoS;
+  var kPerStart  = avg.K_p / avgStartsRoS;
+  var svPerStart = avg.SV  / avgStartsRoS;
+  var hdPerStart = avg.HLD / avgStartsRoS;
+  var ipPerStart = IP_PER_START;
+
+  // Scale counting stats and IP by total streamer starts;
+  // rate stats (ERA, WHIP) stay as the top-5 average (they're per-inning rates)
   var profile = {{
-    W:    avg.W    * scale,
-    SO_p: avg.K_p  * scale,
-    SV:   avg.SV   * scale,
-    HLD:  avg.HLD  * scale,
+    W:    wPerStart  * streamerStarts,
+    SO_p: kPerStart  * streamerStarts,
+    SV:   svPerStart * streamerStarts,
+    HLD:  hdPerStart * streamerStarts,
     ERA:  avg.ERA,
     WHIP: avg.WHIP,
-    IP:   avg.IP   * scale,
+    IP:   ipPerStart * streamerStarts,
     dollars: avg.dollars,
     top5Names: top5.map(function(p) {{ return p.name; }}),
     weeksLeft: weeksLeft,
@@ -5483,7 +5518,12 @@ function _wwStreamSimulate() {{
     team.hitters  = team.hitters.filter(function(p)  {{ return p.espn_id !== dropId; }});
     team.pitchers = team.pitchers.filter(function(p) {{ return p.espn_id !== dropId; }});
 
-    // Add streamer pitcher with the profile stats
+    // Add streamer pitcher with the profile stats.
+    // variance_scale reduces MC sim variance to reflect diversification:
+    // streaming 96 independent starts (vs ~28 for one SP) means the
+    // aggregate outcome has lower variance by ~1/sqrt(96/28) ≈ 0.54.
+    var typicalSPStarts = 28;
+    var vScale = Math.sqrt(typicalSPStarts / Math.max(1, prof.totalStarts));
     team.pitchers.push({{
       espn_id:  'streamer_composite',
       name:     'Streaming SP (4/wk)',
@@ -5495,7 +5535,8 @@ function _wwStreamSimulate() {{
       HLD:      prof.HLD,
       ERA:      prof.ERA,
       WHIP:     prof.WHIP,
-      IP:       prof.IP
+      IP:       prof.IP,
+      variance_scale: vScale
     }});
 
     // Re-optimize + re-aggregate
