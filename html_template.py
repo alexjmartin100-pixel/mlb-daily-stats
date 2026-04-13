@@ -863,7 +863,8 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <script>
 const _POS_LOOKUP = __POS_LOOKUP_JSON__;
-function _posFor(name){return _POS_LOOKUP[name]||'';}
+function _normName(s){return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function _posFor(name){return _POS_LOOKUP[name]||_POS_LOOKUP[_normName(name)]||'';}
 function _posBadge(name){var p=_posFor(name);return p?'<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">'+p+'</span>':'';}
 const HITTERS    = __HITTERS_JSON__;
 const ALL_PITCHERS = __ALL_PITCHERS_JSON__;

@@ -191,7 +191,17 @@ def main():
                         if not _pos_parts and 11 in _elig:
                             _pos_parts = ["DH"]
                         if _pos_parts:
-                            pos_lookup[_nm] = "/".join(_pos_parts)
+                            _pos_str = "/".join(_pos_parts)
+                            pos_lookup[_nm] = _pos_str
+                            # Also store ASCII-normalized key so FG/Savant
+                            # names with diacritics still match
+                            _nm_ascii = unicodedata.normalize("NFKD", _nm)
+                            _nm_ascii = "".join(
+                                c for c in _nm_ascii
+                                if not unicodedata.combining(c)
+                            )
+                            if _nm_ascii != _nm:
+                                pos_lookup[_nm_ascii] = _pos_str
             print(f"  Position lookup: {len(pos_lookup)} hitters from ESPN snapshot")
     except Exception as _e:
         print(f"  Position lookup failed: {_e}")

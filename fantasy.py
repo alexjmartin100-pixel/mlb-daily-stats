@@ -5669,17 +5669,24 @@ function _wwStreamRender() {{
   if (prof && previewEl && statsEl) {{
     previewEl.style.display = '';
     var nameList = prof.top5Names.join(', ');
+    var dropP = _wwStreamState.drop;
+    // Net gains = streamer totals minus dropped pitcher's projections
+    var netW  = dropP ? prof.W    - (dropP.W    || 0) : prof.W;
+    var netK  = dropP ? prof.SO_p - (dropP.SO_p || 0) : prof.SO_p;
+    var netIP = dropP ? prof.IP   - (dropP.IP   || 0) : prof.IP;
+    var netLabel = dropP ? 'Net gain (vs dropping ' + (dropP.name||'player') + ')' : 'Streamer RoS totals';
     statsEl.innerHTML = '<div style="font-size:.78rem;color:#ddd;margin-bottom:6px">'
       + 'Based on: <span style="color:#4caf50">' + nameList + '</span></div>'
       + '<div style="font-size:.75rem;color:#bbb;margin-bottom:8px">'
       + prof.weeksLeft + ' weeks left &times; ' + prof.startsPerWeek + ' starts/wk = '
       + '<strong style="color:#fff">' + prof.totalStarts + ' total starts</strong></div>'
+      + '<div style="font-size:.65rem;color:#999;letter-spacing:.03em;margin-bottom:3px">' + netLabel + '</div>'
       + '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem">'
-      + '<span><span style="color:var(--muted)">W:</span> <strong>' + prof.W.toFixed(1) + '</strong></span>'
-      + '<span><span style="color:var(--muted)">K:</span> <strong>' + prof.SO_p.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">W:</span> <strong>' + (netW>=0?'+':'') + netW.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">K:</span> <strong>' + (netK>=0?'+':'') + netK.toFixed(1) + '</strong></span>'
       + '<span><span style="color:var(--muted)">ERA:</span> <strong>' + prof.ERA.toFixed(2) + '</strong></span>'
       + '<span><span style="color:var(--muted)">WHIP:</span> <strong>' + prof.WHIP.toFixed(2) + '</strong></span>'
-      + '<span><span style="color:var(--muted)">IP:</span> <strong>' + prof.IP.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">IP:</span> <strong>' + (netIP>=0?'+':'') + netIP.toFixed(1) + '</strong></span>'
       + '</div>';
   }}
 
