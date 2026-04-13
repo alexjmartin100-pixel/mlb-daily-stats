@@ -4813,11 +4813,13 @@ function _wwRenderRoster() {{
              + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
              + '$' + (p.dollars||0).toFixed(1) + '</span>';
     if (!dropped) {{
-      html += '<button onclick="wwDrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+      html += '<button data-eid="' + (p.espn_id+'').replace(/"/g,'&quot;') + '"'
+            + ' onclick="wwDrop(this.dataset.eid)"'
             + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
             + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Drop</button>';
     }} else {{
-      html += '<button onclick="wwUndrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+      html += '<button data-eid="' + (p.espn_id+'').replace(/"/g,'&quot;') + '"'
+            + ' onclick="wwUndrop(this.dataset.eid)"'
             + ' style="background:#1a3a1a;border:1px solid #2e6b2e;color:#9cd39c;cursor:pointer;'
             + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Undo</button>';
     }}
@@ -4844,7 +4846,8 @@ function _wwRenderRoster() {{
             + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
             + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
             + '$' + (p.dollars||0).toFixed(1) + '</span>'
-            + '<button onclick="wwRemoveAdd(\'' + (p.name+'').replace(/'/g,"\\'") + '\')"'
+            + '<button data-pname="' + (p.name||'').replace(/"/g,'&quot;') + '"'
+            + ' onclick="wwRemoveAdd(this.dataset.pname)"'
             + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
             + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">\u2715</button>'
             + '</div>';
@@ -4921,7 +4924,8 @@ function wwSearchFA(q) {{
   matches.forEach(function(p) {{
     var dc = _dollarColor(p.dollars || 0);
     var role = p.is_pitcher ? ((p.proj && p.proj.IP || 0) >= 100 ? 'SP' : 'RP') : 'H';
-    html += '<div onmousedown="wwAddFA(\'' + (p.name+'').replace(/'/g,"\\'") + '\')"'
+    html += '<div data-pname="' + (p.name||'').replace(/"/g,'&quot;') + '"'
+          + ' onmousedown="wwAddFA(this.dataset.pname)"'
           + ' style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;'
           + 'border-bottom:1px solid #2a2a2a;font-size:.82rem" '
           + 'onmouseover="this.style.background=\'#2a2a2a\'" onmouseout="this.style.background=\'\'">'
@@ -5397,7 +5401,8 @@ function _wwStreamRender() {{
           + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
           + '$' + (p.dollars||0).toFixed(1) + '</span>';
     if (!isDropped && !hasDropped) {{
-      r += '<button onclick="wwStreamDrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+      r += '<button data-eid="' + (p.espn_id+'').replace(/"/g,'&quot;') + '"'
+         + ' onclick="wwStreamDrop(this.dataset.eid)"'
          + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
          + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Drop</button>';
     }} else if (isDropped) {{
