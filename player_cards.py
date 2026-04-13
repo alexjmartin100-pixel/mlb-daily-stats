@@ -31,7 +31,8 @@ _TEAM_ID_MAP["ARI"] = 109
 
 
 def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
-                             lb_pitch_data: dict = None, p_dollar_map: dict = None) -> str:
+                             lb_pitch_data: dict = None, p_dollar_map: dict = None,
+                             historical_lb: dict = None) -> str:
     """
     Build the Player Cards tab panel HTML + JS.
     lb_data is the hitter list (with compute_hitter_percentiles applied).
@@ -169,6 +170,79 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "pct":     p.get("pct", {}),
         }
 
+    # ── Build historical year data ────────────────────────────────────────
+    def _compact_hitter(p):
+        """Build compact stat dict for a hitter (reused across years)."""
+        return {
+            "type":"h","name":p.get("name",""),"team":p.get("team",""),
+            "pos":p.get("pos"),"bats":p.get("bats"),"throws":p.get("throws"),
+            "age":p.get("age"),"ht":p.get("height"),"wt":p.get("weight"),
+            "qual":p.get("qualified",False),"war":p.get("war"),
+            "g":p.get("g"),"pa":p.get("pa"),"ab":p.get("ab"),
+            "r":p.get("r"),"hr":p.get("hr"),"rbi":p.get("rbi"),"sb":p.get("sb"),
+            "avg":p.get("avg"),"obp":p.get("obp"),"ops":p.get("ops"),
+            "xwoba":p.get("xwoba"),"xba":p.get("xba"),"xslg":p.get("xslg"),
+            "avg_ev":p.get("avg_ev"),"max_ev":p.get("max_ev"),
+            "brl":p.get("barrel_pct"),"hh":p.get("hard_hit_pct"),
+            "la":p.get("launch_angle_avg"),"ss":p.get("sweet_spot_pct"),
+            "bs":p.get("bat_speed"),"sq":p.get("squared_up_pct"),
+            "ch":p.get("chase_pct"),"wh":p.get("whiff_pct"),
+            "kp":p.get("k_pct"),"bbp":p.get("bb_pct"),"spd":p.get("sprint_speed"),
+            "pull":p.get("pull_pct"),"cent":p.get("center_pct"),"oppo":p.get("oppo_pct"),
+            "gb":p.get("gb_pct"),"ld":p.get("ld_pct"),"fb":p.get("fb_pct"),"pu":p.get("pu_pct"),
+            "pct":p.get("pct",{}),
+        }
+
+    def _compact_pitcher(p):
+        """Build compact stat dict for a pitcher (reused across years)."""
+        return {
+            "type":"p","name":p.get("name",""),"team":p.get("team",""),
+            "pos":p.get("pos") or ("SP" if p.get("is_sp") else "RP"),
+            "bats":p.get("bats"),"throws":p.get("throws"),
+            "age":p.get("age"),"ht":p.get("height"),"wt":p.get("weight"),
+            "qual":p.get("qualified",False),"war":p.get("war"),
+            "is_sp":p.get("is_sp",False),
+            "g":p.get("g"),"gs":p.get("gs"),"ip":p.get("ip_f"),
+            "w":p.get("w"),"era":p.get("era"),"whip":p.get("whip"),
+            "k":p.get("k"),"siera":p.get("siera"),"kbb":p.get("k_bb_pct"),
+            "sv":p.get("sv"),"svo":p.get("sv_opp"),"hld":p.get("hld"),
+            "xera":p.get("xera"),"xba":p.get("xba"),
+            "fbv":p.get("fb_velo"),"aev":p.get("avg_ev"),
+            "woba":p.get("woba"),"xwoba":p.get("xwoba"),
+            "ch":p.get("chase_pct"),"wh":p.get("whiff_pct"),
+            "kp":p.get("k_pct"),"bbp":p.get("bb_pct"),
+            "brl":p.get("barrel_pct"),"hh":p.get("hard_hit_pct"),"gb":p.get("gb_pct"),
+            "stf":p.get("stuff_plus"),"loc":p.get("loc_plus"),
+            "ars":p.get("pitch_arsenal",[]),
+            "pct":p.get("pct",{}),
+        }
+
+    hist_data = {}  # year → {player_id: compact_stats}
+    if historical_lb:
+        for yr, payload in historical_lb.items():
+            yr_data = {}
+            for p in payload.get("hitters", []):
+                mid = p.get("id")
+                if mid and p.get("name"):
+                    yr_data[str(mid)] = _compact_hitter(p)
+            for p in payload.get("pitchers_sp", []) + payload.get("pitchers_rp", []):
+                mid = p.get("id")
+                if mid and p.get("name"):
+                    yr_data[str(mid)] = _compact_pitcher(p)
+            hist_data[str(yr)] = yr_data
+
+    # Build per-player available years list
+    avail_years = {}  # player_id → [2024, 2025, 2026] (sorted)
+    for pid in player_data:
+        yrs = [2026]
+        for yr_str, yr_d in hist_data.items():
+            if pid in yr_d:
+                yrs.append(int(yr_str))
+        avail_years[pid] = sorted(yrs)
+
+    hist_json = json.dumps(hist_data, separators=(',', ':'))
+    avail_json = json.dumps(avail_years, separators=(',', ':'))
+
     # ── Compute league leaders (among qualified hitters) ──────────────────
     _higher_better = ["r","hr","rbi","sb","avg","obp","ops",
                       "xwoba","xba","xslg","avg_ev","max_ev",
@@ -264,6 +338,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   var _pcIdx  = {idx_json};
   var _pcData = {data_json};
   var _pcLeaders = {leaders_json};
+  var _pcHist = {hist_json};
+  var _pcAvailYears = {avail_json};
+  var _pcCurrentYear = 2026;
+  var _pcCurrentId = null;
 
   var _TEAM_IDS = {{
     ARI:109,ATL:144,BAL:110,BOS:111,CHC:112,CWS:145,CHW:145,CIN:113,CLE:114,
@@ -315,9 +393,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
   }});
 
-  window._pcShow = function(id) {{
+  window._pcShow = function(id, year) {{
     document.getElementById('pc-dropdown').style.display='none';
-    var d = _pcData[String(id)];
+    year = year || 2026;
+    _pcCurrentId = id;
+    _pcCurrentYear = year;
+    var d = (year === 2026)
+      ? _pcData[String(id)]
+      : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
@@ -340,11 +423,24 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       ? ''
       : '<span style="background:#2a1a1a;color:#888;border:1px solid #444;'
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
-        + 'letter-spacing:.04em">NOT QUALIFIED</span>';
+        + 'letter-spacing:.04em">[NQ]</span>';
 
-    // ── Dollar value badge (right of qualified marker) ─────────────────────
+    // ── Year dropdown ──────────────────────────────────────────────────────
+    var availYrs = _pcAvailYears[String(id)] || [2026];
+    var yearDropdown = '';
+    if (availYrs.length > 1) {{
+      var opts = availYrs.map(function(y) {{
+        return '<option value="' + y + '"' + (y===year?' selected':'') + '>' + y + '</option>';
+      }}).join('');
+      yearDropdown = '<select onchange="_pcShow(' + id + ',parseInt(this.value))" '
+        + 'style="background:#1a1a1a;color:#eee;border:1px solid #444;border-radius:6px;'
+        + 'padding:2px 6px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:8px;'
+        + 'outline:none">' + opts + '</select>';
+    }}
+
+    // ── Dollar value badge (right of qualified marker) — 2026 only ─────────
     var dvBadge = '';
-    if (d.dv != null) {{
+    if (year === 2026 && d.dv != null) {{
       var dvSign = d.dv >= 0 ? '$' : '-$';
       dvBadge = '<span style="font-size:1.15rem;font-weight:900;color:#4caf50;'
         + 'background:#1b3a1b;border:1px solid #4caf50;padding:1px 8px;border-radius:6px;margin-left:8px">'
@@ -372,6 +468,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
       +     qual
       +     dvBadge
+      +     yearDropdown
       +   warBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
@@ -392,7 +489,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     function fmt2(v) {{ return v != null ? v.toFixed(2) : '–'; }}
     function fmt1(v) {{ return v != null ? v.toFixed(1) : '–'; }}
     function fmtN(v) {{ return v != null ? v : '–'; }}
-    var myLeaders = (d.qual && _pcLeaders[String(id)]) ? _pcLeaders[String(id)] : [];
+    var myLeaders = (year === 2026 && d.qual && _pcLeaders[String(id)]) ? _pcLeaders[String(id)] : [];
     var leaderMap = {{}};
     myLeaders.forEach(function(k){{ leaderMap[k]=true; }});
     var std_items;
@@ -424,7 +521,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
     var std_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;padding:6px 8px;margin-bottom:10px">'
-      + '<div style="font-size:.55rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:4px">2026 STATS</div>'
+      + '<div style="font-size:.55rem;font-weight:700;color:#999;letter-spacing:.06em;margin-bottom:4px">' + year + ' STATS</div>'
       + '<div style="display:flex;flex-wrap:wrap;gap:0">'
       + std_items.map(function(x) {{
           var col = x[2] ? '#f0c040' : '#ddd';
@@ -532,6 +629,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       ? 'Percentile rank among all pitchers'
       : 'Percentile rank among all hitters';
     var _profHdr = (d.type === 'p') ? 'PITCHING PROFILE' : 'STATCAST PROFILE';
+    if (year !== 2026) _profHdr = year + ' ' + _profHdr;
     var bars_html =
       '<div style="background:#111;border:1px solid #222;border-radius:8px;'
       + 'padding:10px 12px 4px;margin-bottom:10px">'
@@ -626,7 +724,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
 
 def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
-                            lb_pitch_data: dict = None) -> str:
+                            lb_pitch_data: dict = None,
+                            historical_lb: dict = None) -> str:
     """Inject Player Cards tab button and panel into the dashboard HTML."""
     if not lb_data:
         return html
@@ -670,7 +769,8 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
 
     panel_html = render_player_cards_tab(lb_data, _dollar_map,
                                           lb_pitch_data=lb_pitch_data,
-                                          p_dollar_map=_p_dollar_map)
+                                          p_dollar_map=_p_dollar_map,
+                                          historical_lb=historical_lb)
     html       = html.replace("</body>", panel_html + "\n</body>")
     return html
 

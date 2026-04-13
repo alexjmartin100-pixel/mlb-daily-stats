@@ -122,6 +122,42 @@ def main():
     print("\n[ 6b/6 ] Fantasy dollar values")
     fantasy_data = compute_fantasy_dollar_values(lb_data, lb_pitch_data, year)
 
+    # ── Fetch historical leaderboards (2024/2025) with disk caching ────────
+    # Historical data is static, so we cache it to avoid re-fetching each run.
+    _hist_lb = {}
+    _cache_dir = os.path.dirname(os.path.abspath(__file__))
+    for _hy in [2024, 2025]:
+        _h_cache = os.path.join(_cache_dir, f"lb_cache_{_hy}.json")
+        if os.path.exists(_h_cache):
+            try:
+                with open(_h_cache, "r", encoding="utf-8") as _hf:
+                    _cached = json.load(_hf)
+                _hist_lb[_hy] = _cached
+                _n_h = len(_cached.get("hitters", []))
+                _n_p = len(_cached.get("pitchers_sp", [])) + len(_cached.get("pitchers_rp", []))
+                print(f"  Historical {_hy}: loaded from cache ({_n_h} hitters, {_n_p} pitchers)")
+                continue
+            except Exception as _he:
+                print(f"  Historical {_hy}: cache read failed ({_he}), refetching…")
+        try:
+            print(f"  Historical {_hy}: fetching leaderboards…")
+            _h_lb = fetch_season_batting_leaderboard(_hy)
+            _h_lp = fetch_season_pitching_leaderboard(_hy)
+            _h_lb = compute_hitter_percentiles(_h_lb)
+            _h_lp = compute_pitcher_percentiles(_h_lp)
+            _payload = {
+                "hitters": _h_lb,
+                "pitchers_sp": _h_lp.get("starters", []),
+                "pitchers_rp": _h_lp.get("relievers", []),
+            }
+            with open(_h_cache, "w", encoding="utf-8") as _hf:
+                json.dump(_payload, _hf)
+            _hist_lb[_hy] = _payload
+            print(f"  Historical {_hy}: cached ({len(_h_lb)} hitters, "
+                  f"{len(_payload['pitchers_sp'])+len(_payload['pitchers_rp'])} pitchers)")
+        except Exception as _he:
+            print(f"  Historical {_hy}: fetch failed ({_he}), skipping")
+
     n_games = int(df["game_pk"].nunique())
 
     # ── Build player name → position lookup from ESPN roster snapshot ────────
@@ -169,7 +205,8 @@ def main():
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
     html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup)
     html = inject_player_cards_tab(html, lb_data, fantasy_data,
-                                    lb_pitch_data=lb_pitch_data)
+                                    lb_pitch_data=lb_pitch_data,
+                                    historical_lb=_hist_lb)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "mlb_daily_stats.html")
