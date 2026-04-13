@@ -3695,8 +3695,11 @@ function _phase3RankColor(rank, n) {{
 var _ELIG_MAP = {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF'}};
 function _eligLabel(elig) {{
   if (!elig || !elig.length) return '';
-  return elig.map(function(e){{ return _ELIG_MAP[e] || ''; }})
-             .filter(function(x){{ return x; }}).join('/');
+  var parts = elig.map(function(e){{ return _ELIG_MAP[e] || ''; }})
+                  .filter(function(x){{ return x; }});
+  // Show DH only when the player has no real field position (e.g. Schwarber)
+  if (!parts.length && elig.indexOf(11) >= 0) parts.push('DH');
+  return parts.join('/');
 }}
 
 /* Map FanGraphs position string → array of ESPN slot IDs.
@@ -4934,12 +4937,11 @@ function _wwRenderRoster() {{
     var opacity = dropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
     var posLabel = isPitcher ? role : _eligLabel(p.elig);
+    var posBadge = posLabel ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">' + posLabel + '</span>' : '';
     var html = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
              + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
-             + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
-             + posLabel + '</span>'
              + '<span style="flex:1;font-size:.82rem;font-weight:600;color:#ddd">'
-             + (p.name || 'Unknown') + '</span>'
+             + (p.name || 'Unknown') + posBadge + '</span>'
              + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
              + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
              + '$' + (p.dollars||0).toFixed(1) + '</span>';
@@ -5574,12 +5576,11 @@ function _wwStreamRender() {{
     var opacity = isDropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
     var posLabel = isPitcher ? role : _eligLabel(p.elig);
+    var posBadge = posLabel ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">' + posLabel + '</span>' : '';
     var r = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
           + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
-          + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
-          + posLabel + '</span>'
           + '<span style="flex:1;font-size:.82rem;font-weight:600;color:#ddd">'
-          + (p.name || '') + '</span>'
+          + (p.name || '') + posBadge + '</span>'
           + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
           + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
           + '$' + (p.dollars||0).toFixed(1) + '</span>';

@@ -139,18 +139,21 @@ def main():
             with open(_espn_path, "r", encoding="utf-8") as _ef:
                 _espn_raw = _jmod.load(_ef)
             _raw = _espn_raw.get("raw", _espn_raw)
-            _PITCHER_SLOTS = {11, 13, 14, 15}
+            _PITCHER_SLOTS = {13, 14, 15}
             for _t in _raw.get("teams", []):
                 for _entry in _t.get("roster", {}).get("entries", []):
                     _ppe = _entry.get("playerPoolEntry", {}) or {}
                     _pl = _ppe.get("player", {}) or {}
                     _elig = _pl.get("eligibleSlots", []) or []
-                    # Skip pitchers
+                    # Skip pitchers (slots 13=P, 14=SP, 15=RP)
                     if set(_elig) & _PITCHER_SLOTS:
                         continue
                     _nm = (_pl.get("fullName") or "").strip()
                     if _nm:
                         _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig if e in _ESPN_ELIG_MAP]
+                        # Show DH only when player has no real field position
+                        if not _pos_parts and 11 in _elig:
+                            _pos_parts = ["DH"]
                         if _pos_parts:
                             pos_lookup[_nm] = "/".join(_pos_parts)
             print(f"  Position lookup: {len(pos_lookup)} hitters from ESPN snapshot")
