@@ -5273,7 +5273,7 @@ function wwToggleTable() {{
 }}
 
 /* Render standings table into a given container (shared by add/drop and stream) */
-function _wwRenderStandingsTable(newLeague, containerId) {{
+function _wwRenderStandingsTable(newLeague, containerId, highlightTeamId) {{
   var tw = document.getElementById(containerId);
   if (!tw) return;
   var n = newLeague.length;
@@ -5322,7 +5322,7 @@ function _wwRenderStandingsTable(newLeague, containerId) {{
     var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
     var rStr = rd === 0 ? '\u25A0 0'
              : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
-    var isUser = t.team_id === _wwState.teamId;
+    var isUser = t.team_id === (highlightTeamId != null ? highlightTeamId : _wwState.teamId);
     var nameAccent = isUser ? '#4caf50' : '#ddd';
     var bg = isUser ? '#1a1a1a' : 'transparent';
 
@@ -5766,7 +5766,7 @@ function wwStreamToggleTable() {{
   }} else {{
     var newLeague = window._wwStreamLastLeague || _wwStreamSimulate();
     if (!newLeague) return;
-    _wwRenderStandingsTable(newLeague, 'ww-stream-table-wrap');
+    _wwRenderStandingsTable(newLeague, 'ww-stream-table-wrap', _wwStreamState.teamId);
     tw.style.display = '';
     btn.innerHTML = '\u25B2 Hide full updated standings';
   }}
