@@ -874,6 +874,7 @@ let TA_HITTERS = __TA_H_JSON__;
 let TA_STARTERS= __TA_SP_JSON__;
 let TA_RELIEVERS=__TA_RP_JSON__;
 let TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
+let TA_ROSTER_IDS=new Set();
 const DEFAULT_TA_NAMES=__TA_NAMES_JSON__; // baked-in defaults — seeds Firestore on first login
 const ALL_MLB_PLAYERS=__ALL_MLB_PLAYERS_JSON__; // all 40-man roster players for roster search
 
@@ -2303,8 +2304,8 @@ function _migrateRoster(raw){
   return result;
 }
 
-var TA_ROSTER_IDS = new Set();
-var TA_ROSTER_NORMS = new Set();
+TA_ROSTER_IDS = new Set();
+TA_ROSTER_NORMS = new Set();
 
 function _rebuildTA(rosterEntries){
   // rosterEntries = [{id, name}, ...]
