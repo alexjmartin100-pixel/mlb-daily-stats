@@ -124,10 +124,44 @@ def main():
 
     n_games = int(df["game_pk"].nunique())
 
+    # ── Build player name → position lookup from ESPN roster snapshot ────────
+    pos_lookup = {}
+    _ESPN_ELIG_MAP = {0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}
+    try:
+        import json as _jmod
+        _espn_path = None
+        for _fn in ["espn_rosters.json"]:
+            _cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), _fn)
+            if os.path.exists(_cand):
+                _espn_path = _cand
+                break
+        if _espn_path:
+            with open(_espn_path, "r", encoding="utf-8") as _ef:
+                _espn_raw = _jmod.load(_ef)
+            _raw = _espn_raw.get("raw", _espn_raw)
+            _PITCHER_SLOTS = {11, 13, 14, 15}
+            for _t in _raw.get("teams", []):
+                for _entry in _t.get("roster", {}).get("entries", []):
+                    _ppe = _entry.get("playerPoolEntry", {}) or {}
+                    _pl = _ppe.get("player", {}) or {}
+                    _elig = _pl.get("eligibleSlots", []) or []
+                    # Skip pitchers
+                    if set(_elig) & _PITCHER_SLOTS:
+                        continue
+                    _nm = (_pl.get("fullName") or "").strip()
+                    if _nm:
+                        _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig if e in _ESPN_ELIG_MAP]
+                        if _pos_parts:
+                            pos_lookup[_nm] = "/".join(_pos_parts)
+            print(f"  Position lookup: {len(pos_lookup)} hitters from ESPN snapshot")
+    except Exception as _e:
+        print(f"  Position lookup failed: {_e}")
+
     print("\nRendering HTML…")
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
-                       lb_data=lb_data, lb_pitch_data=lb_pitch_data)
+                       lb_data=lb_data, lb_pitch_data=lb_pitch_data,
+                       pos_lookup=pos_lookup)
     lb_data = compute_hitter_percentiles(lb_data)
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
     html = inject_fantasy_tab(html, fantasy_data)

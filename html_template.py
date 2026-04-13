@@ -851,6 +851,9 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
+const _POS_LOOKUP = __POS_LOOKUP_JSON__;
+function _posFor(name){return _POS_LOOKUP[name]||'';}
+function _posBadge(name){var p=_posFor(name);return p?'<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">'+p+'</span>':'';}
 const HITTERS    = __HITTERS_JSON__;
 const ALL_PITCHERS = __ALL_PITCHERS_JSON__;
 const STARTERS   = ALL_PITCHERS.filter(p=>p.ip_float>=3||p.is_starter);
@@ -1024,7 +1027,7 @@ function renderH(){
   if(!hD.length){tb.innerHTML='<tr><td colspan="13"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';ct.textContent='';return;}
   ct.textContent=`${hD.length} player${hD.length===1?'':'s'}`;
   tb.innerHTML=hD.map(h=>`<tr>
-    <td class="nm">${h.name}</td>
+    <td class="nm">${h.name}${_posBadge(h.name)}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
     <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
@@ -1146,7 +1149,7 @@ function renderTALB(){
     tb.innerHTML='<tr><td colspan="24"><div class="empty"><div class="ico">📊</div><p>No season data for your team yet.</p></div></td></tr>';return;
   }
   tb.innerHTML=taLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r" data-col="pa">${fmtInt('pa',  p.pa)}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
     <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
@@ -1267,7 +1270,7 @@ function renderTAH(){
     return;
   }
   tb.innerHTML=taHD.map(h=>`<tr>
-    <td class="nm">${h.name}</td>
+    <td class="nm">${h.name}${_posBadge(h.name)}</td>
     <td>${tm(h.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(h.opp)}</td>
     <td class="r">${(h.h||0)}/${(h.ab||0)}</td>
@@ -1566,7 +1569,7 @@ function renderLB(){
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
-    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="pa">${fmtInt('pa',  p.pa)}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
@@ -1788,7 +1791,7 @@ function cmpSearch(){
     const added=already.has(p.id);
     const role=cmpType==='p'?(p.is_sp?'SP':'RP'):'';
     return `<div class="cmp-di" data-id="${p.id}" onmousedown="cmpAdd(${p.id})">`
-      +(p.team?tm(p.team):'')+` <span>${p.name}</span>`
+      +(p.team?tm(p.team):'')+` <span>${p.name}${_posBadge(p.name)}</span>`
       +(role?` <span style="color:var(--muted);font-size:.72rem">${role}</span>`:'')
       +(!p.qualified?' <span style="color:var(--muted);font-size:.72rem">[NQ]</span>':'')
       +(added?'<span style="color:var(--muted);font-size:.72rem;margin-left:auto">Added</span>':'')
@@ -1840,7 +1843,7 @@ function renderCmp(){
       const p=LB_ALL.find(x=>x.id===id);
       if(!p) return '';
       return `<tr>
-        <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
         <td>${p.team?tm(p.team):''}</td>
         <td class="r" data-col="r">${fmtInt('r',p.r)}</td>
         <td class="r" data-col="hr">${fmtInt('hr',p.hr)}</td>
@@ -2383,7 +2386,7 @@ function _renderRosterList(){
       const on=TA_ROSTER_NORMS.has(taNorm(p.name));
       const badge=p.team?`<span style="margin-left:5px">${tm(p.team)}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
-        <span>${p.name}${badge}</span>
+        <span>${p.name}${_posBadge(p.name)}${badge}</span>
         <button data-rp="${i}" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');
@@ -2468,7 +2471,7 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
                 ta_hitters, ta_starters, ta_relievers,
-                lb_data=None, lb_pitch_data=None):
+                lb_data=None, lb_pitch_data=None, pos_lookup=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -2487,6 +2490,7 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__DATE_DISPLAY__", date_display)
         .replace("__N_GAMES__", str(n_games))
         .replace("__TS__", ts)
+        .replace("__POS_LOOKUP_JSON__", json.dumps(pos_lookup or {}))
         .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
         .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
         .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))

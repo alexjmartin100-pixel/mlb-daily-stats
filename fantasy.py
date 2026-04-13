@@ -5164,7 +5164,7 @@ function _wwSimulate() {{
           name:     fa.name,
           team:     fa.team,
           dollars:  fa.dollars || 0,
-          elig:     fa.cats ? [12] : [12],  // UTIL eligible
+          elig:     fa.elig || (fa.fg_pos ? _fgPosToSlots(fa.fg_pos) : [12]),
           R:        (fa.proj && fa.proj.R)    || 0,
           HR:       (fa.proj && fa.proj.HR)   || 0,
           RBI:      (fa.proj && fa.proj.RBI)  || 0,

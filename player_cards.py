@@ -689,7 +689,4 @@ def inject_fantasy_tab(html: str, fantasy_data: dict) -> str:
 
     # Inject panel before </body>
     html = html.replace("</body>", panel_html + "\n</body>")
-    return html
-
-
-# ── Season Pitching Leaderboard ────────────────────────────────────────────
+    return html 
