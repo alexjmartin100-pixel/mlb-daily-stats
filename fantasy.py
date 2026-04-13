@@ -5363,8 +5363,9 @@ function _wwStreamComputeProfile() {{
   // Use ESPN matchup schedule data when available; fall back to date calc.
   var weeksLeft;
   if (PHASE3_LEAGUE && PHASE3_LEAGUE.matchup_total && PHASE3_LEAGUE.matchup_current) {{
-    // ESPN H2H: remaining matchup periods (including current in-progress week)
-    weeksLeft = Math.max(1, PHASE3_LEAGUE.matchup_total - PHASE3_LEAGUE.matchup_current + 1);
+    // ESPN H2H: weeks remaining AFTER the current week finishes
+    // (i.e. "if I start streaming next week, how many weeks do I get?")
+    weeksLeft = Math.max(1, PHASE3_LEAGUE.matchup_total - PHASE3_LEAGUE.matchup_current);
   }} else {{
     var today = new Date();
     var seasonEnd = new Date(today.getFullYear(), 8, 28); // Sept 28 fallback
