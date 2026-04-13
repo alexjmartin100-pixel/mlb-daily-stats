@@ -1373,6 +1373,11 @@ def render_fantasy_tab(fdata: dict) -> str:
               style="padding:8px 18px">
         &#x1F50D; Compare Players
       </button>
+      <button id="fant-waiver-btn" class="tab-btn"
+              onclick="fantSwitch('waiver')"
+              style="padding:8px 18px">
+        &#x267B; Waiver Wire
+      </button>
     </div>
   </div>
 
@@ -1649,6 +1654,164 @@ def render_fantasy_tab(fdata: dict) -> str:
   {proj_html}
 </div>
 
+<!-- ══ WAIVER WIRE ══ -->
+<div id="fant-waiver-wrap" style="display:none;padding:18px 20px 0">
+  <!-- Inner sub-tabs: Add/Drop | Stream Pitchers -->
+  <div style="display:flex;gap:10px;margin-bottom:14px">
+    <button id="ww-adddrop-btn" class="tab-btn active"
+            onclick="wwSwitch('adddrop')"
+            style="border-bottom:3px solid var(--accent);color:#fff;padding:6px 14px;font-size:.82rem">
+      &#x1F504; Add / Drop
+    </button>
+    <button id="ww-stream-btn" class="tab-btn"
+            onclick="wwSwitch('stream')"
+            style="padding:6px 14px;font-size:.82rem">
+      &#x1F525; Stream Pitchers
+    </button>
+  </div>
+
+  <!-- ── ADD/DROP MODE ── -->
+  <div id="ww-adddrop-wrap">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Select your team
+      </label>
+      <select id="ww-team-sel" onchange="wwSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <!-- Current roster display + drop buttons -->
+    <div id="ww-roster-wrap" style="display:none">
+      <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                  text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+        Current Roster <span id="ww-roster-count" style="color:#888;font-weight:400"></span>
+      </div>
+      <div id="ww-roster-list" style="margin-bottom:12px"></div>
+
+      <!-- Add player search (shown when team has open spot or has dropped someone) -->
+      <div id="ww-add-section" style="display:none">
+        <div style="font-size:.75rem;color:#4caf50;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          &#x2795; Add from Free Agency
+        </div>
+        <div style="position:relative;margin-bottom:10px;max-width:400px">
+          <input id="ww-add-search" type="text" placeholder="&#128269; Search free agents…"
+                 oninput="wwSearchFA(this.value)" autocomplete="off"
+                 onblur="setTimeout(function(){{var d=document.getElementById('ww-add-dd');if(d)d.style.display='none';}},160)"
+                 style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                        color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+          <div id="ww-add-dd"
+               style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                      background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                      max-height:280px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+        </div>
+        <div id="ww-add-list" style="margin-bottom:12px"></div>
+      </div>
+
+      <!-- Results section -->
+      <div id="ww-impact-wrap" style="display:none;margin-top:18px;
+                                      border-top:1px solid #2a2a2a;padding-top:14px">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          &#x1F4CA; League impact (rebalanced lineups, full z-score recompute)
+        </div>
+        <div id="ww-delta"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ww-standings-btn" onclick="wwToggleTable()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show full updated standings
+          </button>
+          <button id="ww-mc-btn" onclick="wwToggleMc()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show finish-probability sim (before / after)
+          </button>
+        </div>
+        <div id="ww-table-wrap" style="display:none;margin-top:10px"></div>
+        <div id="ww-mc-wrap" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STREAM PITCHERS MODE ── -->
+  <div id="ww-stream-wrap" style="display:none">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Select your team
+      </label>
+      <select id="ww-stream-team-sel" onchange="wwStreamSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <div id="ww-stream-body" style="display:none">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px 16px;
+                  margin-bottom:14px;font-size:.8rem;color:#bbb;line-height:1.5">
+        <strong style="color:var(--accent)">How it works:</strong>
+        This simulates streaming <strong>4 starting pitchers per week</strong> for the
+        rest of the season. The streamer stats are the average RoS projections of the
+        <strong>top 5 SP in free agency</strong> by dollar value. If your roster is full,
+        drop a player first to make room.
+      </div>
+
+      <!-- Drop to make room (optional) -->
+      <div id="ww-stream-drop-section">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          Current Roster
+        </div>
+        <div id="ww-stream-roster" style="margin-bottom:12px"></div>
+      </div>
+
+      <!-- Streaming stats preview -->
+      <div id="ww-stream-preview" style="display:none;margin-bottom:14px">
+        <div style="font-size:.75rem;color:#4caf50;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          &#x1F525; Streamer profile (avg of top 5 waiver SP)
+        </div>
+        <div id="ww-stream-stats" style="background:#1a1a1a;border:1px solid #333;
+                                          border-radius:8px;padding:10px 14px"></div>
+      </div>
+
+      <!-- Results section -->
+      <div id="ww-stream-impact" style="display:none;margin-top:18px;
+                                        border-top:1px solid #2a2a2a;padding-top:14px">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          &#x1F4CA; League impact with streaming (full z-score recompute)
+        </div>
+        <div id="ww-stream-delta"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ww-stream-standings-btn" onclick="wwStreamToggleTable()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show full updated standings
+          </button>
+          <button id="ww-stream-mc-btn" onclick="wwStreamToggleMc()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show finish-probability sim (before / after)
+          </button>
+        </div>
+        <div id="ww-stream-table-wrap" style="display:none;margin-top:10px"></div>
+        <div id="ww-stream-mc-wrap" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ── Hitter / Pitcher main toggle ────────────────────────────────── */
 function fantSwitch(which) {{
@@ -1659,7 +1822,9 @@ function fantSwitch(which) {{
   if (pw) pw.style.display = which==='proj' ? '' : 'none';
   var cw = document.getElementById('fant-cmp-wrap');
   if (cw) cw.style.display = which==='cmp' ? '' : 'none';
-  ['h','p','trade','proj','cmp'].forEach(function(w) {{
+  var ww = document.getElementById('fant-waiver-wrap');
+  if (ww) ww.style.display = which==='waiver' ? '' : 'none';
+  ['h','p','trade','proj','cmp','waiver'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     if (!btn) return;
     var on = (w === which);
@@ -4527,6 +4692,910 @@ function _phase3RenderTable(newLeague) {{
   }});
   html += '</tbody></table></div>';
   tw.innerHTML = html;
+}}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── Waiver Wire ──────────────────────────────────────────────────
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── State ── */
+var _wwState = {{
+  teamId: null,
+  drops: [],      // array of player objects dropped
+  adds: [],       // array of player objects added from FA
+  mode: 'adddrop' // 'adddrop' or 'stream'
+}};
+var _wwStreamState = {{
+  teamId: null,
+  drop: null,      // single player dropped (or null if open spot)
+  streamerProfile: null  // computed avg stats of top 5 SP
+}};
+
+/* ── Sub-tab toggle ── */
+function wwSwitch(which) {{
+  document.getElementById('ww-adddrop-wrap').style.display = which==='adddrop' ? '' : 'none';
+  document.getElementById('ww-stream-wrap').style.display  = which==='stream'  ? '' : 'none';
+  ['adddrop','stream'].forEach(function(w) {{
+    var btn = document.getElementById('ww-' + w + '-btn');
+    if (!btn) return;
+    var on = (w === which);
+    btn.style.borderBottom = on ? '3px solid var(--accent)' : 'none';
+    btn.style.color = on ? '#fff' : '';
+  }});
+  _wwState.mode = which;
+}}
+
+/* ── Init: populate team dropdowns when waiver tab is first shown ── */
+function wwInit() {{
+  if (!PHASE3_LEAGUE) return;
+  var allTeams = PHASE3_LEAGUE.teams.slice().sort(function(a,b) {{
+    return (a.name || '').localeCompare(b.name || '');
+  }});
+  var optHtml = '<option value="">\u2014 pick a team \u2014</option>';
+  allTeams.forEach(function(t) {{
+    var sel = (t.team_id === PHASE3_LEAGUE.user_team_id) ? ' selected' : '';
+    optHtml += '<option value="' + t.team_id + '"' + sel + '>' + t.name + '</option>';
+  }});
+  var s1 = document.getElementById('ww-team-sel');
+  if (s1) {{ s1.innerHTML = optHtml; }}
+  var s2 = document.getElementById('ww-stream-team-sel');
+  if (s2) {{ s2.innerHTML = optHtml; }}
+  // Auto-select user team if available
+  if (PHASE3_LEAGUE.user_team_id != null) {{
+    wwSetTeam(PHASE3_LEAGUE.user_team_id);
+    wwStreamSetTeam(PHASE3_LEAGUE.user_team_id);
+  }}
+}}
+// Run init after page load
+if (document.readyState === 'complete') {{ wwInit(); }}
+else {{ window.addEventListener('load', wwInit); }}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── ADD / DROP MODE ──────────────────────────────────────────────
+   ════════════════════════════════════════════════════════════════════ */
+
+function wwSetTeam(val) {{
+  var tid = val === '' ? null : parseInt(val, 10);
+  _wwState.teamId = tid;
+  _wwState.drops = [];
+  _wwState.adds = [];
+  var rw = document.getElementById('ww-roster-wrap');
+  if (!tid) {{ if (rw) rw.style.display = 'none'; return; }}
+  if (rw) rw.style.display = '';
+  _wwRenderRoster();
+}}
+
+function _wwGetTeam() {{
+  if (!PHASE3_LEAGUE || _wwState.teamId == null) return null;
+  return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _wwState.teamId; }});
+}}
+
+function _wwRosterSize(team) {{
+  return (team.hitters || []).length + (team.pitchers || []).length;
+}}
+
+/* Max active roster = hitter slots (11) + bench hitters (variable) + pitchers
+   We compute it from the current team size since it varies. */
+function _wwMaxRoster(team) {{
+  return _wwRosterSize(team);
+}}
+
+function _wwRenderRoster() {{
+  var team = _wwGetTeam();
+  if (!team) return;
+  var rList = document.getElementById('ww-roster-list');
+  var addSec = document.getElementById('ww-add-section');
+  var impWrap = document.getElementById('ww-impact-wrap');
+  if (!rList) return;
+
+  var hitters = (team.hitters || []).slice().sort(function(a,b) {{ return (b.dollars||0)-(a.dollars||0); }});
+  var pitchers = (team.pitchers || []).slice().sort(function(a,b) {{ return (b.dollars||0)-(a.dollars||0); }});
+
+  // Build drop set
+  var dropIds = {{}};
+  _wwState.drops.forEach(function(d) {{ dropIds[d.espn_id] = true; }});
+
+  function playerRow(p, isPitcher) {{
+    var dropped = !!dropIds[p.espn_id];
+    var dc = _dollarColor(p.dollars || 0);
+    var opacity = dropped ? 'opacity:0.35;' : '';
+    var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
+    var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
+      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',6:'MI',7:'CI',12:'UTIL'}}[e] || '?';
+    }}).join('/') : '');
+    var html = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
+             + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
+             + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
+             + posLabel + '</span>'
+             + '<span style="flex:1;font-size:.82rem;font-weight:600;color:#ddd">'
+             + (p.name || 'Unknown') + '</span>'
+             + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
+             + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
+             + '$' + (p.dollars||0).toFixed(1) + '</span>';
+    if (!dropped) {{
+      html += '<button onclick="wwDrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+            + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
+            + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Drop</button>';
+    }} else {{
+      html += '<button onclick="wwUndrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+            + ' style="background:#1a3a1a;border:1px solid #2e6b2e;color:#9cd39c;cursor:pointer;'
+            + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Undo</button>';
+    }}
+    html += '</div>';
+    return html;
+  }}
+
+  var html = '<div style="font-size:.7rem;color:#4caf50;font-weight:700;margin-bottom:4px">Hitters</div>';
+  hitters.forEach(function(p) {{ html += playerRow(p, false); }});
+  html += '<div style="font-size:.7rem;color:#4caf50;font-weight:700;margin:8px 0 4px">Pitchers</div>';
+  pitchers.forEach(function(p) {{ html += playerRow(p, true); }});
+
+  // Show added players
+  if (_wwState.adds.length) {{
+    html += '<div style="font-size:.7rem;color:#4caf50;font-weight:700;margin:8px 0 4px">&#x2795; Added</div>';
+    _wwState.adds.forEach(function(p) {{
+      var dc = _dollarColor(p.dollars || 0);
+      var role = p.is_pitcher ? ((p.proj && p.proj.IP || 0) >= 100 ? 'SP' : 'RP') : 'H';
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
+            + 'background:#1a2a1a;border-radius:5px;margin-bottom:3px;border-left:3px solid #4caf50">'
+            + '<span style="color:#4caf50;font-size:.68rem;font-weight:700;width:36px">' + role + '</span>'
+            + '<span style="flex:1;font-size:.82rem;font-weight:600;color:#ddd">'
+            + (p.name || 'Unknown') + '</span>'
+            + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
+            + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
+            + '$' + (p.dollars||0).toFixed(1) + '</span>'
+            + '<button onclick="wwRemoveAdd(\'' + (p.name+'').replace(/'/g,"\\'") + '\')"'
+            + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
+            + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">\u2715</button>'
+            + '</div>';
+    }});
+  }}
+
+  var countEl = document.getElementById('ww-roster-count');
+  var netChange = _wwState.adds.length - _wwState.drops.length;
+  if (countEl) countEl.textContent = '(' + _wwRosterSize(team) + ' active' + (netChange !== 0 ? ', net ' + (netChange > 0 ? '+' : '') + netChange : '') + ')';
+
+  rList.innerHTML = html;
+
+  // Show add section when drops > adds (open spots)
+  var openSpots = _wwState.drops.length - _wwState.adds.length;
+  if (addSec) addSec.style.display = openSpots > 0 ? '' : 'none';
+
+  // Show impact when at least one add OR one drop
+  if (_wwState.adds.length > 0 || _wwState.drops.length > 0) {{
+    _wwRenderImpact();
+    if (impWrap) impWrap.style.display = '';
+  }} else {{
+    if (impWrap) impWrap.style.display = 'none';
+  }}
+}}
+
+function wwDrop(espnId) {{
+  var team = _wwGetTeam();
+  if (!team) return;
+  var all = (team.hitters || []).concat(team.pitchers || []);
+  var p = all.find(function(x) {{ return String(x.espn_id) === String(espnId); }});
+  if (!p) return;
+  // Check if already dropped
+  if (_wwState.drops.some(function(d) {{ return String(d.espn_id) === String(espnId); }})) return;
+  _wwState.drops.push(p);
+  _wwRenderRoster();
+}}
+
+function wwUndrop(espnId) {{
+  _wwState.drops = _wwState.drops.filter(function(d) {{ return String(d.espn_id) !== String(espnId); }});
+  // If we now have more adds than drops, remove the last add
+  while (_wwState.adds.length > _wwState.drops.length) {{
+    _wwState.adds.pop();
+  }}
+  _wwRenderRoster();
+}}
+
+/* ── Free Agent Search ── */
+function wwSearchFA(q) {{
+  var dd = document.getElementById('ww-add-dd');
+  if (!dd) return;
+  q = (q || '').trim().toLowerCase();
+  if (q.length < 2) {{ dd.style.display = 'none'; return; }}
+
+  // Build exclusion set: rostered + already added
+  var addedNames = {{}};
+  _wwState.adds.forEach(function(p) {{ addedNames[p.name] = true; }});
+
+  var pool = TRADE_HITTERS.concat(TRADE_PITCHERS);
+  var matches = pool.filter(function(p) {{
+    if (p.team_id != null) return false;  // rostered
+    if (addedNames[p.name]) return false;
+    return (p.name || '').toLowerCase().includes(q);
+  }});
+  matches.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
+  matches = matches.slice(0, 10);
+
+  if (!matches.length) {{
+    dd.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:.8rem">No free agents found</div>';
+    dd.style.display = '';
+    return;
+  }}
+
+  var html = '';
+  matches.forEach(function(p) {{
+    var dc = _dollarColor(p.dollars || 0);
+    var role = p.is_pitcher ? ((p.proj && p.proj.IP || 0) >= 100 ? 'SP' : 'RP') : 'H';
+    html += '<div onmousedown="wwAddFA(\'' + (p.name+'').replace(/'/g,"\\'") + '\')"'
+          + ' style="display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;'
+          + 'border-bottom:1px solid #2a2a2a;font-size:.82rem" '
+          + 'onmouseover="this.style.background=\'#2a2a2a\'" onmouseout="this.style.background=\'\'">'
+          + '<span style="color:#888;font-size:.68rem;font-weight:700;width:28px">' + role + '</span>'
+          + '<span style="flex:1;color:#ddd;font-weight:600">' + p.name + '</span>'
+          + '<span style="color:#888;font-size:.75rem">' + (p.team || '') + '</span>'
+          + '<span style="color:' + dc + ';font-weight:700;width:50px;text-align:right">$' + (p.dollars||0).toFixed(1) + '</span>'
+          + '</div>';
+  }});
+  dd.innerHTML = html;
+  dd.style.display = '';
+}}
+
+function wwAddFA(name) {{
+  var pool = TRADE_HITTERS.concat(TRADE_PITCHERS);
+  var p = pool.find(function(x) {{ return x.name === name && x.team_id == null; }});
+  if (!p) return;
+  // Don't add more than we have open spots
+  if (_wwState.adds.length >= _wwState.drops.length) return;
+  _wwState.adds.push(p);
+  var dd = document.getElementById('ww-add-dd');
+  if (dd) dd.style.display = 'none';
+  var search = document.getElementById('ww-add-search');
+  if (search) search.value = '';
+  _wwRenderRoster();
+}}
+
+function wwRemoveAdd(name) {{
+  _wwState.adds = _wwState.adds.filter(function(p) {{ return p.name !== name; }});
+  _wwRenderRoster();
+}}
+
+/* ── Dollar color helper (reuse from existing) ── */
+function _dollarColor(d) {{
+  if (d >= 30) return '#4CAF50';
+  if (d >= 20) return '#8BC34A';
+  if (d >= 10) return '#CDDC39';
+  if (d >= 5)  return '#FFC107';
+  if (d >= 1)  return '#FF9800';
+  return '#ef5350';
+}}
+
+/* ── Simulate waiver move: deep-copy league, apply drops + adds to team ── */
+function _wwSimulate() {{
+  if (!PHASE3_LEAGUE || _wwState.teamId == null) return null;
+  if (!_wwState.drops.length && !_wwState.adds.length) return null;
+
+  var league = JSON.parse(JSON.stringify(PHASE3_LEAGUE.teams));
+  var tid = _wwState.teamId;
+
+  league.forEach(function(team) {{
+    if (team.team_id !== tid) return;
+
+    // Remove dropped players
+    var dropIds = {{}};
+    _wwState.drops.forEach(function(d) {{ dropIds[d.espn_id] = true; }});
+    team.hitters  = team.hitters.filter(function(p)  {{ return !dropIds[p.espn_id]; }});
+    team.pitchers = team.pitchers.filter(function(p) {{ return !dropIds[p.espn_id]; }});
+
+    // Add FA pickups
+    _wwState.adds.forEach(function(fa) {{
+      if (fa.is_pitcher) {{
+        team.pitchers.push({{
+          espn_id:  'fa_' + (fa.name || '').replace(/[^A-Za-z0-9]+/g, '_'),
+          name:     fa.name,
+          team:     fa.team,
+          dollars:  fa.dollars || 0,
+          W:        (fa.proj && fa.proj.W)    || 0,
+          SO_p:     (fa.proj && fa.proj.K_p)  || 0,
+          SV:       (fa.proj && fa.proj.SV)   || 0,
+          HLD:      (fa.proj && fa.proj.HLD)  || 0,
+          ERA:      (fa.proj && fa.proj.ERA)  || 0,
+          WHIP:     (fa.proj && fa.proj.WHIP) || 0,
+          IP:       (fa.proj && fa.proj.IP)   || ((fa.role === 'sp' || ((fa.proj && fa.proj.IP)||0) >= 100) ? 160 : 65)
+        }});
+      }} else {{
+        team.hitters.push({{
+          espn_id:  'fa_' + (fa.name || '').replace(/[^A-Za-z0-9]+/g, '_'),
+          name:     fa.name,
+          team:     fa.team,
+          dollars:  fa.dollars || 0,
+          elig:     fa.cats ? [12] : [12],  // UTIL eligible
+          R:        (fa.proj && fa.proj.R)    || 0,
+          HR:       (fa.proj && fa.proj.HR)   || 0,
+          RBI:      (fa.proj && fa.proj.RBI)  || 0,
+          SO_h:     (fa.proj && fa.proj.K_h)  || 0,
+          SB:       (fa.proj && fa.proj.SB)   || 0,
+          OBP:      (fa.proj && fa.proj.OBP)  || 0,
+          PA:       (fa.proj && fa.proj.PA)   || 600
+        }});
+      }}
+    }});
+
+    // Re-optimize lineup + re-aggregate
+    var starters = _phase3OptimizeHitters(team.hitters);
+    var hAgg = _phase3AggHit(starters);
+    var pAgg = _phase3AggPit(team.pitchers);
+    team.stats = {{
+      R:    Math.round(hAgg.R    * 10) / 10,
+      HR:   Math.round(hAgg.HR   * 10) / 10,
+      RBI:  Math.round(hAgg.RBI  * 10) / 10,
+      SO_h: Math.round(hAgg.SO_h * 10) / 10,
+      SB:   Math.round(hAgg.SB   * 10) / 10,
+      OBP:  Math.round(hAgg.OBP  * 10000) / 10000,
+      W:    Math.round(pAgg.W    * 10) / 10,
+      SO_p: Math.round(pAgg.SO_p * 10) / 10,
+      SV:   Math.round(pAgg.SV   * 10) / 10,
+      HLD:  Math.round(pAgg.HLD  * 10) / 10,
+      ERA:  Math.round(pAgg.ERA  * 1000) / 1000,
+      WHIP: Math.round(pAgg.WHIP * 1000) / 1000,
+    }};
+  }});
+
+  _phase3RecomputeZ(league);
+  return league;
+}}
+
+/* ── Render Impact (compact delta for the user's team) ── */
+function _wwRenderImpact() {{
+  var newLeague = _wwSimulate();
+  var delta = document.getElementById('ww-delta');
+  if (!newLeague || !delta) return;
+
+  var tid = _wwState.teamId;
+  var oldT = PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }});
+  var newT = newLeague.find(function(t) {{ return t.team_id === tid; }});
+  if (!oldT || !newT) return;
+
+  window._wwLastLeague = newLeague;
+
+  var n = newLeague.length;
+  var rkC = _phase3RankColor(newT.rank_total, n);
+  var zd = newT.z_total - oldT.z_total;
+  var rd = oldT.rank_total - newT.rank_total;
+  var zCol = zd > 0.005 ? '#4caf50' : zd < -0.005 ? '#e05555' : '#888';
+  var rCol = rd > 0     ? '#4caf50' : rd < 0      ? '#e05555' : '#888';
+  var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
+  var rStr = rd === 0 ? '\u25A0 0'
+           : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
+
+  var html = '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:10px 14px;'
+           + 'background:#1a1a1a;border-radius:8px;border-left:3px solid ' + rkC + '">'
+           + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+           + 'letter-spacing:.05em">Rank</span><br>'
+           + '<span style="font-size:1.3rem;font-weight:700;color:' + rkC + '">#' + newT.rank_total + '</span></div>'
+           + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+           + 'letter-spacing:.05em">Z Total</span><br>'
+           + '<span style="font-size:1.1rem;font-weight:700;color:#ddd">' + newT.z_total.toFixed(2) + '</span></div>'
+           + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+           + 'letter-spacing:.05em">\u0394 Z</span><br>'
+           + '<span style="font-size:1.1rem;font-weight:700;color:' + zCol + '">' + zStr + '</span></div>'
+           + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+           + 'letter-spacing:.05em">\u0394 Rank</span><br>'
+           + '<span style="font-size:1.1rem;font-weight:700;color:' + rCol + '">' + rStr + '</span></div>'
+           + '</div>';
+  delta.innerHTML = html;
+
+  // Reset toggle states
+  document.getElementById('ww-table-wrap').style.display = 'none';
+  document.getElementById('ww-table-wrap').innerHTML = '';
+  document.getElementById('ww-mc-wrap').style.display = 'none';
+  document.getElementById('ww-mc-wrap').innerHTML = '';
+  var tbtn = document.getElementById('ww-standings-btn');
+  if (tbtn) tbtn.innerHTML = '\u25BC Show full updated standings';
+  var mbtn = document.getElementById('ww-mc-btn');
+  if (mbtn) mbtn.innerHTML = '\u25BC Show finish-probability sim (before / after)';
+}}
+
+/* ── Toggle standings table (reuses _phase3RenderTable) ── */
+function wwToggleTable() {{
+  var tw  = document.getElementById('ww-table-wrap');
+  var btn = document.getElementById('ww-standings-btn');
+  if (!tw) return;
+  var open = tw.style.display !== 'none';
+  if (open) {{
+    tw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show full updated standings';
+  }} else {{
+    var newLeague = window._wwLastLeague || _wwSimulate();
+    if (!newLeague) return;
+    // Reuse the existing _phase3RenderTable by temporarily swapping the target element
+    _wwRenderStandingsTable(newLeague, 'ww-table-wrap');
+    tw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide full updated standings';
+  }}
+}}
+
+/* Render standings table into a given container (shared by add/drop and stream) */
+function _wwRenderStandingsTable(newLeague, containerId) {{
+  var tw = document.getElementById(containerId);
+  if (!tw) return;
+  var n = newLeague.length;
+  function findOld(tid) {{ return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }}); }}
+  var sorted = newLeague.slice().sort(function(a,b) {{ return a.rank_total - b.rank_total; }});
+  var lower = {{}};
+  PHASE3_LEAGUE.lower_better.forEach(function(c) {{ lower[c] = true; }});
+  var hCats = PHASE3_LEAGUE.hit_cats || [];
+  var pCats = PHASE3_LEAGUE.pit_cats || [];
+  var catLabel = {{'R':'R','HR':'HR','RBI':'RBI','SO_h':'K','SB':'SB','OBP':'OBP',
+                  'W':'W','SO_p':'K','SV':'SV','HLD':'HLD','ERA':'ERA','WHIP':'WHIP'}};
+  var thSt = 'padding:3px 5px;text-align:center;color:var(--muted);font-size:.7rem;white-space:nowrap';
+
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+           + '<thead><tr style="border-bottom:1px solid #333">'
+           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">#</th>'
+           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">Team</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">Z Tot</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Z</th>'
+           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Rk</th>'
+           + '<th style="border-left:2px solid #444;' + thSt + '">H Z</th>';
+  hCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
+  html += '<th style="border-left:2px solid #444;' + thSt + '">P Z</th>';
+  pCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
+  html += '</tr></thead><tbody>';
+
+  sorted.forEach(function(t) {{
+    var old = findOld(t.team_id);
+    var rkC = _phase3RankColor(t.rank_total, n);
+    var zd  = t.z_total - old.z_total;
+    var rd  = old.rank_total - t.rank_total;
+    var zCol = zd > 0.005 ? '#4caf50' : zd < -0.005 ? '#e05555' : '#888';
+    var rCol = rd > 0     ? '#4caf50' : rd < 0      ? '#e05555' : '#888';
+    var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
+    var rStr = rd === 0 ? '\u25A0 0'
+             : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
+    var isUser = t.team_id === _wwState.teamId;
+    var nameAccent = isUser ? '#4caf50' : '#ddd';
+    var bg = isUser ? '#1a1a1a' : 'transparent';
+
+    function fmtRaw(cat, v) {{
+      if (cat === 'OBP') return v.toFixed(3);
+      if (cat === 'ERA' || cat === 'WHIP') return v.toFixed(2);
+      return Math.round(v).toString();
+    }}
+
+    function zCell(cat, borderLeft) {{
+      var nz = t.z[cat] || 0;
+      var oz = old.z[cat] || 0;
+      var nv = t.stats[cat] || 0;
+      var ov = old.stats[cat] || 0;
+      var rawD = nv - ov;
+      var zd2 = nz - oz;
+      var isLower = lower[cat];
+      var rawGood = isLower ? (rawD < -0.0005) : (rawD > 0.0005);
+      var rawBad  = isLower ? (rawD > 0.0005)  : (rawD < -0.0005);
+      var rawChanged = Math.abs(rawD) > 0.0005;
+      var rawDStr = '';
+      if (rawChanged) {{
+        var rc = rawGood ? '#4caf50' : rawBad ? '#e05555' : '#888';
+        var rawSign = rawD >= 0 ? '+' : '\u2212';
+        rawDStr = '<div style="font-size:.58rem;color:' + rc + ';line-height:1;margin-top:1px">'
+                + rawSign + fmtRaw(cat, Math.abs(rawD)) + '</div>';
+      }}
+      var zStr2 = '<div style="font-size:.6rem;color:#666;line-height:1;margin-top:1px">z ' + nz.toFixed(2) + '</div>';
+      var bl = borderLeft ? 'border-left:2px solid #444;' : '';
+      return '<td style="' + bl + 'text-align:center;padding:2px 4px">'
+           + '<div style="font-size:.82rem;line-height:1.15;font-weight:600">' + fmtRaw(cat, nv) + '</div>'
+           + zStr2
+           + rawDStr + '</td>';
+    }}
+
+    html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
+          + '<td style="padding:3px 6px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
+          + '<td style="padding:3px 6px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
+          + '<td style="padding:3px 6px;text-align:center;color:' + rkC + ';font-weight:700">'
+          +   t.z_total.toFixed(2) + '</td>'
+          + '<td style="padding:3px 6px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
+          + '<td style="padding:3px 6px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
+    var hzd = (t.z_hit||0) - (old.z_hit||0);
+    var hzCol = hzd > 0.005 ? '#4caf50' : hzd < -0.005 ? '#e05555' : '#888';
+    var hzDStr = Math.abs(hzd) > 0.005
+               ? '<div style="font-size:.6rem;color:' + hzCol + ';line-height:1">'
+                 + (hzd > 0 ? '+' : '\u2212') + Math.abs(hzd).toFixed(2) + '</div>'
+               : '';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
+          + '<div style="line-height:1.15">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
+    hCats.forEach(function(c) {{ html += zCell(c, false); }});
+    var pzd = (t.z_pit||0) - (old.z_pit||0);
+    var pzCol = pzd > 0.005 ? '#4caf50' : pzd < -0.005 ? '#e05555' : '#888';
+    var pzDStr = Math.abs(pzd) > 0.005
+               ? '<div style="font-size:.6rem;color:' + pzCol + ';line-height:1">'
+                 + (pzd > 0 ? '+' : '\u2212') + Math.abs(pzd).toFixed(2) + '</div>'
+               : '';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
+          + '<div style="line-height:1.15">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
+    pCats.forEach(function(c) {{ html += zCell(c, false); }});
+    html += '</tr>';
+  }});
+  html += '</tbody></table></div>';
+  tw.innerHTML = html;
+}}
+
+/* ── Toggle MC sim (before/after) ── */
+function wwToggleMc() {{
+  var mw  = document.getElementById('ww-mc-wrap');
+  var btn = document.getElementById('ww-mc-btn');
+  if (!mw) return;
+  var open = mw.style.display !== 'none';
+  if (open) {{
+    mw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show finish-probability sim (before / after)';
+  }} else {{
+    _wwRenderMc('ww-mc-wrap', window._wwLastLeague, _wwState.teamId);
+    mw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide finish-probability sim';
+  }}
+}}
+
+/* Shared MC renderer for both add/drop and stream modes */
+function _wwRenderMc(containerId, newLeague, highlightTid) {{
+  var mw = document.getElementById(containerId);
+  if (!mw || !newLeague) return;
+  mw.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:.75rem">Running 50,000 trials\u2026</div>';
+  setTimeout(function() {{
+    var baseSim = _mcGetBaseline();
+    var newSim  = _mcRunSim(newLeague);
+    var hl = highlightTid != null ? [highlightTid] : [];
+
+    // Build before/after side by side
+    var baseExp = baseSim[highlightTid] ? baseSim[highlightTid].expFinish : 0;
+    var newExp  = newSim[highlightTid]  ? newSim[highlightTid].expFinish  : 0;
+    var delta   = newExp - baseExp;
+    var dCol    = delta < -0.05 ? '#4caf50' : delta > 0.05 ? '#e05555' : '#888';
+    var dSign   = delta < 0 ? '\u25B2' : (delta > 0 ? '\u25BC' : '\u25A0');
+
+    var teamName = '';
+    PHASE3_LEAGUE.teams.forEach(function(t) {{ if (t.team_id === highlightTid) teamName = t.name; }});
+
+    var summary = '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;'
+                + 'padding:10px 14px;background:#1a1a1a;border-radius:8px;margin-bottom:12px">'
+                + '<div style="font-weight:700;color:#ddd;font-size:.85rem">' + teamName + '</div>'
+                + '<div><span style="color:var(--muted);font-size:.68rem">Before: </span>'
+                + '<span style="font-weight:700;color:#ddd">' + baseExp.toFixed(2) + '</span></div>'
+                + '<div><span style="color:var(--muted);font-size:.68rem">After: </span>'
+                + '<span style="font-weight:700;color:#ddd">' + newExp.toFixed(2) + '</span></div>'
+                + '<div><span style="color:var(--muted);font-size:.68rem">\u0394: </span>'
+                + '<span style="font-weight:700;color:' + dCol + '">' + dSign + ' '
+                + Math.abs(delta).toFixed(2) + '</span></div>'
+                + '</div>';
+
+    var grid = '<div style="display:flex;gap:14px;flex-wrap:wrap">'
+             + '<div style="flex:1;min-width:320px">'
+             + '<div style="font-size:.66rem;color:var(--muted);font-weight:700;'
+             + 'text-transform:uppercase;letter-spacing:.05em;padding:0 0 6px 4px">Before</div>'
+             + _mcRenderHeatmap(PHASE3_LEAGUE.teams, baseSim, hl)
+             + '</div>'
+             + '<div style="flex:1;min-width:320px">'
+             + '<div style="font-size:.66rem;color:var(--muted);font-weight:700;'
+             + 'text-transform:uppercase;letter-spacing:.05em;padding:0 0 6px 4px">After waiver move</div>'
+             + _mcRenderHeatmap(newLeague, newSim, hl)
+             + '</div>'
+             + '</div>';
+    mw.innerHTML = summary + grid;
+  }}, 20);
+}}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── STREAM PITCHERS MODE ─────────────────────────────────────────
+   ════════════════════════════════════════════════════════════════════ */
+
+function wwStreamSetTeam(val) {{
+  var tid = val === '' ? null : parseInt(val, 10);
+  _wwStreamState.teamId = tid;
+  _wwStreamState.drop = null;
+  _wwStreamState.streamerProfile = null;
+  var body = document.getElementById('ww-stream-body');
+  if (!tid) {{ if (body) body.style.display = 'none'; return; }}
+  if (body) body.style.display = '';
+  _wwStreamComputeProfile();
+  _wwStreamRender();
+}}
+
+function _wwStreamGetTeam() {{
+  if (!PHASE3_LEAGUE || _wwStreamState.teamId == null) return null;
+  return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _wwStreamState.teamId; }});
+}}
+
+/* Compute the "average streamer" from top 5 unrostered SP by $ value.
+   Returns per-start stats scaled to 4 starts/week for the remaining season. */
+function _wwStreamComputeProfile() {{
+  // Find top 5 unrostered SP by dollar value
+  var sps = TRADE_PITCHERS.filter(function(p) {{
+    return p.team_id == null && p.role === 'sp';
+  }});
+  sps.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
+  var top5 = sps.slice(0, 5);
+
+  if (!top5.length) {{
+    _wwStreamState.streamerProfile = null;
+    return;
+  }}
+
+  // Average their RoS projections
+  var avg = {{ W:0, K_p:0, SV:0, HLD:0, ERA:0, WHIP:0, IP:0, dollars:0 }};
+  top5.forEach(function(p) {{
+    avg.W    += (p.proj && p.proj.W)    || 0;
+    avg.K_p  += (p.proj && p.proj.K_p)  || 0;
+    avg.SV   += (p.proj && p.proj.SV)   || 0;
+    avg.HLD  += (p.proj && p.proj.HLD)  || 0;
+    avg.ERA  += (p.proj && p.proj.ERA)  || 0;
+    avg.WHIP += (p.proj && p.proj.WHIP) || 0;
+    avg.IP   += (p.proj && p.proj.IP)   || 0;
+    avg.dollars += (p.dollars || 0);
+  }});
+  var cnt = top5.length;
+  avg.W /= cnt; avg.K_p /= cnt; avg.SV /= cnt; avg.HLD /= cnt;
+  avg.ERA /= cnt; avg.WHIP /= cnt; avg.IP /= cnt; avg.dollars /= cnt;
+
+  // The "one pitcher" has the average RoS projection of those top 5.
+  // But they get 4 starts per week instead of whatever the average SP gets.
+  // Calculate how many weeks remain in the season (roughly late March to late Sept = ~26 weeks).
+  // We scale the counting stats by (4 starts/wk * weeks) / (avg starts for those SPs).
+  // Average SP gets about IP/6 starts over RoS. So starts_ros = avg.IP / 6.
+  // Streamer gets 4 * weeksRemaining starts.
+  var today = new Date();
+  var seasonEnd = new Date(today.getFullYear(), 8, 28); // Sept 28
+  var msPerWeek = 7 * 24 * 3600 * 1000;
+  var weeksLeft = Math.max(1, Math.round((seasonEnd - today) / msPerWeek));
+  var streamerStarts = 4 * weeksLeft;
+  var avgStarts = Math.max(1, avg.IP / 6);  // ~6 IP per start
+  var scale = streamerStarts / avgStarts;
+
+  // Scale counting stats, keep rate stats (ERA, WHIP) as-is
+  var profile = {{
+    W:    avg.W    * scale,
+    SO_p: avg.K_p  * scale,
+    SV:   avg.SV   * scale,
+    HLD:  avg.HLD  * scale,
+    ERA:  avg.ERA,
+    WHIP: avg.WHIP,
+    IP:   avg.IP   * scale,
+    dollars: avg.dollars,
+    top5Names: top5.map(function(p) {{ return p.name; }}),
+    weeksLeft: weeksLeft,
+    startsPerWeek: 4,
+    totalStarts: streamerStarts
+  }};
+  _wwStreamState.streamerProfile = profile;
+}}
+
+function _wwStreamRender() {{
+  var team = _wwStreamGetTeam();
+  if (!team) return;
+  var rosterEl = document.getElementById('ww-stream-roster');
+  var previewEl = document.getElementById('ww-stream-preview');
+  var impactEl = document.getElementById('ww-stream-impact');
+  var statsEl = document.getElementById('ww-stream-stats');
+
+  if (!rosterEl) return;
+
+  // Show roster with drop buttons
+  var hitters = (team.hitters || []).slice().sort(function(a,b) {{ return (b.dollars||0)-(a.dollars||0); }});
+  var pitchers = (team.pitchers || []).slice().sort(function(a,b) {{ return (b.dollars||0)-(a.dollars||0); }});
+
+  var html = '';
+  var hasDropped = !!_wwStreamState.drop;
+
+  function pRow(p, isPitcher) {{
+    var isDropped = hasDropped && String(p.espn_id) === String(_wwStreamState.drop.espn_id);
+    var dc = _dollarColor(p.dollars || 0);
+    var opacity = isDropped ? 'opacity:0.35;' : '';
+    var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
+    var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
+      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',6:'MI',7:'CI',12:'UTIL'}}[e] || '?';
+    }}).join('/') : '');
+    var r = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
+          + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
+          + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
+          + posLabel + '</span>'
+          + '<span style="flex:1;font-size:.82rem;font-weight:600;color:#ddd">'
+          + (p.name || '') + '</span>'
+          + '<span style="font-size:.68rem;color:#888">' + (p.team || '') + '</span>'
+          + '<span style="font-size:.82rem;font-weight:700;color:' + dc + ';width:52px;text-align:right">'
+          + '$' + (p.dollars||0).toFixed(1) + '</span>';
+    if (!isDropped && !hasDropped) {{
+      r += '<button onclick="wwStreamDrop(\'' + (p.espn_id+'').replace(/'/g,"\\'") + '\')"'
+         + ' style="background:#3a1a1a;border:1px solid #6b2e2e;color:#e05555;cursor:pointer;'
+         + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Drop</button>';
+    }} else if (isDropped) {{
+      r += '<button onclick="wwStreamUndrop()"'
+         + ' style="background:#1a3a1a;border:1px solid #2e6b2e;color:#9cd39c;cursor:pointer;'
+         + 'font-size:.68rem;padding:2px 8px;border-radius:4px;font-weight:700">Undo</button>';
+    }}
+    r += '</div>';
+    return r;
+  }}
+
+  html += '<div style="font-size:.7rem;color:#4caf50;font-weight:700;margin-bottom:4px">Hitters</div>';
+  hitters.forEach(function(p) {{ html += pRow(p, false); }});
+  html += '<div style="font-size:.7rem;color:#4caf50;font-weight:700;margin:8px 0 4px">Pitchers</div>';
+  pitchers.forEach(function(p) {{ html += pRow(p, true); }});
+  rosterEl.innerHTML = html;
+
+  // Show streamer profile preview
+  var prof = _wwStreamState.streamerProfile;
+  if (prof && previewEl && statsEl) {{
+    previewEl.style.display = '';
+    var nameList = prof.top5Names.join(', ');
+    statsEl.innerHTML = '<div style="font-size:.78rem;color:#ddd;margin-bottom:6px">'
+      + 'Based on: <span style="color:#4caf50">' + nameList + '</span></div>'
+      + '<div style="font-size:.75rem;color:#bbb;margin-bottom:8px">'
+      + prof.weeksLeft + ' weeks left &times; ' + prof.startsPerWeek + ' starts/wk = '
+      + '<strong style="color:#fff">' + prof.totalStarts + ' total starts</strong></div>'
+      + '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.78rem">'
+      + '<span><span style="color:var(--muted)">W:</span> <strong>' + prof.W.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">K:</span> <strong>' + prof.SO_p.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">ERA:</span> <strong>' + prof.ERA.toFixed(2) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">WHIP:</span> <strong>' + prof.WHIP.toFixed(2) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">IP:</span> <strong>' + prof.IP.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">SV:</span> <strong>' + prof.SV.toFixed(1) + '</strong></span>'
+      + '<span><span style="color:var(--muted)">HLD:</span> <strong>' + prof.HLD.toFixed(1) + '</strong></span>'
+      + '</div>';
+  }}
+
+  // Show impact if player dropped (or simulate without drop for preview)
+  if (hasDropped) {{
+    _wwStreamRenderImpact();
+    if (impactEl) impactEl.style.display = '';
+  }} else {{
+    if (impactEl) impactEl.style.display = 'none';
+  }}
+}}
+
+function wwStreamDrop(espnId) {{
+  var team = _wwStreamGetTeam();
+  if (!team) return;
+  var all = (team.hitters || []).concat(team.pitchers || []);
+  var p = all.find(function(x) {{ return String(x.espn_id) === String(espnId); }});
+  if (!p) return;
+  _wwStreamState.drop = p;
+  _wwStreamRender();
+}}
+
+function wwStreamUndrop() {{
+  _wwStreamState.drop = null;
+  _wwStreamRender();
+}}
+
+/* Simulate streaming: drop one player, add the streamer profile as a pitcher */
+function _wwStreamSimulate() {{
+  if (!PHASE3_LEAGUE || _wwStreamState.teamId == null) return null;
+  var prof = _wwStreamState.streamerProfile;
+  if (!prof) return null;
+  if (!_wwStreamState.drop) return null;
+
+  var league = JSON.parse(JSON.stringify(PHASE3_LEAGUE.teams));
+  var tid = _wwStreamState.teamId;
+
+  league.forEach(function(team) {{
+    if (team.team_id !== tid) return;
+
+    // Remove dropped player
+    var dropId = _wwStreamState.drop.espn_id;
+    team.hitters  = team.hitters.filter(function(p)  {{ return p.espn_id !== dropId; }});
+    team.pitchers = team.pitchers.filter(function(p) {{ return p.espn_id !== dropId; }});
+
+    // Add streamer pitcher with the profile stats
+    team.pitchers.push({{
+      espn_id:  'streamer_composite',
+      name:     'Streaming SP (4/wk)',
+      team:     'FA',
+      dollars:  prof.dollars || 0,
+      W:        prof.W,
+      SO_p:     prof.SO_p,
+      SV:       prof.SV,
+      HLD:      prof.HLD,
+      ERA:      prof.ERA,
+      WHIP:     prof.WHIP,
+      IP:       prof.IP
+    }});
+
+    // Re-optimize + re-aggregate
+    var starters = _phase3OptimizeHitters(team.hitters);
+    var hAgg = _phase3AggHit(starters);
+    var pAgg = _phase3AggPit(team.pitchers);
+    team.stats = {{
+      R:    Math.round(hAgg.R    * 10) / 10,
+      HR:   Math.round(hAgg.HR   * 10) / 10,
+      RBI:  Math.round(hAgg.RBI  * 10) / 10,
+      SO_h: Math.round(hAgg.SO_h * 10) / 10,
+      SB:   Math.round(hAgg.SB   * 10) / 10,
+      OBP:  Math.round(hAgg.OBP  * 10000) / 10000,
+      W:    Math.round(pAgg.W    * 10) / 10,
+      SO_p: Math.round(pAgg.SO_p * 10) / 10,
+      SV:   Math.round(pAgg.SV   * 10) / 10,
+      HLD:  Math.round(pAgg.HLD  * 10) / 10,
+      ERA:  Math.round(pAgg.ERA  * 1000) / 1000,
+      WHIP: Math.round(pAgg.WHIP * 1000) / 1000,
+    }};
+  }});
+
+  _phase3RecomputeZ(league);
+  return league;
+}}
+
+function _wwStreamRenderImpact() {{
+  var newLeague = _wwStreamSimulate();
+  var delta = document.getElementById('ww-stream-delta');
+  if (!newLeague || !delta) return;
+
+  var tid = _wwStreamState.teamId;
+  var oldT = PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === tid; }});
+  var newT = newLeague.find(function(t) {{ return t.team_id === tid; }});
+  if (!oldT || !newT) return;
+
+  window._wwStreamLastLeague = newLeague;
+
+  var n = newLeague.length;
+  var rkC = _phase3RankColor(newT.rank_total, n);
+  var zd = newT.z_total - oldT.z_total;
+  var rd = oldT.rank_total - newT.rank_total;
+  var zCol = zd > 0.005 ? '#4caf50' : zd < -0.005 ? '#e05555' : '#888';
+  var rCol = rd > 0     ? '#4caf50' : rd < 0      ? '#e05555' : '#888';
+  var zStr = (zd >= 0 ? '+' : '\u2212') + Math.abs(zd).toFixed(2);
+  var rStr = rd === 0 ? '\u25A0 0'
+           : (rd > 0 ? '\u25B2 ' : '\u25BC ') + Math.abs(rd);
+
+  delta.innerHTML = '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:10px 14px;'
+    + 'background:#1a1a1a;border-radius:8px;border-left:3px solid ' + rkC + '">'
+    + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+    + 'letter-spacing:.05em">Rank</span><br>'
+    + '<span style="font-size:1.3rem;font-weight:700;color:' + rkC + '">#' + newT.rank_total + '</span></div>'
+    + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+    + 'letter-spacing:.05em">Z Total</span><br>'
+    + '<span style="font-size:1.1rem;font-weight:700;color:#ddd">' + newT.z_total.toFixed(2) + '</span></div>'
+    + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+    + 'letter-spacing:.05em">\u0394 Z</span><br>'
+    + '<span style="font-size:1.1rem;font-weight:700;color:' + zCol + '">' + zStr + '</span></div>'
+    + '<div><span style="font-size:.68rem;color:var(--muted);text-transform:uppercase;'
+    + 'letter-spacing:.05em">\u0394 Rank</span><br>'
+    + '<span style="font-size:1.1rem;font-weight:700;color:' + rCol + '">' + rStr + '</span></div>'
+    + '</div>';
+
+  // Reset toggle states
+  document.getElementById('ww-stream-table-wrap').style.display = 'none';
+  document.getElementById('ww-stream-table-wrap').innerHTML = '';
+  document.getElementById('ww-stream-mc-wrap').style.display = 'none';
+  document.getElementById('ww-stream-mc-wrap').innerHTML = '';
+  var tbtn = document.getElementById('ww-stream-standings-btn');
+  if (tbtn) tbtn.innerHTML = '\u25BC Show full updated standings';
+  var mbtn = document.getElementById('ww-stream-mc-btn');
+  if (mbtn) mbtn.innerHTML = '\u25BC Show finish-probability sim (before / after)';
+}}
+
+function wwStreamToggleTable() {{
+  var tw  = document.getElementById('ww-stream-table-wrap');
+  var btn = document.getElementById('ww-stream-standings-btn');
+  if (!tw) return;
+  var open = tw.style.display !== 'none';
+  if (open) {{
+    tw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show full updated standings';
+  }} else {{
+    var newLeague = window._wwStreamLastLeague || _wwStreamSimulate();
+    if (!newLeague) return;
+    _wwRenderStandingsTable(newLeague, 'ww-stream-table-wrap');
+    tw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide full updated standings';
+  }}
+}}
+
+function wwStreamToggleMc() {{
+  var mw  = document.getElementById('ww-stream-mc-wrap');
+  var btn = document.getElementById('ww-stream-mc-btn');
+  if (!mw) return;
+  var open = mw.style.display !== 'none';
+  if (open) {{
+    mw.style.display = 'none';
+    btn.innerHTML = '\u25BC Show finish-probability sim (before / after)';
+  }} else {{
+    _wwRenderMc('ww-stream-mc-wrap', window._wwStreamLastLeague, _wwStreamState.teamId);
+    mw.style.display = '';
+    btn.innerHTML = '\u25B2 Hide finish-probability sim';
+  }}
 }}
 </script>
 """
