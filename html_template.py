@@ -589,7 +589,18 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
       <span style="color:#c0392b;font-weight:700">Dark red</span> = top &nbsp;·&nbsp;
       <span style="color:#1a3a8a;font-weight:700">Dark blue</span> = bottom.
     </div>
-    <div class="controls">
+    <div class="controls" style="flex-wrap:wrap">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
+        <span style="color:var(--muted);font-size:.78rem">Position:</span>
+        <button id="lbp-all-btn" class="tgl-btn active" onclick="lbPosFilter('all')" style="padding:4px 12px;font-size:.78rem">All</button>
+        <button id="lbp-C-btn" class="tgl-btn" onclick="lbPosFilter('C')" style="padding:4px 12px;font-size:.78rem">C</button>
+        <button id="lbp-1B-btn" class="tgl-btn" onclick="lbPosFilter('1B')" style="padding:4px 12px;font-size:.78rem">1B</button>
+        <button id="lbp-2B-btn" class="tgl-btn" onclick="lbPosFilter('2B')" style="padding:4px 12px;font-size:.78rem">2B</button>
+        <button id="lbp-3B-btn" class="tgl-btn" onclick="lbPosFilter('3B')" style="padding:4px 12px;font-size:.78rem">3B</button>
+        <button id="lbp-SS-btn" class="tgl-btn" onclick="lbPosFilter('SS')" style="padding:4px 12px;font-size:.78rem">SS</button>
+        <button id="lbp-OF-btn" class="tgl-btn" onclick="lbPosFilter('OF')" style="padding:4px 12px;font-size:.78rem">OF</button>
+        <button id="lbp-DH-btn" class="tgl-btn" onclick="lbPosFilter('DH')" style="padding:4px 12px;font-size:.78rem">DH</button>
+      </div>
       <input id="lb-search" type="text" placeholder="Search any player or team…" oninput="filterLB()">
       <label class="qual-toggle" id="lb-qual-lbl">
         <input type="checkbox" id="lb-qual-chk" checked onchange="filterLB()"> Qualified only
@@ -1558,7 +1569,7 @@ var colVisH={}, colVisSP={}, colVisRP={};
 var pickH=[], pickSP=[], pickRP=[];  // selection order (leftmost = index 0)
 
 // ── Hitter leaderboard ─────────────────────────────────────────────────────
-let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1;
+let lbD=[...LB_QUAL], lbSC='hr', lbSD=-1, _lbPos='all';
 
 function renderLB(){
   const tb=document.getElementById('lb-body');
@@ -1605,9 +1616,19 @@ function filterLB(){
   document.getElementById('lb-qual-lbl').style.opacity = q ? '0.4' : '1';
   let base = q ? LB_ALL : (qual ? LB_QUAL : LB_ALL);
   if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+  if(_lbPos!=='all') base = base.filter(p=>{const ps=_posFor(p.name);return ps&&ps.split('/').indexOf(_lbPos)>=0;});
   lbD=[...base];
   if(lbSC) lbD.sort((a,b)=>cmp(a,b,lbSC,lbSD));
   renderLB();
+}
+
+function lbPosFilter(pos){
+  _lbPos=pos;
+  ['all','C','1B','2B','3B','SS','OF','DH'].forEach(p=>{
+    const btn=document.getElementById('lbp-'+p+'-btn');
+    if(btn){btn.classList.toggle('active',p===pos);}
+  });
+  filterLB();
 }
 
 function srtLB(th,col){

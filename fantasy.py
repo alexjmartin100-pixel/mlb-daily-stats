@@ -1259,15 +1259,16 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
                     )
 
             # Position badge (ESPN elig → fg_pos fallback)
+            _pos_raw = ""
             _pos_str = ""
             if show_pos:
-                _pos_str = _pos_lk.get(nm, "") or p.get("fg_pos", "")
-                if _pos_str:
+                _pos_raw = _pos_lk.get(nm, "") or p.get("fg_pos", "")
+                if _pos_raw:
                     _pos_str = (f'<span style="color:#777;font-size:.58rem;'
-                                f'font-weight:700;margin-left:4px">{_pos_str}</span>')
+                                f'font-weight:700;margin-left:4px">{_pos_raw}</span>')
 
             rows_html.append(
-                f'<tr data-role="{role}">'
+                f'<tr data-role="{role}" data-pos="{_pos_raw}">'
                 f'<td class="rank-col" data-val="{rank}">{rank}</td>'
                 f'<td class="name-col">{nm}{_pos_str}</td>'
                 f'<td style="white-space:nowrap">{team_cell}</td>'
@@ -1431,12 +1432,25 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
 
   <!-- Hitters table -->
   <div id="fant-h-wrap">
-    <div style="padding:4px 20px 8px">
+    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:var(--muted);font-size:.8rem;margin-right:4px">Position:</span>
+      <button id="fh-all-btn" class="tab-btn active"
+              onclick="fantHitFilter('all')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:5px 14px;font-size:.82rem">
+        All
+      </button>
+      <button id="fh-C-btn" class="tab-btn" onclick="fantHitFilter('C')" style="padding:5px 14px;font-size:.82rem">C</button>
+      <button id="fh-1B-btn" class="tab-btn" onclick="fantHitFilter('1B')" style="padding:5px 14px;font-size:.82rem">1B</button>
+      <button id="fh-2B-btn" class="tab-btn" onclick="fantHitFilter('2B')" style="padding:5px 14px;font-size:.82rem">2B</button>
+      <button id="fh-3B-btn" class="tab-btn" onclick="fantHitFilter('3B')" style="padding:5px 14px;font-size:.82rem">3B</button>
+      <button id="fh-SS-btn" class="tab-btn" onclick="fantHitFilter('SS')" style="padding:5px 14px;font-size:.82rem">SS</button>
+      <button id="fh-OF-btn" class="tab-btn" onclick="fantHitFilter('OF')" style="padding:5px 14px;font-size:.82rem">OF</button>
+      <button id="fh-DH-btn" class="tab-btn" onclick="fantHitFilter('DH')" style="padding:5px 14px;font-size:.82rem">DH</button>
       <input id="fant-h-search" type="text" placeholder="&#128269; Search hitters…"
-             oninput="fantSearch('fant-h-tbl', this.value)"
+             oninput="fantSearchHit(this.value)"
              style="background:#1e1e1e;border:1px solid #444;color:#fff;
                     padding:6px 12px;border-radius:6px;font-size:.85rem;
-                    width:240px;outline:none">
+                    width:240px;outline:none;margin-left:12px">
     </div>
     {tbl_h}
   </div>
@@ -1883,6 +1897,41 @@ function fantSwitch(which) {{
 
 /* ── SP / RP filter ──────────────────────────────────────────── */
 var _fpRole = 'all';
+var _fhPos = 'all';
+function fantHitFilter(pos) {{
+  _fhPos = pos;
+  var tbl = document.getElementById('fant-h-tbl');
+  if (!tbl) return;
+  var srch = (document.getElementById('fant-h-search') || {{}}).value || '';
+  srch = srch.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var pv = (tr.dataset.pos || '').split('/');
+    var matchPos = (pos === 'all') || pv.indexOf(pos) >= 0;
+    var matchSearch = !srch || tr.textContent.toLowerCase().includes(srch);
+    tr.style.display = (matchPos && matchSearch) ? '' : 'none';
+  }});
+  ['all','C','1B','2B','3B','SS','OF','DH'].forEach(function(p) {{
+    var btn = document.getElementById('fh-'+p+'-btn');
+    if (btn) {{
+      btn.style.borderBottom = (p === pos) ? '3px solid var(--accent)' : 'none';
+      btn.style.color = (p === pos) ? '#fff' : '';
+    }}
+  }});
+  applyFantColors('fant-h-tbl');
+}}
+function fantSearchHit(q) {{
+  var tbl = document.getElementById('fant-h-tbl');
+  if (!tbl) return;
+  q = q.toLowerCase();
+  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+    var pv = (tr.dataset.pos || '').split('/');
+    var matchPos = (_fhPos === 'all') || pv.indexOf(_fhPos) >= 0;
+    var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
+    tr.style.display = (matchPos && matchSearch) ? '' : 'none';
+  }});
+  applyFantColors('fant-h-tbl');
+}}
+
 function fantPitchFilter(role) {{
   _fpRole = role;
   var tbl = document.getElementById('fant-p-tbl');
