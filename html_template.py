@@ -875,6 +875,7 @@ let TA_STARTERS= __TA_SP_JSON__;
 let TA_RELIEVERS=__TA_RP_JSON__;
 let TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
 const DEFAULT_TA_NAMES=__TA_NAMES_JSON__; // baked-in defaults — seeds Firestore on first login
+const ALL_MLB_PLAYERS=__ALL_MLB_PLAYERS_JSON__; // all 40-man roster players for roster search
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -1617,7 +1618,7 @@ function filterLB(){
   document.getElementById('lb-qual-lbl').style.opacity = q ? '0.4' : '1';
   let base = q ? LB_ALL : (qual ? LB_QUAL : LB_ALL);
   if(q) base = base.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
-  if(_lbPos!=='all') base = base.filter(p=>{const ps=_posFor(p.name);return ps&&ps.split('/').indexOf(_lbPos)>=0;});
+  if(_lbPos!=='all') base = base.filter(p=>{var ps=_posFor(p.name)||p.pos||'';if(!ps)return false;var parts=ps.split('/');if(_lbPos==='OF')return parts.indexOf('OF')>=0||parts.indexOf('CF')>=0||parts.indexOf('LF')>=0||parts.indexOf('RF')>=0;return parts.indexOf(_lbPos)>=0;});
   lbD=[...base];
   if(lbSC) lbD.sort((a,b)=>cmp(a,b,lbSC,lbSD));
   renderLB();
@@ -2130,7 +2131,8 @@ document.addEventListener('click',function(e){
 // ══════════════════════════════════════════════════════════════════════════
 const _fbCfg = __FIREBASE_CONFIG__;
 let _fbAuth = null, _fbDb = null, _fbUser = null;
-let _rosterNames = []; // current roster as array of raw display names (starts empty)
+let _rosterNames = []; // current roster as array of raw display names (for display compat)
+let _rosterEntries = []; // current roster as array of {id, name} objects (authoritative)
 const _LS_ROSTER_KEY    = 'mlb_my_team_roster';
 const _LS_TEAM_NAME_KEY = 'mlb_my_team_name';
 
@@ -2139,10 +2141,12 @@ const _LS_TEAM_NAME_KEY = 'mlb_my_team_name';
   try {
     var raw = localStorage.getItem(_LS_ROSTER_KEY);
     if (raw) {
-      var names = JSON.parse(raw);
-      if (Array.isArray(names) && names.length) {
-        _rosterNames = names;
-        _rebuildTA(names);
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        var entries = _migrateRoster(parsed);
+        _rosterEntries = entries;
+        _rosterNames = entries.map(function(e){return e.name;});
+        _rebuildTA(entries);
       }
     }
     var tn = localStorage.getItem(_LS_TEAM_NAME_KEY);
@@ -2150,8 +2154,8 @@ const _LS_TEAM_NAME_KEY = 'mlb_my_team_name';
   } catch(e) {}
 })();
 
-function _saveRosterLocal(names){
-  try { localStorage.setItem(_LS_ROSTER_KEY, JSON.stringify(names)); } catch(e) {}
+function _saveRosterLocal(entries){
+  try { localStorage.setItem(_LS_ROSTER_KEY, JSON.stringify(entries)); } catch(e) {}
 }
 function _saveTeamNameLocal(name){
   try { localStorage.setItem(_LS_TEAM_NAME_KEY, name); } catch(e) {}
@@ -2233,48 +2237,82 @@ async function saveTeamName(val){
 async function _loadRoster(uid){
   try {
     const doc = await _fbDb.collection('users').doc(uid).get();
-    let names;
+    let entries;
     if (doc.exists && Array.isArray(doc.data().roster) && doc.data().roster.length > 0) {
-      // Firestore has a saved roster — use it (authoritative when logged in)
-      names = doc.data().roster;
-    } else if (_rosterNames && _rosterNames.length > 0) {
-      // First login but localStorage already has a roster — push it to Firestore
-      names = _rosterNames;
-      await _saveRoster(uid, names);
+      entries = _migrateRoster(doc.data().roster);
+    } else if (_rosterEntries && _rosterEntries.length > 0) {
+      entries = _rosterEntries;
+      await _saveRoster(uid, entries);
     } else {
-      names = [];
+      entries = [];
     }
-    // Load saved team name
     if (doc.exists && doc.data().teamName) {
       _teamName = doc.data().teamName;
       _applyTeamName(_teamName);
     }
-    _rosterNames = names;
-    _saveRosterLocal(names);   // keep localStorage in sync
-    _rebuildTA(names);
+    _rosterEntries = entries;
+    _rosterNames = entries.map(function(e){return e.name;});
+    _saveRosterLocal(entries);
+    _rebuildTA(entries);
   } catch(e) {
     console.error('Firestore load error:', e);
   }
 }
 
-async function _saveRoster(uid, names){
+async function _saveRoster(uid, entries){
   try {
-    await _fbDb.collection('users').doc(uid).set({roster: names}, {merge: true});
+    await _fbDb.collection('users').doc(uid).set({roster: entries}, {merge: true});
   } catch(e) {
     console.error('Firestore save error:', e);
   }
 }
-async function _saveRosterUnified(names){
-  _saveRosterLocal(names);
-  if (_fbUser && _fbDb) await _saveRoster(_fbUser.uid, names);
+async function _saveRosterUnified(entries){
+  _saveRosterLocal(entries);
+  if (_fbUser && _fbDb) await _saveRoster(_fbUser.uid, entries);
 }
 
-function _rebuildTA(rosterNames){
-  const norms = new Set(rosterNames.map(n => taNorm(n)));
-  TA_HITTERS      = HITTERS.filter(h => norms.has(taNorm(h.name)));
-  TA_STARTERS     = STARTERS.filter(p => norms.has(taNorm(p.name)));
-  TA_RELIEVERS    = RELIEVERS.filter(p => norms.has(taNorm(p.name)));
-  TA_ROSTER_NORMS = norms;
+// Build a name→[players] index for migrating old name-only rosters
+var _allPlayersById = {};
+var _allPlayersByNorm = {};
+[].concat(HITTERS, ALL_PITCHERS, LB_ALL, LB_SP_ALL, LB_RP_ALL, ALL_MLB_PLAYERS||[]).forEach(function(p){
+  if(p.id) _allPlayersById[p.id]=p;
+  var nm=taNorm(p.name);
+  if(!_allPlayersByNorm[nm]) _allPlayersByNorm[nm]=[];
+  if(!_allPlayersByNorm[nm].some(function(x){return x.id===p.id;})) _allPlayersByNorm[nm].push(p);
+});
+
+// Convert old name-based roster to ID-based format
+function _migrateRoster(raw){
+  if(!Array.isArray(raw)||!raw.length) return [];
+  // Already ID-based?
+  if(typeof raw[0]==='object'&&raw[0].id) return raw;
+  // Old format: array of name strings → find best ID match
+  var result=[];
+  raw.forEach(function(name){
+    var norm=taNorm(name);
+    var matches=_allPlayersByNorm[norm];
+    if(matches&&matches.length){
+      matches.forEach(function(p){
+        result.push({id:p.id,name:p.name});
+      });
+    } else {
+      // Keep as name-only fallback (player might not have 2026 stats)
+      result.push({id:null,name:name});
+    }
+  });
+  return result;
+}
+
+var TA_ROSTER_IDS = new Set();
+var TA_ROSTER_NORMS = new Set();
+
+function _rebuildTA(rosterEntries){
+  // rosterEntries = [{id, name}, ...]
+  TA_ROSTER_IDS   = new Set(rosterEntries.filter(function(e){return e.id;}).map(function(e){return e.id;}));
+  TA_ROSTER_NORMS = new Set(rosterEntries.map(function(e){return taNorm(e.name);}));
+  TA_HITTERS      = HITTERS.filter(h => TA_ROSTER_IDS.has(h.id));
+  TA_STARTERS     = STARTERS.filter(p => TA_ROSTER_IDS.has(p.id));
+  TA_RELIEVERS    = RELIEVERS.filter(p => TA_ROSTER_IDS.has(p.id));
 
   // Patch season gmLI onto new TA_RELIEVERS
   TA_RELIEVERS.forEach(p => { p.gm_li = rpLIMap[p.id] ?? null; });
@@ -2285,9 +2323,9 @@ function _rebuildTA(rosterNames){
   taRPD = [...TA_RELIEVERS].sort((a,b) => cmp(a,b,'sv',-1));
 
   // Rebuild season LB slices
-  taLBD   = LB_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)));
-  taSPLBD = [...LB_SP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
-  taRPLBD = [...LB_RP_ALL.filter(p => TA_ROSTER_NORMS.has(taNorm(p.name)))];
+  taLBD   = LB_ALL.filter(p => TA_ROSTER_IDS.has(p.id));
+  taSPLBD = [...LB_SP_ALL.filter(p => TA_ROSTER_IDS.has(p.id))];
+  taRPLBD = [...LB_RP_ALL.filter(p => TA_ROSTER_IDS.has(p.id))];
 
   // Update counts
   const total = TA_HITTERS.length + TA_STARTERS.length + TA_RELIEVERS.length;
@@ -2296,7 +2334,7 @@ function _rebuildTA(rosterNames){
   document.getElementById('ta-sp-tc').textContent = TA_STARTERS.length;
   document.getElementById('ta-rp-tc').textContent = TA_RELIEVERS.length;
   const cntEl = document.getElementById('ta-roster-count');
-  if (cntEl) cntEl.textContent = rosterNames.length + '-player roster';
+  if (cntEl) cntEl.textContent = rosterEntries.length + '-player roster';
 
   // Re-render all visible Team Alex tables
   renderTAH(); renderTASP(); renderTARP();
@@ -2347,7 +2385,7 @@ async function doSignup(){
 }
 async function _doLogout(){
   await _fbAuth.signOut();
-  _fbUser = null; _rosterNames = null;
+  _fbUser = null; _rosterNames = null; _rosterEntries = null;
   _updateAuthUI();
 }
 function _fbErr(code){
@@ -2385,18 +2423,42 @@ function filterRosterSearch(){
   _rQ=document.getElementById('roster-search').value.toLowerCase().trim();
   _renderRosterList();
 }
+// Build merged roster pools that include ALL MLB 40-man players (even injured/0 stats)
+var _rPoolH=[], _rPoolSP=[], _rPoolRP=[];
+(function _buildRosterPools(){
+  var seenH=new Set(), seenSP=new Set(), seenRP=new Set();
+  LB_ALL.forEach(function(p){ seenH.add(p.id); _rPoolH.push(p); });
+  LB_SP_ALL.forEach(function(p){ seenSP.add(p.id); _rPoolSP.push(p); });
+  LB_RP_ALL.forEach(function(p){ seenRP.add(p.id); _rPoolRP.push(p); });
+  // Add 40-man roster players not already in leaderboards
+  (ALL_MLB_PLAYERS||[]).forEach(function(p){
+    if(p.is_pitcher){
+      if(!seenSP.has(p.id)&&!seenRP.has(p.id)){
+        // Default to SP pool for pitchers without stats
+        _rPoolSP.push(p);
+        seenSP.add(p.id);
+      }
+    } else {
+      if(!seenH.has(p.id)){
+        _rPoolH.push(p);
+        seenH.add(p.id);
+      }
+    }
+  });
+})();
+
 function _rPool(){
-  if(_rTab==='h')  return LB_ALL;
-  if(_rTab==='sp') return LB_SP_ALL;
-  return LB_RP_ALL;
+  if(_rTab==='h')  return _rPoolH;
+  if(_rTab==='sp') return _rPoolSP;
+  return _rPoolRP;
 }
 function _renderRosterList(){
   const pool=_rPool();
   let players=_rQ ? pool.filter(p=>p.name.toLowerCase().includes(_rQ)||(p.team||'').toLowerCase().includes(_rQ)) : [...pool];
   // Sort: on-roster first, then alphabetical
   players.sort((a,b)=>{
-    const aN=TA_ROSTER_NORMS.has(taNorm(a.name));
-    const bN=TA_ROSTER_NORMS.has(taNorm(b.name));
+    const aN=TA_ROSTER_IDS.has(a.id);
+    const bN=TA_ROSTER_IDS.has(b.id);
     if(aN!==bN) return aN?-1:1;
     return a.name<b.name?-1:1;
   });
@@ -2405,36 +2467,35 @@ function _renderRosterList(){
     el.innerHTML='<div style="text-align:center;color:var(--muted);padding:24px;font-size:.85rem">No players found</div>';
   } else {
     el.innerHTML=players.map((p,i)=>{
-      const on=TA_ROSTER_NORMS.has(taNorm(p.name));
+      const on=TA_ROSTER_IDS.has(p.id);
       const badge=p.team?`<span style="margin-left:5px">${tm(p.team)}</span>`:'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
         <span>${p.name}${_posBadge(p.name)}${badge}</span>
         <button data-rp="${i}" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');
-    // Use event delegation — avoids inline onclick escaping issues with names
-    // containing apostrophes or other special characters
     el.querySelectorAll('button[data-rp]').forEach(btn=>{
       const idx=parseInt(btn.getAttribute('data-rp'),10);
       const p=players[idx];
       if(!p) return;
-      const on=TA_ROSTER_NORMS.has(taNorm(p.name));
-      btn.addEventListener('click',()=>_togglePlayer(p.name,on));
+      const on=TA_ROSTER_IDS.has(p.id);
+      btn.addEventListener('click',()=>_togglePlayer(p.id,p.name,on));
     });
   }
-  const rc=_rosterNames?_rosterNames.length:0;
+  const rc=_rosterEntries?_rosterEntries.length:0;
   document.getElementById('roster-count-info').textContent=rc+' players on roster';
 }
-async function _togglePlayer(name, isOn){
-  let names = _rosterNames ? [..._rosterNames] : [];
+async function _togglePlayer(id, name, isOn){
+  let entries = _rosterEntries ? [..._rosterEntries] : [];
   if(isOn){
-    names=names.filter(n=>taNorm(n)!==taNorm(name));
+    entries=entries.filter(function(e){return e.id!==id;});
   } else {
-    if(!names.some(n=>taNorm(n)===taNorm(name))) names.push(name);
+    if(!entries.some(function(e){return e.id===id;})) entries.push({id:id,name:name});
   }
-  _rosterNames=names;
-  await _saveRosterUnified(names);
-  _rebuildTA(names);
+  _rosterEntries=entries;
+  _rosterNames=entries.map(function(e){return e.name;});
+  await _saveRosterUnified(entries);
+  _rebuildTA(entries);
   _renderRosterList();
 }
 // Close modal on backdrop click
@@ -2493,7 +2554,8 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
                 ta_hitters, ta_starters, ta_relievers,
-                lb_data=None, lb_pitch_data=None, pos_lookup=None):
+                lb_data=None, lb_pitch_data=None, pos_lookup=None,
+                all_mlb_players=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -2523,5 +2585,6 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
         .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
         .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
+        .replace("__ALL_MLB_PLAYERS_JSON__", json.dumps(all_mlb_players or [], default=str))
     )
      

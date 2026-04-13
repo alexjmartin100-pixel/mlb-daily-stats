@@ -489,12 +489,7 @@ def _fmt_dollar(v):
 def _dollar_color(v):
     if v is None:
         return "#888"
-    if v >= 30:  return "#4CAF50"
-    if v >= 20:  return "#8BC34A"
-    if v >= 10:  return "#CDDC39"
-    if v >= 5:   return "#FFC107"
-    if v >= 1:   return "#FF9800"
-    return "#ef5350"
+    return "#4CAF50"
 
 
 def _z_color(z):
@@ -2077,8 +2072,8 @@ function applyFantColors(tblId) {{
   var allRows = Array.from(tbl.querySelectorAll('tbody tr'));
   if (!allRows.length) return;
   var nCols = allRows[0].cells.length;
-  // Color columns 3+ (skip rank=0, name=1, team=2)
-  for (var c = 3; c < nCols; c++) {{
+  // Gold for leader in each category column (skip rank=0, name=1, team=2, dollar=3)
+  for (var c = 4; c < nCols; c++) {{
     var vals = [];
     allRows.forEach(function(tr) {{
       var v = parseFloat(tr.cells[c] && tr.cells[c].dataset.val);
@@ -2091,29 +2086,27 @@ function applyFantColors(tblId) {{
       if (!cell) return;
       var v = parseFloat(cell.dataset.val);
       if (isNaN(v)) return;
-      if (v === best) {{
+      if (Math.abs(v - best) < 0.00001) {{
         cell.style.color = '#f0c040';
         cell.style.fontWeight = '700';
-        return;
       }}
-      var better = vals.filter(function(x) {{ return x > v + 0.00001; }}).length;
-      var total = vals.length;
-      if (total <= 1) return;
-      var t = better / (total - 1);
-      var r, g, b;
-      if (t < 0.5) {{
-        var s = t * 2;
-        r = Math.round(255 + (235 - 255) * s);
-        g = Math.round(60  + (235 - 60)  * s);
-        b = Math.round(50  + (235 - 50)  * s);
-      }} else {{
-        var s2 = (t - 0.5) * 2;
-        r = Math.round(235 + ( 60 - 235) * s2);
-        g = Math.round(235 + (140 - 235) * s2);
-        b = Math.round(235 + (255 - 235) * s2);
+    }});
+  }}
+  // Gold for top dollar value (column 3)
+  var dolVals = [];
+  allRows.forEach(function(tr) {{
+    var v = parseFloat(tr.cells[3] && tr.cells[3].dataset.val);
+    if (!isNaN(v)) dolVals.push(v);
+  }});
+  if (dolVals.length) {{
+    var bestDol = Math.max.apply(null, dolVals);
+    allRows.forEach(function(tr) {{
+      var cell = tr.cells[3];
+      if (!cell) return;
+      var v = parseFloat(cell.dataset.val);
+      if (!isNaN(v) && Math.abs(v - bestDol) < 0.00001) {{
+        cell.style.color = '#f0c040';
       }}
-      cell.style.color = 'rgb(' + r + ',' + g + ',' + b + ')';
-      cell.style.fontWeight = '600';
     }});
   }}
 }}
@@ -2188,10 +2181,8 @@ function _fcmpColorize(tblId, pool, keys, isHitter) {{
   if (!tbl) return;
   var rows = Array.from(tbl.querySelectorAll('tbody tr'));
   if (!rows.length) return;
-  // For each stat column, compute full-league value distribution
   keys.forEach(function(key, ki) {{
-    var colIdx = ki + 2; // columns start after Name(0) and Team(1)
-    // Gather all league values for this stat
+    var colIdx = ki + 2;
     var allVals = [];
     pool.forEach(function(p) {{
       var v;
@@ -2215,7 +2206,7 @@ function _fcmpColorize(tblId, pool, keys, isHitter) {{
       var better = allVals.filter(function(x) {{ return x > v + 0.00001; }}).length;
       var total = allVals.length;
       if (total <= 1) return;
-      var t = better / (total - 1);  // 0 = best, 1 = worst
+      var t = better / (total - 1);
       var r, g, b;
       if (t < 0.5) {{
         var s = t * 2;
@@ -2486,7 +2477,6 @@ function tradeRemove(side, name) {{
 function _tradePlayerRow(side, p) {{
   var d = p.dollars;
   var dStr = (d >= 0 ? '$' : '−$') + Math.abs(d).toFixed(1);
-  var dCol = d >= 10 ? '#f0c040' : d >= 0 ? '#7ec87e' : '#e05555';
   var roleTag = p.role ? '<span style="opacity:.45;font-size:.68rem;margin-left:3px">' + p.role.toUpperCase() + '</span>' : '';
   var posTag = '';
   if (!p.is_pitcher) {{
@@ -2498,7 +2488,7 @@ function _tradePlayerRow(side, p) {{
     + '<div><span style="font-size:.83rem;font-weight:600">' + p.name + '</span>' + posTag
     + '<span style="font-size:.73rem;color:var(--muted);margin-left:5px">' + p.team + roleTag + '</span></div>'
     + '<div style="display:flex;align-items:center;gap:7px">'
-    + '<span style="color:' + dCol + ';font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
+    + '<span style="color:#ddd;font-weight:700;font-size:.82rem;white-space:nowrap">' + dStr + '</span>'
     + '<button data-side="' + side + '" data-name="' + p.name.replace(/"/g,"&quot;") + '"'
     + ' onmousedown="tradeRemove(this.dataset.side,this.dataset.name)"'
     + ' style="background:none;border:none;color:#888;cursor:pointer;font-size:.75rem;padding:2px 4px;line-height:1;border-radius:3px">&#x2715;</button>'

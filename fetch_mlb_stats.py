@@ -206,11 +206,56 @@ def main():
     except Exception as _e:
         print(f"  Position lookup failed: {_e}")
 
+    # ── Fetch all active 40-man roster players (for roster editor search) ────
+    all_mlb_players = []
+    try:
+        print("  Fetching MLB 40-man rosters for roster editor…")
+        _roster_url = (
+            "https://statsapi.mlb.com/api/v1/teams"
+            "?sportId=1&season=2026&activeStatus=ACTIVE"
+            "&fields=teams,id,abbreviation"
+        )
+        _teams_resp = requests.get(_roster_url, timeout=20)
+        _teams_resp.raise_for_status()
+        _team_abbrs = {}
+        for _t in _teams_resp.json().get("teams", []):
+            _team_abbrs[_t["id"]] = _t.get("abbreviation", "")
+
+        _all_ids_seen = set()
+        for _tid, _abbr in _team_abbrs.items():
+            try:
+                _r40 = requests.get(
+                    f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
+                    f"?rosterType=40Man&season=2026"
+                    f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
+                    timeout=15)
+                _r40.raise_for_status()
+                for _entry in _r40.json().get("roster", []):
+                    _person = _entry.get("person", {})
+                    _pid = _person.get("id")
+                    if not _pid or _pid in _all_ids_seen:
+                        continue
+                    _all_ids_seen.add(_pid)
+                    _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
+                    _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
+                    all_mlb_players.append({
+                        "id": _pid,
+                        "name": (_person.get("fullName") or "").strip(),
+                        "team": _abbr,
+                        "pos": _ppos,
+                        "is_pitcher": _is_pitcher,
+                    })
+            except Exception:
+                pass
+        print(f"  40-man rosters: {len(all_mlb_players)} players from {len(_team_abbrs)} teams")
+    except Exception as _e:
+        print(f"  40-man roster fetch failed: {_e}")
+
     print("\nRendering HTML…")
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data,
-                       pos_lookup=pos_lookup)
+                       pos_lookup=pos_lookup, all_mlb_players=all_mlb_players)
     lb_data = compute_hitter_percentiles(lb_data)
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
     html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup)

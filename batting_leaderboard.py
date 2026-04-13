@@ -280,6 +280,67 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     except Exception as e:
         print(f"  [LB] Savant xwOBA/xBA/xSLG/Chase/Whiff/LA failed: {e}")
 
+    # ── Step 3b: Savant batted-ball profile (replaces FG Pull/Center/Oppo/GB/LD/FB) ─
+    print("  [LB] Savant batted-ball profile…")
+    try:
+        r3b = None
+        for _attempt in range(4):
+            try:
+                r3b = requests.get(
+                    "https://baseballsavant.mlb.com/leaderboard/custom",
+                    params={"year": year, "type": "batter", "filter": "",
+                            "sort": "4", "sortDir": "desc", "min": "1",
+                            "selections": ("pull_percent,straightaway_percent,"
+                                           "opposite_percent,"
+                                           "groundballs_percent,linedrives_percent,"
+                                           "flyballs_percent,popups_percent,"
+                                           "launch_angle_avg"),
+                            "csv": "true"},
+                    headers=hdrs, timeout=30)
+                r3b.raise_for_status()
+                break
+            except Exception as _retry_err:
+                if _attempt < 3:
+                    print(f"  [LB] Savant step3b attempt {_attempt+1} failed ({_retry_err}), retrying in 5s…")
+                    time.sleep(5)
+                else:
+                    raise
+        r3b.raise_for_status()
+        sv3b = pd.read_csv(StringIO(r3b.text))
+        mid_col3b = next((c for c in ["player_id", "batter"] if c in sv3b.columns), None)
+        print(f"  [LB] Savant step3b columns: {list(sv3b.columns)}")
+        sv3b_map = {
+            "pull_percent":         ("pull_pct",   1),
+            "straightaway_percent": ("center_pct", 1),
+            "opposite_percent":     ("oppo_pct",   1),
+            "groundballs_percent":  ("gb_pct",     1),
+            "linedrives_percent":   ("ld_pct",     1),
+            "flyballs_percent":     ("fb_pct",     1),
+            "popups_percent":       ("pu_pct",     1),
+            "launch_angle_avg":     ("launch_angle_avg", 1),
+        }
+        matched3b = 0
+        for _, row in sv3b.iterrows():
+            if mid_col3b is None:
+                break
+            try:
+                mid = int(row[mid_col3b])
+            except (ValueError, TypeError):
+                continue
+            if mid not in players:
+                continue
+            p = players[mid]
+            for sv_col, (p_key, prec) in sv3b_map.items():
+                try:
+                    if sv_col in sv3b.columns and pd.notna(row.get(sv_col)):
+                        p[p_key] = round(float(row[sv_col]), prec)
+                except (ValueError, TypeError):
+                    pass
+            matched3b += 1
+        print(f"  [LB] ✓ Savant batted-ball: {len(sv3b)} rows, {matched3b} matched")
+    except Exception as e:
+        print(f"  [LB] Savant batted-ball failed (keeping FG values): {e}")
+
     # ── Step 4: Savant bat speed ──────────────────────────────────────────────
     # Try bat-tracking leaderboard first, then fall back to custom leaderboard
     print("  [LB] Savant bat speed…")
