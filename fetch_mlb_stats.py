@@ -126,7 +126,7 @@ def main():
 
     # ── Build player name → position lookup from ESPN roster snapshot ────────
     pos_lookup = {}
-    _ESPN_ELIG_MAP = {0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}
+    _ESPN_ELIG_MAP = {0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF'}
     try:
         import json as _jmod
         _espn_path = None
@@ -197,12 +197,3 @@ _FANT = {
     #   pitchers: ERA and WHIP are negative — lower is better
     "h_neg_cats": {"K"},
     "p_neg_cats": {"ERA", "WHIP"},
-    "neg_cats":   {"ERA", "WHIP"},  # legacy key kept for any direct references
-    "min_ip":   35,   # minimum IP for a pitcher to qualify for the pool
-}
-
-
-
-
-if __name__ == "__main__":
-    main()

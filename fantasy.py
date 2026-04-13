@@ -3692,7 +3692,7 @@ function _phase3RankColor(rank, n) {{
 
 /* Convert an ESPN elig slot-ID array to a compact position label string.
    Filters to real positions (C/1B/2B/3B/SS/OF/DH), skips MI/CI/UTIL. */
-var _ELIG_MAP = {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}};
+var _ELIG_MAP = {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF'}};
 function _eligLabel(elig) {{
   if (!elig || !elig.length) return '';
   return elig.map(function(e){{ return _ELIG_MAP[e] || ''; }})
