@@ -4611,21 +4611,33 @@ function _phase3RenderTable(newLeague) {{
   var allCats = hCats.concat(pCats);
   var catLabel = {{'R':'R','HR':'HR','RBI':'RBI','SO_h':'K','SB':'SB','OBP':'OBP',
                   'W':'W','SO_p':'K','SV':'SV','HLD':'HLD','ERA':'ERA','WHIP':'WHIP'}};
-  var thSt = 'padding:3px 5px;text-align:center;color:var(--muted);font-size:.7rem;white-space:nowrap';
+  var thSt = 'padding:5px 8px;text-align:center;color:var(--muted);font-size:.78rem;white-space:nowrap';
 
   /* Header row */
-  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">'
            + '<thead><tr style="border-bottom:1px solid #333">'
-           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">#</th>'
-           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">Team</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">Z Tot</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Z</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Rk</th>'
+           + '<th style="text-align:left;padding:6px 10px;color:var(--muted)">#</th>'
+           + '<th style="text-align:left;padding:6px 10px;color:var(--muted)">Team</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">Z Tot</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">\u0394Z</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">\u0394Rk</th>'
            + '<th style="border-left:2px solid #444;' + thSt + '">H Z</th>';
   hCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
   html += '<th style="border-left:2px solid #444;' + thSt + '">P Z</th>';
   pCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
   html += '</tr></thead><tbody>';
+
+  /* Compute per-cat ranks for color-coding */
+  var allCats = hCats.concat(pCats);
+  var catRanks = {{}};
+  allCats.forEach(function(cat) {{
+    var isLow = lower[cat];
+    var pairs = newLeague.map(function(t) {{ return {{tid: t.team_id, v: t.stats[cat]||0}}; }});
+    pairs.sort(function(a,b) {{ return isLow ? a.v - b.v : b.v - a.v; }});
+    var rk = {{}};
+    pairs.forEach(function(p, i) {{ rk[p.tid] = i + 1; }});
+    catRanks[cat] = rk;
+  }});
 
   sorted.forEach(function(t) {{
     var old = findOld(t.team_id);
@@ -4668,48 +4680,48 @@ function _phase3RenderTable(newLeague) {{
       if (rawChanged) {{
         var rc = rawGood ? '#4caf50' : rawBad ? '#e05555' : '#888';
         var rawSign = rawD >= 0 ? '+' : '\u2212';
-        rawDStr = '<div style="font-size:.58rem;color:' + rc + ';line-height:1;margin-top:1px">'
+        rawDStr = '<div style="font-size:.66rem;color:' + rc + ';line-height:1;margin-top:2px">'
                 + rawSign + fmtRaw(cat, Math.abs(rawD)) + '</div>';
       }}
 
       /* Z-score line */
-      var zStr = '<div style="font-size:.6rem;color:#666;line-height:1;margin-top:1px">z ' + nz.toFixed(2) + '</div>';
+      var zStr = '<div style="font-size:.68rem;color:#666;line-height:1;margin-top:2px">z ' + nz.toFixed(2) + '</div>';
 
       var bl = borderLeft ? 'border-left:2px solid #444;' : '';
-      return '<td style="' + bl + 'text-align:center;padding:2px 4px">'
-           + '<div style="font-size:.82rem;line-height:1.15;font-weight:600">' + fmtRaw(cat, nv) + '</div>'
+      return '<td style="' + bl + 'text-align:center;padding:4px 6px">'
+           + '<div style="font-size:.92rem;line-height:1.15;font-weight:600;color:' + _phase3RankColor(catRanks[cat][t.team_id], n) + '">' + fmtRaw(cat, nv) + '</div>'
            + zStr
            + rawDStr + '</td>';
     }}
 
     html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
-          + '<td style="padding:3px 6px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
-          + '<td style="padding:3px 6px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + rkC + ';font-weight:700">'
+          + '<td style="padding:5px 10px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
+          + '<td style="padding:5px 10px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
+          + '<td style="padding:5px 10px;text-align:center;color:' + rkC + ';font-weight:700">'
           +   t.z_total.toFixed(2) + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
+          + '<td style="padding:5px 10px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
+          + '<td style="padding:5px 10px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
 
     /* Hitter subtotal + per-cat */
     var hzd = (t.z_hit||0) - (old.z_hit||0);
     var hzCol = hzd > 0.005 ? '#4caf50' : hzd < -0.005 ? '#e05555' : '#888';
     var hzDStr = Math.abs(hzd) > 0.005
-               ? '<div style="font-size:.6rem;color:' + hzCol + ';line-height:1">'
+               ? '<div style="font-size:.68rem;color:' + hzCol + ';line-height:1">'
                  + (hzd > 0 ? '+' : '\u2212') + Math.abs(hzd).toFixed(2) + '</div>'
                : '';
-    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
-          + '<div style="line-height:1.15">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:4px 6px;font-weight:600">'
+          + '<div style="font-size:.92rem;line-height:1.15;color:' + _phase3RankColor(t.rank_hit, n) + '">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
     hCats.forEach(function(c) {{ html += zCell(c, false); }});
 
     /* Pitcher subtotal + per-cat */
     var pzd = (t.z_pit||0) - (old.z_pit||0);
     var pzCol = pzd > 0.005 ? '#4caf50' : pzd < -0.005 ? '#e05555' : '#888';
     var pzDStr = Math.abs(pzd) > 0.005
-               ? '<div style="font-size:.6rem;color:' + pzCol + ';line-height:1">'
+               ? '<div style="font-size:.68rem;color:' + pzCol + ';line-height:1">'
                  + (pzd > 0 ? '+' : '\u2212') + Math.abs(pzd).toFixed(2) + '</div>'
                : '';
-    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
-          + '<div style="line-height:1.15">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:4px 6px;font-weight:600">'
+          + '<div style="font-size:.92rem;line-height:1.15;color:' + _phase3RankColor(t.rank_pit, n) + '">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
     pCats.forEach(function(c) {{ html += zCell(c, false); }});
 
     html += '</tr>';
@@ -4821,12 +4833,12 @@ function _wwRenderRoster() {{
 
   function playerRow(p, isPitcher) {{
     var dropped = !!dropIds[p.espn_id];
-    var dc = _dollarColor(p.dollars || 0);
+    var dc = _dollarRankColor(p.dollars || 0);
     var opacity = dropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
     var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
-      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',6:'MI',7:'CI',12:'UTIL'}}[e] || '?';
-    }}).join('/') : '');
+      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}}[e] || '';
+    }}).filter(function(x){{ return x; }}).join('/') : '');
     var html = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
              + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
              + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
@@ -4946,7 +4958,7 @@ function wwSearchFA(q) {{
 
   var html = '';
   matches.forEach(function(p) {{
-    var dc = _dollarColor(p.dollars || 0);
+    var dc = _dollarRankColor(p.dollars || 0);
     var role = p.is_pitcher ? ((p.proj && p.proj.IP || 0) >= 100 ? 'SP' : 'RP') : 'H';
     html += '<div data-pname="' + (p.name||'').replace(/"/g,'&quot;') + '"'
           + ' onmousedown="wwAddFA(this.dataset.pname)"'
@@ -4990,6 +5002,29 @@ function _dollarColor(d) {{
   if (d >= 5)  return '#FFC107';
   if (d >= 1)  return '#FF9800';
   return '#ef5350';
+}}
+
+/* Rank-based dollar color: sort all players by $ desc, then apply the
+   gold/red→blue gradient. Cached per-call for performance. */
+var _dollarRankCache = null;
+function _dollarRankColor(d) {{
+  if (!_dollarRankCache) {{
+    var all = (typeof TRADE_HITTERS !== 'undefined' ? TRADE_HITTERS : [])
+              .concat(typeof TRADE_PITCHERS !== 'undefined' ? TRADE_PITCHERS : []);
+    var vals = all.map(function(p) {{ return p.dollars || 0; }});
+    vals.sort(function(a,b) {{ return b - a; }});
+    // remove dupes for ranking
+    var unique = [];
+    vals.forEach(function(v) {{ if (!unique.length || unique[unique.length-1] !== v) unique.push(v); }});
+    _dollarRankCache = unique;
+  }}
+  var idx = 0;
+  for (var i = 0; i < _dollarRankCache.length; i++) {{
+    if (d >= _dollarRankCache[i]) {{ idx = i; break; }}
+  }}
+  var n = _dollarRankCache.length;
+  var rank = idx + 1;
+  return _phase3RankColor(rank, n);
 }}
 
 /* ── Simulate waiver move: deep-copy league, apply drops + adds to team ── */
@@ -5150,20 +5185,32 @@ function _wwRenderStandingsTable(newLeague, containerId) {{
   var pCats = PHASE3_LEAGUE.pit_cats || [];
   var catLabel = {{'R':'R','HR':'HR','RBI':'RBI','SO_h':'K','SB':'SB','OBP':'OBP',
                   'W':'W','SO_p':'K','SV':'SV','HLD':'HLD','ERA':'ERA','WHIP':'WHIP'}};
-  var thSt = 'padding:3px 5px;text-align:center;color:var(--muted);font-size:.7rem;white-space:nowrap';
+  var thSt = 'padding:5px 8px;text-align:center;color:var(--muted);font-size:.78rem;white-space:nowrap';
 
-  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+  var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">'
            + '<thead><tr style="border-bottom:1px solid #333">'
-           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">#</th>'
-           + '<th style="text-align:left;padding:4px 6px;color:var(--muted)">Team</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">Z Tot</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Z</th>'
-           + '<th style="text-align:center;padding:4px 6px;color:var(--muted)">\u0394Rk</th>'
+           + '<th style="text-align:left;padding:6px 10px;color:var(--muted)">#</th>'
+           + '<th style="text-align:left;padding:6px 10px;color:var(--muted)">Team</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">Z Tot</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">\u0394Z</th>'
+           + '<th style="text-align:center;padding:6px 10px;color:var(--muted)">\u0394Rk</th>'
            + '<th style="border-left:2px solid #444;' + thSt + '">H Z</th>';
   hCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
   html += '<th style="border-left:2px solid #444;' + thSt + '">P Z</th>';
   pCats.forEach(function(c) {{ html += '<th style="' + thSt + '">' + (catLabel[c]||c) + '</th>'; }});
   html += '</tr></thead><tbody>';
+
+  /* Compute per-cat ranks for color-coding */
+  var allCats = hCats.concat(pCats);
+  var catRanks = {{}};
+  allCats.forEach(function(cat) {{
+    var isLow = lower[cat];
+    var pairs = newLeague.map(function(t) {{ return {{tid: t.team_id, v: t.stats[cat]||0}}; }});
+    pairs.sort(function(a,b) {{ return isLow ? a.v - b.v : b.v - a.v; }});
+    var rk = {{}};
+    pairs.forEach(function(p, i) {{ rk[p.tid] = i + 1; }});
+    catRanks[cat] = rk;
+  }});
 
   sorted.forEach(function(t) {{
     var old = findOld(t.team_id);
@@ -5200,41 +5247,41 @@ function _wwRenderStandingsTable(newLeague, containerId) {{
       if (rawChanged) {{
         var rc = rawGood ? '#4caf50' : rawBad ? '#e05555' : '#888';
         var rawSign = rawD >= 0 ? '+' : '\u2212';
-        rawDStr = '<div style="font-size:.58rem;color:' + rc + ';line-height:1;margin-top:1px">'
+        rawDStr = '<div style="font-size:.66rem;color:' + rc + ';line-height:1;margin-top:2px">'
                 + rawSign + fmtRaw(cat, Math.abs(rawD)) + '</div>';
       }}
-      var zStr2 = '<div style="font-size:.6rem;color:#666;line-height:1;margin-top:1px">z ' + nz.toFixed(2) + '</div>';
+      var zStr2 = '<div style="font-size:.68rem;color:#666;line-height:1;margin-top:2px">z ' + nz.toFixed(2) + '</div>';
       var bl = borderLeft ? 'border-left:2px solid #444;' : '';
-      return '<td style="' + bl + 'text-align:center;padding:2px 4px">'
-           + '<div style="font-size:.82rem;line-height:1.15;font-weight:600">' + fmtRaw(cat, nv) + '</div>'
+      return '<td style="' + bl + 'text-align:center;padding:4px 6px">'
+           + '<div style="font-size:.92rem;line-height:1.15;font-weight:600;color:' + _phase3RankColor(catRanks[cat][t.team_id], n) + '">' + fmtRaw(cat, nv) + '</div>'
            + zStr2
            + rawDStr + '</td>';
     }}
 
     html += '<tr style="background:' + bg + ';border-bottom:1px solid #222">'
-          + '<td style="padding:3px 6px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
-          + '<td style="padding:3px 6px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + rkC + ';font-weight:700">'
+          + '<td style="padding:5px 10px;color:' + rkC + ';font-weight:700">#' + t.rank_total + '</td>'
+          + '<td style="padding:5px 10px;color:' + nameAccent + ';font-weight:600;white-space:nowrap">' + t.name + '</td>'
+          + '<td style="padding:5px 10px;text-align:center;color:' + rkC + ';font-weight:700">'
           +   t.z_total.toFixed(2) + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
-          + '<td style="padding:3px 6px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
+          + '<td style="padding:5px 10px;text-align:center;color:' + zCol + '">' + zStr + '</td>'
+          + '<td style="padding:5px 10px;text-align:center;color:' + rCol + '">' + rStr + '</td>';
     var hzd = (t.z_hit||0) - (old.z_hit||0);
     var hzCol = hzd > 0.005 ? '#4caf50' : hzd < -0.005 ? '#e05555' : '#888';
     var hzDStr = Math.abs(hzd) > 0.005
-               ? '<div style="font-size:.6rem;color:' + hzCol + ';line-height:1">'
+               ? '<div style="font-size:.68rem;color:' + hzCol + ';line-height:1">'
                  + (hzd > 0 ? '+' : '\u2212') + Math.abs(hzd).toFixed(2) + '</div>'
                : '';
-    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
-          + '<div style="line-height:1.15">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:4px 6px;font-weight:600">'
+          + '<div style="font-size:.92rem;line-height:1.15;color:' + _phase3RankColor(t.rank_hit, n) + '">' + (t.z_hit||0).toFixed(2) + '</div>' + hzDStr + '</td>';
     hCats.forEach(function(c) {{ html += zCell(c, false); }});
     var pzd = (t.z_pit||0) - (old.z_pit||0);
     var pzCol = pzd > 0.005 ? '#4caf50' : pzd < -0.005 ? '#e05555' : '#888';
     var pzDStr = Math.abs(pzd) > 0.005
-               ? '<div style="font-size:.6rem;color:' + pzCol + ';line-height:1">'
+               ? '<div style="font-size:.68rem;color:' + pzCol + ';line-height:1">'
                  + (pzd > 0 ? '+' : '\u2212') + Math.abs(pzd).toFixed(2) + '</div>'
                : '';
-    html += '<td style="border-left:2px solid #444;text-align:center;padding:2px 4px;font-weight:600">'
-          + '<div style="line-height:1.15">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
+    html += '<td style="border-left:2px solid #444;text-align:center;padding:4px 6px;font-weight:600">'
+          + '<div style="font-size:.92rem;line-height:1.15;color:' + _phase3RankColor(t.rank_pit, n) + '">' + (t.z_pit||0).toFixed(2) + '</div>' + pzDStr + '</td>';
     pCats.forEach(function(c) {{ html += zCell(c, false); }});
     html += '</tr>';
   }});
@@ -5421,12 +5468,12 @@ function _wwStreamRender() {{
 
   function pRow(p, isPitcher) {{
     var isDropped = hasDropped && String(p.espn_id) === String(_wwStreamState.drop.espn_id);
-    var dc = _dollarColor(p.dollars || 0);
+    var dc = _dollarRankColor(p.dollars || 0);
     var opacity = isDropped ? 'opacity:0.35;' : '';
     var role = isPitcher ? ((p.IP||0) >= 100 ? 'SP' : 'RP') : '';
     var posLabel = isPitcher ? role : (p.elig ? p.elig.map(function(e){{
-      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',6:'MI',7:'CI',12:'UTIL'}}[e] || '?';
-    }}).join('/') : '');
+      return {{0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF',19:'DH'}}[e] || '';
+    }}).filter(function(x){{ return x; }}).join('/') : '');
     var r = '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;'
           + 'background:#1a1a1a;border-radius:5px;margin-bottom:3px;' + opacity + '">'
           + '<span style="color:var(--muted);font-size:.68rem;font-weight:700;width:36px">'
@@ -5472,8 +5519,6 @@ function _wwStreamRender() {{
       + '<span><span style="color:var(--muted)">ERA:</span> <strong>' + prof.ERA.toFixed(2) + '</strong></span>'
       + '<span><span style="color:var(--muted)">WHIP:</span> <strong>' + prof.WHIP.toFixed(2) + '</strong></span>'
       + '<span><span style="color:var(--muted)">IP:</span> <strong>' + prof.IP.toFixed(1) + '</strong></span>'
-      + '<span><span style="color:var(--muted)">SV:</span> <strong>' + prof.SV.toFixed(1) + '</strong></span>'
-      + '<span><span style="color:var(--muted)">HLD:</span> <strong>' + prof.HLD.toFixed(1) + '</strong></span>'
       + '</div>';
   }}
 
