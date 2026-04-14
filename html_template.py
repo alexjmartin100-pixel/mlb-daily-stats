@@ -2470,8 +2470,9 @@ function _renderRosterList(){
     el.innerHTML=players.map((p,i)=>{
       const on=TA_ROSTER_IDS.has(p.id);
       const badge=p.team?`<span style="margin-left:5px">${tm(p.team)}</span>`:'';
+      const ilBadge=p.il?'<span style="margin-left:6px;font-size:.66rem;font-weight:700;color:#fff;background:#c0392b;padding:1px 6px;border-radius:4px">60-IL</span>':'';
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 2px;border-bottom:1px solid var(--border)">
-        <span>${p.name}${_posBadge(p.name)}${badge}</span>
+        <span>${p.name}${_posBadge(p.name)}${badge}${ilBadge}</span>
         <button data-rp="${i}" style="border:none;border-radius:6px;padding:4px 13px;font-size:.76rem;font-weight:700;cursor:pointer;flex-shrink:0;${on?'background:#c0392b;color:#fff':'background:#27ae60;color:#fff'}">${on?'− Remove':'+ Add'}</button>
       </div>`;
     }).join('');

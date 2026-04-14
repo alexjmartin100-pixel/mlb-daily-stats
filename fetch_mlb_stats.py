@@ -222,32 +222,44 @@ def main():
             _team_abbrs[_t["id"]] = _t.get("abbreviation", "")
 
         _all_ids_seen = set()
-        for _tid, _abbr in _team_abbrs.items():
-            try:
-                _r40 = requests.get(
-                    f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
-                    f"?rosterType=40Man&season=2026"
-                    f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
-                    timeout=15)
-                _r40.raise_for_status()
-                for _entry in _r40.json().get("roster", []):
-                    _person = _entry.get("person", {})
-                    _pid = _person.get("id")
-                    if not _pid or _pid in _all_ids_seen:
-                        continue
-                    _all_ids_seen.add(_pid)
-                    _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
-                    _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
-                    all_mlb_players.append({
-                        "id": _pid,
-                        "name": (_person.get("fullName") or "").strip(),
-                        "team": _abbr,
-                        "pos": _ppos,
-                        "is_pitcher": _is_pitcher,
-                    })
-            except Exception:
-                pass
-        print(f"  40-man rosters: {len(all_mlb_players)} players from {len(_team_abbrs)} teams")
+        # Fetch both 40Man (active 40-man incl. 10/15-day IL) AND 60day
+        # (60-day IL players who are removed from the 40-man). Without the
+        # 60day pull, players who were injured before the season started
+        # never show up in the roster-editor search.
+        _roster_type_counts = {}
+        for _roster_type in ("40Man", "60day"):
+            _rt_count = 0
+            for _tid, _abbr in _team_abbrs.items():
+                try:
+                    _r40 = requests.get(
+                        f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
+                        f"?rosterType={_roster_type}&season=2026"
+                        f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
+                        timeout=15)
+                    _r40.raise_for_status()
+                    for _entry in _r40.json().get("roster", []):
+                        _person = _entry.get("person", {})
+                        _pid = _person.get("id")
+                        if not _pid or _pid in _all_ids_seen:
+                            continue
+                        _all_ids_seen.add(_pid)
+                        _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
+                        _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
+                        all_mlb_players.append({
+                            "id": _pid,
+                            "name": (_person.get("fullName") or "").strip(),
+                            "team": _abbr,
+                            "pos": _ppos,
+                            "is_pitcher": _is_pitcher,
+                            "il": _roster_type == "60day",
+                        })
+                        _rt_count += 1
+                except Exception:
+                    pass
+            _roster_type_counts[_roster_type] = _rt_count
+        print(f"  40-man rosters: {_roster_type_counts.get('40Man', 0)} active + "
+              f"{_roster_type_counts.get('60day', 0)} on 60-day IL "
+              f"= {len(all_mlb_players)} total from {len(_team_abbrs)} teams")
     except Exception as _e:
         print(f"  40-man roster fetch failed: {_e}")
 
