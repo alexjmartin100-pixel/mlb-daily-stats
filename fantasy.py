@@ -1286,7 +1286,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
         entry["role"] = "sp" if ip >= 100 else "rp"
 
     tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl", info_cats=["PA"], show_pos=True)
-    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl", info_cats=["IP"])
+    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl", info_cats=["IP"], show_pos=True)
 
     # ── trade tab: embed player pool as JSON for client-side search ─────────
     import json as _json

@@ -163,6 +163,9 @@ def main():
     # ── Build player name → position lookup from ESPN roster snapshot ────────
     pos_lookup = {}
     _ESPN_ELIG_MAP = {0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF'}
+    _ESPN_PITCHER_MAP = {14: 'SP', 15: 'RP'}  # slot 13 = generic P (ignored)
+    _h_count = 0
+    _p_count = 0
     try:
         import json as _jmod
         _espn_path = None
@@ -181,30 +184,70 @@ def main():
                     _ppe = _entry.get("playerPoolEntry", {}) or {}
                     _pl = _ppe.get("player", {}) or {}
                     _elig = _pl.get("eligibleSlots", []) or []
-                    # Skip pitchers (slots 13=P, 14=SP, 15=RP)
-                    if set(_elig) & _PITCHER_SLOTS:
-                        continue
                     _nm = (_pl.get("fullName") or "").strip()
-                    if _nm:
-                        _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig if e in _ESPN_ELIG_MAP]
+                    if not _nm:
+                        continue
+                    _is_pitcher = bool(set(_elig) & _PITCHER_SLOTS)
+                    if _is_pitcher:
+                        # Map ESPN pitcher slots (14=SP, 15=RP) → label.
+                        _pos_parts = [_ESPN_PITCHER_MAP[e] for e in _elig
+                                      if e in _ESPN_PITCHER_MAP]
+                        if not _pos_parts:
+                            _pos_parts = ["P"]  # slot 13 only
+                        _p_count += 1
+                    else:
+                        _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig
+                                      if e in _ESPN_ELIG_MAP]
                         # Show DH only when player has no real field position
                         if not _pos_parts and 11 in _elig:
                             _pos_parts = ["DH"]
                         if _pos_parts:
-                            _pos_str = "/".join(_pos_parts)
-                            pos_lookup[_nm] = _pos_str
-                            # Also store ASCII-normalized key so FG/Savant
-                            # names with diacritics still match
-                            _nm_ascii = unicodedata.normalize("NFKD", _nm)
-                            _nm_ascii = "".join(
-                                c for c in _nm_ascii
-                                if not unicodedata.combining(c)
-                            )
-                            if _nm_ascii != _nm:
-                                pos_lookup[_nm_ascii] = _pos_str
-            print(f"  Position lookup: {len(pos_lookup)} hitters from ESPN snapshot")
+                            _h_count += 1
+                    if _pos_parts:
+                        _pos_str = "/".join(_pos_parts)
+                        pos_lookup[_nm] = _pos_str
+                        # Also store ASCII-normalized key so FG/Savant
+                        # names with diacritics still match
+                        _nm_ascii = unicodedata.normalize("NFKD", _nm)
+                        _nm_ascii = "".join(
+                            c for c in _nm_ascii
+                            if not unicodedata.combining(c)
+                        )
+                        if _nm_ascii != _nm:
+                            pos_lookup[_nm_ascii] = _pos_str
+            print(f"  Position lookup: {_h_count} hitters + {_p_count} pitchers "
+                  f"= {len(pos_lookup)} keys from ESPN snapshot")
     except Exception as _e:
         print(f"  Position lookup failed: {_e}")
+
+    # Fallback: fill in SP/RP for pitchers not on the ESPN snapshot using
+    # leaderboard data (starters vs relievers already separated there).
+    def _add_pitcher_pos(_nm, _lbl):
+        if not _nm:
+            return
+        _nm = _nm.strip()
+        if not _nm or _nm in pos_lookup:
+            return
+        pos_lookup[_nm] = _lbl
+        _nm_ascii = unicodedata.normalize("NFKD", _nm)
+        _nm_ascii = "".join(c for c in _nm_ascii if not unicodedata.combining(c))
+        if _nm_ascii != _nm and _nm_ascii not in pos_lookup:
+            pos_lookup[_nm_ascii] = _lbl
+
+    _before = len(pos_lookup)
+    try:
+        for _p in (lb_pitch_data or {}).get("starters", []) or []:
+            _add_pitcher_pos(_p.get("name", ""), "SP")
+        for _p in (lb_pitch_data or {}).get("relievers", []) or []:
+            _add_pitcher_pos(_p.get("name", ""), "RP")
+        # Today's game pitchers — classify by ip_float >= 3 as SP heuristic.
+        for _p in all_pitchers or []:
+            _lbl = "SP" if (_p.get("ip_float") or 0) >= 3 else "RP"
+            _add_pitcher_pos(_p.get("name", ""), _lbl)
+        print(f"  Position lookup: +{len(pos_lookup) - _before} pitchers "
+              f"from leaderboard/game fallback ({len(pos_lookup)} total)")
+    except Exception as _e:
+        print(f"  Pitcher pos fallback failed: {_e}")
 
     # ── Fetch all active 40-man roster players (for roster editor search) ────
     all_mlb_players = []
@@ -245,14 +288,20 @@ def main():
                         _all_ids_seen.add(_pid)
                         _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
                         _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
+                        _nm40 = (_person.get("fullName") or "").strip()
                         all_mlb_players.append({
                             "id": _pid,
-                            "name": (_person.get("fullName") or "").strip(),
+                            "name": _nm40,
                             "team": _abbr,
                             "pos": _ppos,
                             "is_pitcher": _is_pitcher,
                             "il": _roster_type == "60day",
                         })
+                        # Final-fallback pos_lookup entry for pitchers who
+                        # weren't on ESPN rosters or in leaderboards — e.g.
+                        # 60-day IL arms who have never pitched this year.
+                        if _is_pitcher and _nm40 and _nm40 not in pos_lookup:
+                            _add_pitcher_pos(_nm40, _ppos if _ppos in ("SP", "RP") else "P")
                         _rt_count += 1
                 except Exception:
                     pass

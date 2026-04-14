@@ -1061,7 +1061,7 @@ function renderSP(){
   const tb=document.getElementById('sp-body');
   if(!spD.length){tb.innerHTML='<tr><td colspan="15"><div class="empty"><div class="ico">😴</div><p>No data.</p></div></td></tr>';return;}
   tb.innerHTML=spD.map(p=>`<tr>
-    <td class="nm">${p.name}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
@@ -1083,7 +1083,7 @@ function renderRP(){
   const tb=document.getElementById('rp-body');
   if(!rpD.length){tb.innerHTML='<tr><td colspan="19"><div class="empty"><div class="ico">😴</div><p>No relief data.</p></div></td></tr>';return;}
   tb.innerHTML=rpD.map(p=>`<tr>
-    <td class="nm">${p.name}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
@@ -1203,7 +1203,7 @@ function renderTASPLB(){
   }
   const D=plCellSP;
   tb.innerHTML=taSPLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
     <td class="r" data-col="era">${D('era',p.era,p.era!=null?p.era.toFixed(2):null)}</td>
@@ -1242,7 +1242,7 @@ function renderTARPLB(){
   }
   const D=plCellRP;
   tb.innerHTML=taRPLBD.map(p=>`<tr>
-    <td class="nm">${p.name} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)} ${p.team?tm(p.team):''}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',p.w,p.w)}</td>
     <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
@@ -1308,7 +1308,7 @@ function renderTASP(){
     return;
   }
   tb.innerHTML=taSPD.map(p=>`<tr>
-    <td class="nm">${p.name}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,spL.ip_float)||p.ip}</td>
@@ -1334,7 +1334,7 @@ function renderTARP(){
     return;
   }
   tb.innerHTML=taRPD.map(p=>`<tr>
-    <td class="nm">${p.name}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}</td>
     <td>${tm(p.team)}</td>
     <td><span class="c-dim" style="font-size:.7rem">vs</span> ${tm(p.opp)}</td>
     <td class="r">${glIP(p.ip_float,p.ip,rpL.ip_float)||p.ip}</td>
@@ -1657,7 +1657,7 @@ function renderLBSP(){
   ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
   const D=plCellSP;
   tb.innerHTML=lbSpD.map(p=>`<tr>
-    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
@@ -1716,7 +1716,7 @@ function renderLBRP(){
   ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
   const D=plCellRP;
   tb.innerHTML=lbRpD.map(p=>`<tr>
-    <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
+    <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
@@ -1908,7 +1908,7 @@ function renderCmp(){
       const roleColor=role==='SP'?'rgba(61,155,233,.25)':'rgba(232,131,42,.25)';
       const roleTxt=role==='SP'?'#3d9be9':'#e8832a';
       return `<tr>
-        <td class="nm">${p.name}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
+        <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:3px">[NQ]</span>':''}</td>
         <td>${p.team?tm(p.team):''}</td>
         <td class="r" data-col="role"><span class="tm" style="background:${roleColor};color:${roleTxt};border-color:transparent;font-size:.7rem">${role}</span></td>
         <td class="r" data-col="ip_f">${D('ip_f',p.ip_f,p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
