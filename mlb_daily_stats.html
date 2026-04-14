@@ -217,7 +217,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Sunday, April 12, 2026</strong>
       &nbsp;·&nbsp; 15 game(s)
-      &nbsp;·&nbsp; Updated Apr 13, 2026 10:21 PM
+      &nbsp;·&nbsp; Updated Apr 13, 2026 10:36 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -843,7 +843,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </main>
 
 <footer>
-  Generated Apr 13, 2026 10:21 PM
+  Generated Apr 13, 2026 10:36 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -913,15 +913,17 @@ function showTab(nm,btn){
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(nm+'-panel').classList.add('active');
-  // Hide fantasy sub-panels (trade machine + season projections) when
-  // switching away from the fantasy tab — they live as siblings of
-  // #fantasy-panel rather than children, so .tab-panel display:none
-  // doesn't catch them automatically.
+  // Hide fantasy sub-panels (trade machine, season projections, waiver
+  // wire) when switching away from the fantasy tab — they live as
+  // siblings of #fantasy-panel rather than children, so .tab-panel
+  // display:none doesn't catch them automatically.
   if(nm!=='fantasy'){
     var tw=document.getElementById('fant-trade-wrap');
     if(tw) tw.style.display='none';
     var pw=document.getElementById('fant-proj-wrap');
     if(pw) pw.style.display='none';
+    var ww=document.getElementById('fant-waiver-wrap');
+    if(ww) ww.style.display='none';
   }
 }
 
