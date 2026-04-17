@@ -459,7 +459,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var header =
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:linear-gradient(to bottom, #a0a0a3 0%, #ececf0 100%)">'
-      + '<img id="' + pcImgId + '" src="' + photoUrl + '" '
+      + '<img id="' + pcImgId + '" src="' + photoUrl + '" loading="lazy" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
       + '</div>'
@@ -708,7 +708,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" style="position:absolute;top:13px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
+      logoBadge = '<img src="' + logoBgUrl + '" loading="lazy" style="position:absolute;top:13px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
@@ -771,13 +771,23 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
                                           lb_pitch_data=lb_pitch_data,
                                           p_dollar_map=_p_dollar_map,
                                           historical_lb=historical_lb)
-    html       = html.replace("</body>", panel_html + "\n</body>")
+    # Lazy-render: keep a tiny placeholder in the DOM and stash the real
+    # content inside a <template> so the browser doesn't parse/layout it
+    # until the user actually clicks the Player Cards tab. hydrateTab() in
+    # html_template.py clones the template and executes any inline scripts.
+    lazy_html = (
+        '\n<div id="playercards-panel" class="tab-panel" data-lazy="1"></div>\n'
+        '<template id="playercards-panel-template">\n' + panel_html + '\n</template>\n'
+    )
+    html       = html.replace("</body>", lazy_html + "\n</body>")
     return html
 
 
-def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = None) -> str:
+def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = None,
+                       il_pitcher_names: set | None = None) -> str:
     """Inject the Fantasy dollar-values tab button and panel into the dashboard HTML."""
-    panel_html = render_fantasy_tab(fantasy_data, pos_lookup=pos_lookup)
+    panel_html = render_fantasy_tab(fantasy_data, pos_lookup=pos_lookup,
+                                    il_pitcher_names=il_pitcher_names)
 
     # Insert tab button after the Season Leaders button
     lb_anchor = "showTab('leaderboard'"
@@ -787,6 +797,11 @@ def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = 
         btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
         html    = html[:end_btn] + btn_html + html[end_btn:]
 
-    # Inject panel before </body>
-    html = html.replace("</body>", panel_html + "\n</body>")
-    return html 
+    # Lazy-render: same pattern as player cards — placeholder + template.
+    # Dramatically cuts initial parse/layout time on mobile.
+    lazy_html = (
+        '\n<div id="fantasy-panel" class="tab-panel" data-lazy="1"></div>\n'
+        '<template id="fantasy-panel-template">\n' + panel_html + '\n</template>\n'
+    )
+    html = html.replace("</body>", lazy_html + "\n</body>")
+    return html

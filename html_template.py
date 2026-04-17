@@ -918,7 +918,38 @@ let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
 let pitchType='sp';  // current pitcher sub-view: 'sp' or 'rp'
 let glType='h';      // current game log sub-tab: 'h', 'sp', or 'rp'
 
+/* Lazy-hydrate a tab panel on first click. Pairs with the
+   <div id="X-panel" data-lazy="1"></div> + <template id="X-panel-template">
+   pattern that player_cards.py writes for the Fantasy and Player Cards tabs.
+   Clones the template, re-creates <script> tags so they actually run, then
+   replaces the placeholder. No-op if the panel isn't lazy or isn't found. */
+function hydrateTab(panelId){
+  var placeholder = document.getElementById(panelId);
+  if (!placeholder || placeholder.dataset.lazy !== '1') return;
+  var tpl = document.getElementById(panelId + '-template');
+  if (!tpl) return;
+  var frag = tpl.content.cloneNode(true);
+  // Cloned <script> tags don't execute — rewrite them so they do.
+  frag.querySelectorAll('script').forEach(function(oldScript){
+    var newScript = document.createElement('script');
+    for (var i=0; i<oldScript.attributes.length; i++){
+      var a = oldScript.attributes[i];
+      newScript.setAttribute(a.name, a.value);
+    }
+    newScript.textContent = oldScript.textContent;
+    oldScript.parentNode.replaceChild(newScript, oldScript);
+  });
+  // Replace the placeholder in-place so the new panel keeps the same DOM slot.
+  var parent = placeholder.parentNode;
+  while (frag.firstChild){
+    parent.insertBefore(frag.firstChild, placeholder);
+  }
+  parent.removeChild(placeholder);
+  tpl.remove();
+}
+
 function showTab(nm,btn){
+  hydrateTab(nm+'-panel');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');

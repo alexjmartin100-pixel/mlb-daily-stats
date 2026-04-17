@@ -1124,8 +1124,16 @@ def _build_phase3_payload(fdata: dict) -> dict:
     }
 
 
-def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
-    """Generate the full HTML for the Fantasy tab panel."""
+def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
+                       il_pitcher_names: set | None = None) -> str:
+    """Generate the full HTML for the Fantasy tab panel.
+
+    il_pitcher_names: optional set of normalized pitcher names on the MLB 60-day
+    IL. Used to tag TRADE_PITCHERS records with an `il` flag so the Waiver Wire
+    streamer simulation can exclude them from the "top 8 FA SPs" baseline
+    (otherwise high-$ injured arms like Bieber inflate what "streaming" looks
+    like relative to reality).
+    """
     if not fdata:
         return '<div id="fantasy-panel" class="tab-panel"></div>'
 
@@ -1315,12 +1323,28 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None) -> str:
                      "K_h":_sfp(_p.get("SO_p"),0),"OBP":_sfp(_p.get("OBP_p"),3),
                      "PA":_sfp(_p.get("PA_p"),0)}
         })
+    # Build a normalized lookup for the 60-day IL names so the matching
+    # tolerates ESPN/FG first-name differences (e.g. "Cam" vs "Cameron").
+    try:
+        from utils import norm_name as _norm_nm_il
+    except Exception:
+        def _norm_nm_il(s: str) -> str:
+            return (s or "").strip().lower().replace(".", "").replace("-", " ")
+    _il_norm_set = set()
+    if il_pitcher_names:
+        for _n in il_pitcher_names:
+            if not _n:
+                continue
+            _il_norm_set.add(_norm_nm_il(_n))
     _trade_p = []
     for _e in fdata["fut_p"]:
         _p = _e["player"]
+        _nm_raw = _p.get("name", "")
+        _is_il = bool(_il_norm_set) and (_norm_nm_il(_nm_raw) in _il_norm_set)
         _trade_p.append({
-            "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
+            "name": _nm_raw, "team": (_p.get("team") or "").upper(),
             "role": _e.get("role","sp"), "dollars": _sf(_e["dollar"]), "is_pitcher": True,
+            "il": _is_il,
             "cats": {"W":_sf(_p.get("W")),"ERA":_sf(_p.get("ERA")),"WHIP":_sf(_p.get("WHIP")),
                      "K_p":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
             "proj": {"W":_sfp(_p.get("W_p"),0),"ERA":_sfp(_p.get("ERA_p"),2),
@@ -5530,12 +5554,16 @@ function _wwStreamGetTeam() {{
 
 /* Compute the "average streamer" from top 8 unrostered SP by $ value.
    Only includes pitchers with SP role AND 100+ projected IP (filters out
-   relievers who happen to have SP eligibility).
+   relievers who happen to have SP eligibility). ALSO excludes anyone on
+   the MLB 60-day IL (p.il) — high-$ injured arms like Shane Bieber would
+   otherwise inflate the streamer baseline even though they aren't realistic
+   pickups right now.
    Returns per-start stats scaled to 4 starts/week for the remaining season. */
 function _wwStreamComputeProfile() {{
-  // Find top 8 unrostered SP by dollar value, requiring 100+ proj IP
+  // Find top 8 unrostered, healthy SP by dollar value, requiring 100+ proj IP
   var sps = TRADE_PITCHERS.filter(function(p) {{
     return p.team_id == null && p.role === 'sp'
+        && !p.il
         && p.proj && p.proj.IP >= 100;
   }});
   sps.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});

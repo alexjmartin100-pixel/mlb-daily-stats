@@ -319,7 +319,16 @@ def main():
                        pos_lookup=pos_lookup, all_mlb_players=all_mlb_players)
     lb_data = compute_hitter_percentiles(lb_data)
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
-    html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup)
+    # Build the 60-day IL pitcher name set so Waiver Wire streamer sim
+    # excludes injured-but-high-$ arms (Bieber, deGrom, etc.) from the "top
+    # 8 FA SPs" baseline. Comes from the MLB 40-man roster pull above.
+    _il_pitchers = {
+        (_p.get("name") or "").strip()
+        for _p in all_mlb_players
+        if _p.get("il") and _p.get("is_pitcher") and (_p.get("name") or "").strip()
+    }
+    html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup,
+                              il_pitcher_names=_il_pitchers)
     html = inject_player_cards_tab(html, lb_data, fantasy_data,
                                     lb_pitch_data=lb_pitch_data,
                                     historical_lb=_hist_lb)
