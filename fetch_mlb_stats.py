@@ -264,51 +264,95 @@ def main():
         for _t in _teams_resp.json().get("teams", []):
             _team_abbrs[_t["id"]] = _t.get("abbreviation", "")
 
+        # Pass 1 (40Man): populate the roster-search list (all_mlb_players).
+        # This is what feeds the front-end's ALL_MLB_PLAYERS search dropdown,
+        # so we want it narrow — only real 40-man roster guys, not the deep
+        # minor-league system that fullRoster returns.
         _all_ids_seen = set()
-        # Fetch both 40Man (active 40-man incl. 10/15-day IL) AND 60day
-        # (60-day IL players who are removed from the 40-man). Without the
-        # 60day pull, players who were injured before the season started
-        # never show up in the roster-editor search.
-        _roster_type_counts = {}
-        for _roster_type in ("40Man", "60day"):
-            _rt_count = 0
-            for _tid, _abbr in _team_abbrs.items():
-                try:
-                    _r40 = requests.get(
-                        f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
-                        f"?rosterType={_roster_type}&season=2026"
-                        f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
-                        timeout=15)
-                    _r40.raise_for_status()
-                    for _entry in _r40.json().get("roster", []):
-                        _person = _entry.get("person", {})
-                        _pid = _person.get("id")
-                        if not _pid or _pid in _all_ids_seen:
-                            continue
-                        _all_ids_seen.add(_pid)
-                        _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
+        for _tid, _abbr in _team_abbrs.items():
+            try:
+                _r40 = requests.get(
+                    f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
+                    f"?rosterType=40Man&season=2026"
+                    f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
+                    timeout=15)
+                _r40.raise_for_status()
+                for _entry in _r40.json().get("roster", []):
+                    _person = _entry.get("person", {})
+                    _pid = _person.get("id")
+                    if not _pid or _pid in _all_ids_seen:
+                        continue
+                    _all_ids_seen.add(_pid)
+                    _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
+                    _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
+                    _nm40 = (_person.get("fullName") or "").strip()
+                    all_mlb_players.append({
+                        "id": _pid,
+                        "name": _nm40,
+                        "team": _abbr,
+                        "pos": _ppos,
+                        "is_pitcher": _is_pitcher,
+                        "il": False,  # filled in by Pass 2 below
+                    })
+                    # Final-fallback pos_lookup entry for pitchers who
+                    # weren't on ESPN rosters or in leaderboards.
+                    if _is_pitcher and _nm40 and _nm40 not in pos_lookup:
+                        _add_pitcher_pos(_nm40, _ppos if _ppos in ("SP", "RP") else "P")
+            except Exception:
+                pass
+
+        # Pass 2 (fullRoster): flip the `il` flag on any player whose
+        # entry.status.description starts with "Injured" ("Injured 60-Day",
+        # "Injured 15-Day", "Injured 10-Day", "Injured 7-Day",
+        # "Injured - Full Season"). The old approach of doing rosterType=60day
+        # never actually caught IL players — that endpoint returns the same
+        # active roster as rosterType=active, so every match got deduped.
+        # fullRoster is the only endpoint that surfaces every IL status.
+        # Note: fullRoster puts the position on `entry.position`, NOT on
+        # `entry.person.primaryPosition` like the active-roster endpoints do.
+        _id_to_player = {p["id"]: p for p in all_mlb_players}
+        _il_hits = 0
+        for _tid, _abbr in _team_abbrs.items():
+            try:
+                _rfull = requests.get(
+                    f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
+                    f"?rosterType=fullRoster&season=2026",
+                    timeout=15)
+                _rfull.raise_for_status()
+                for _entry in _rfull.json().get("roster", []):
+                    _person = _entry.get("person", {})
+                    _pid = _person.get("id")
+                    if not _pid:
+                        continue
+                    _status_desc = (_entry.get("status") or {}).get("description", "") or ""
+                    if not _status_desc.startswith("Injured"):
+                        continue
+                    if _pid in _id_to_player:
+                        # Already on 40-man — just flip the flag
+                        if not _id_to_player[_pid]["il"]:
+                            _id_to_player[_pid]["il"] = True
+                            _il_hits += 1
+                    else:
+                        # 60-day IL player who was removed from the 40-man.
+                        # Add as a minimal record so the streamer-pool filter
+                        # can still catch them if FG has them projected.
+                        _ppos = (_entry.get("position") or {}).get("abbreviation", "")
                         _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
-                        _nm40 = (_person.get("fullName") or "").strip()
+                        _nm = (_person.get("fullName") or "").strip()
                         all_mlb_players.append({
                             "id": _pid,
-                            "name": _nm40,
+                            "name": _nm,
                             "team": _abbr,
                             "pos": _ppos,
                             "is_pitcher": _is_pitcher,
-                            "il": _roster_type == "60day",
+                            "il": True,
                         })
-                        # Final-fallback pos_lookup entry for pitchers who
-                        # weren't on ESPN rosters or in leaderboards — e.g.
-                        # 60-day IL arms who have never pitched this year.
-                        if _is_pitcher and _nm40 and _nm40 not in pos_lookup:
-                            _add_pitcher_pos(_nm40, _ppos if _ppos in ("SP", "RP") else "P")
-                        _rt_count += 1
-                except Exception:
-                    pass
-            _roster_type_counts[_roster_type] = _rt_count
-        print(f"  40-man rosters: {_roster_type_counts.get('40Man', 0)} active + "
-              f"{_roster_type_counts.get('60day', 0)} on 60-day IL "
-              f"= {len(all_mlb_players)} total from {len(_team_abbrs)} teams")
+                        _il_hits += 1
+            except Exception:
+                pass
+        print(f"  40-man rosters: {len(all_mlb_players) - _il_hits} active + "
+              f"{_il_hits} injured = {len(all_mlb_players)} total from "
+              f"{len(_team_abbrs)} teams")
     except Exception as _e:
         print(f"  40-man roster fetch failed: {_e}")
 
