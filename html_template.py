@@ -238,7 +238,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
      set bottom padding to 0, which pins the "Show standings" / "Show updated
      lineups" buttons flush against the mobile browser's URL bar. Force a
      comfortable bottom padding with !important to beat the inline style. */
-  #fant-trade-wrap,#fant-proj-wrap,#fant-waiver-wrap,#fant-cmp-wrap{
+  #fant-trade-wrap,#fant-proj-wrap,#fant-waiver-wrap,#fant-cmp-wrap,#fant-standings-wrap{
     padding-bottom:calc(240px + env(safe-area-inset-bottom, 0px)) !important
   }
   /* Belt-and-suspenders: extra body-level padding so even if some deep
@@ -996,6 +996,8 @@ function showTab(nm,btn){
     if(pw) pw.style.display='none';
     var ww=document.getElementById('fant-waiver-wrap');
     if(ww) ww.style.display='none';
+    var sw=document.getElementById('fant-standings-wrap');
+    if(sw) sw.style.display='none';
   }
 }
 

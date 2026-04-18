@@ -878,6 +878,213 @@ def _render_season_projections(fdata: dict) -> str:
     return legend + table_html + mc_block
 
 
+# ── Standings sub-tab renderer ─────────────────────────────────────────────
+# Reads the ESPN roster snapshot (espn_rosters.json) and builds an HTML
+# standings table: W-L-T record, win %, games back, streak, and season
+# totals for each of the 12 H2H categories. This is the "live" standings
+# as of when the bookmarklet last ran — so running the bookmarklet +
+# push_update.bat + GHA refreshes the standings on the dashboard.
+#
+# ESPN encodes category stats as statId → number in team["valuesByStat"].
+# The statIds used by this league come from settings.scoringSettings
+# .scoringItems (12 entries for a 6x6 H2H league). We map them to human
+# labels below. `reversed` items (lower-is-better: ERA, WHIP, K_h) are
+# flagged so CSS can color them appropriately if we decide to later.
+_STAT_ID_LABELS = {
+    # Hitting (IDs derived from ESPN's API + value-range sanity check against
+    # the real snapshot values for this 2026 league)
+    5:  ("HR",    False, 0),
+    17: ("OBP",   False, 3),
+    20: ("R",     False, 0),
+    21: ("RBI",   False, 0),
+    23: ("SB",    False, 0),
+    27: ("K",     True,  0),   # hitter strikeouts (reversed)
+    # Pitching
+    41: ("WHIP",  True,  3),
+    47: ("ERA",   True,  2),
+    48: ("K",     False, 0),   # pitcher strikeouts (range ~165-225 at this point)
+    53: ("SV",    False, 0),
+    57: ("HLD",   False, 0),
+    60: ("W",     False, 0),   # pitcher wins (single-digit early season)
+}
+
+
+def _render_standings_html() -> str:
+    """Build the Standings sub-tab HTML from espn_rosters.json.
+
+    Returns an empty wrapper div if the snapshot is missing or malformed,
+    so the sub-tab button still works even when the bookmarklet hasn't
+    been run yet.
+    """
+    import json as _json_s
+    import os as _os_s
+    base = _os_s.path.dirname(_os_s.path.abspath(__file__))
+    snap_path = None
+    for fn in ESPN_ROSTER_FILES:
+        cand = _os_s.path.join(base, fn)
+        if _os_s.path.exists(cand):
+            snap_path = cand
+            break
+    if not snap_path:
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+                '<p style="color:var(--muted);font-size:.88rem">'
+                'No ESPN snapshot found — run the bookmarklet to populate standings.'
+                '</p></div>')
+
+    try:
+        with open(snap_path, "r", encoding="utf-8") as _f:
+            _snap = _json_s.load(_f)
+    except Exception as _e:
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+                f'<p style="color:var(--muted);font-size:.88rem">Could not parse '
+                f'espn_rosters.json: {_e}</p></div>')
+
+    _raw = _snap.get("raw", _snap) or {}
+    _teams = _raw.get("teams", []) or []
+    _settings = _raw.get("settings", {}) or {}
+    _scoring = (_settings.get("scoringSettings") or {}).get("scoringItems") or []
+    # Preserve the league's own ordering of categories where possible.
+    _cat_ids = [item.get("statId") for item in _scoring if item.get("statId") is not None]
+
+    # Build the header row of category columns using our label map.
+    def _label_for(sid):
+        lbl = _STAT_ID_LABELS.get(sid)
+        if lbl:
+            return lbl[0], lbl[1], lbl[2]
+        return f"#{sid}", False, 0
+
+    # Disambiguate the two "K" columns (hitter vs pitcher) so the header
+    # reads Hit-K and Pit-K in the rendered table.
+    _seen_k = 0
+    _cat_meta = []
+    for sid in _cat_ids:
+        name, rev, prec = _label_for(sid)
+        if name == "K":
+            _seen_k += 1
+            name = "K (Bat)" if rev else "K (Pit)"
+        _cat_meta.append({"sid": sid, "name": name, "reversed": rev, "prec": prec})
+
+    # Fallback if scoringItems missing: use every statId we have a label for.
+    if not _cat_meta:
+        for sid, (name, rev, prec) in sorted(_STAT_ID_LABELS.items()):
+            _cat_meta.append({"sid": sid, "name": name, "reversed": rev, "prec": prec})
+
+    # Compose team rows.
+    def _fmt(val, prec):
+        if val is None:
+            return "—"
+        try:
+            f = float(val)
+        except (TypeError, ValueError):
+            return "—"
+        if prec == 0:
+            return f"{int(round(f))}"
+        if prec == 2:
+            return f"{f:.2f}"
+        if prec == 3:
+            # Trim leading zero on rate stats (ESPN style: .315 not 0.315).
+            s = f"{f:.3f}"
+            return s[1:] if s.startswith("0.") else s
+        return f"{f:g}"
+
+    rows = []
+    for t in _teams:
+        rec = ((t.get("record") or {}).get("overall")) or {}
+        w = rec.get("wins") or 0
+        l = rec.get("losses") or 0
+        ti = rec.get("ties") or 0
+        pct = rec.get("percentage")
+        gb = rec.get("gamesBack")
+        st_type = (rec.get("streakType") or "NONE").upper()
+        st_len = rec.get("streakLength") or 0
+        streak = ""
+        if st_type == "WIN":
+            streak = f"W{st_len}"
+        elif st_type == "LOSS":
+            streak = f"L{st_len}"
+        elif st_type == "TIE":
+            streak = f"T{st_len}"
+        vbs = t.get("valuesByStat") or {}
+        rows.append({
+            "name": t.get("name") or "",
+            "abbrev": t.get("abbrev") or "",
+            "seed": t.get("playoffSeed") or 0,
+            "record": f"{w}-{l}-{ti}" if ti else f"{w}-{l}",
+            "wpct": pct if pct is not None else 0.0,
+            "gb": gb if gb is not None else 0.0,
+            "streak": streak,
+            "cats": {
+                m["sid"]: _fmt(vbs.get(str(m["sid"])), m["prec"])
+                for m in _cat_meta
+            },
+        })
+    # Sort by playoff seed (ESPN's current ranking); fall back to wpct desc.
+    rows.sort(key=lambda r: (r["seed"] if r["seed"] else 999, -r["wpct"]))
+
+    # ── HTML build ─────────────────────────────────────────────────────────
+    if not rows:
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+                '<p style="color:var(--muted);font-size:.88rem">ESPN snapshot has no '
+                'team records yet — season may not have started.</p></div>')
+
+    # Header row
+    th_cells = [
+        '<th class="sortable" data-sort="rank" data-type="num">Rank</th>',
+        '<th class="sortable" data-sort="team" data-type="str">Team</th>',
+        '<th class="sortable r" data-sort="record" data-type="str">Record</th>',
+        '<th class="sortable r" data-sort="wpct" data-type="num">Win%</th>',
+        '<th class="sortable r" data-sort="gb" data-type="num">GB</th>',
+        '<th class="sortable r" data-sort="streak" data-type="streak">Streak</th>',
+    ]
+    for m in _cat_meta:
+        arrow = ' ▾' if m["reversed"] else ''
+        th_cells.append(
+            f'<th class="sortable r" data-sort="cat_{m["sid"]}" data-type="num" '
+            f'title="statId {m["sid"]}{" (lower is better)" if m["reversed"] else ""}">'
+            f'{m["name"]}{arrow}</th>'
+        )
+    thead = "<tr>" + "".join(th_cells) + "</tr>"
+
+    # Body rows
+    tr_html = []
+    for i, r in enumerate(rows, start=1):
+        cat_cells = "".join(
+            f'<td class="r">{r["cats"].get(m["sid"], "—")}</td>' for m in _cat_meta
+        )
+        wpct_disp = f'{r["wpct"]:.3f}'
+        wpct_disp = wpct_disp[1:] if wpct_disp.startswith("0.") else wpct_disp
+        gb_disp = "—" if r["gb"] == 0 else f'{r["gb"]:.1f}'
+        tr_html.append(
+            f'<tr data-rank="{i}" data-team="{r["name"]}" data-record="{r["record"]}" '
+            f'data-wpct="{r["wpct"]}" data-gb="{r["gb"]}" data-streak="{r["streak"] or ""}">'
+            f'<td class="r">{i}</td>'
+            f'<td>{r["name"]}</td>'
+            f'<td class="r" style="font-variant-numeric:tabular-nums">{r["record"]}</td>'
+            f'<td class="r">{wpct_disp}</td>'
+            f'<td class="r">{gb_disp}</td>'
+            f'<td class="r">{r["streak"] or "—"}</td>'
+            f'{cat_cells}'
+            f'</tr>'
+        )
+
+    # Wrap in a horizontally-scrollable container for mobile.
+    return (
+        '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+        '<h3 style="color:var(--accent);margin:0 0 10px;font-size:1.05rem">'
+        '&#x1F3C6; League Standings</h3>'
+        '<p style="color:var(--muted);font-size:.78rem;margin:0 0 12px">'
+        'Live from ESPN snapshot (last roster sync). Click any column header to sort. '
+        '<span style="opacity:.7">&#x25BE; = lower is better</span></p>'
+        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
+        '<table id="fant-standings-tbl" class="standings-tbl" '
+        'style="min-width:720px;font-size:.82rem;border-collapse:collapse;width:100%">'
+        f'<thead>{thead}</thead>'
+        f'<tbody>{"".join(tr_html)}</tbody>'
+        '</table></div>'
+        '</div>'
+    )
+
+
 # ── Phase 3: trade-machine league-state payload ────────────────────────────
 # Builds a JSON-serialisable snapshot of every team's roster, projected stats,
 # baseline z-scores and ranks. The trade-machine JS uses this to recompute
@@ -1360,6 +1567,10 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
     # lineup optimizer + z-score pipeline, and renders the standings HTML.
     # Falls back to an instructional placeholder if the JSON isn't there yet.
     proj_html = _render_season_projections(fdata)
+    # Standings sub-tab — reads espn_rosters.json for live team records +
+    # category totals. Returns a self-contained wrapper div whose display
+    # is toggled by fantSwitch('standings') below.
+    standings_html = _render_standings_html()
 
     # ── Phase 3: trade-machine league-state payload ────────────────────────
     # Builds the per-team rostered-player snapshot the JS uses to recompute
@@ -1425,6 +1636,11 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
               onclick="fantSwitch('p')"
               style="padding:8px 18px">
         Pitchers
+      </button>
+      <button id="fant-standings-btn" class="tab-btn"
+              onclick="fantSwitch('standings')"
+              style="padding:8px 18px">
+        &#x1F3C6; Standings
       </button>
       <button id="fant-trade-btn" class="tab-btn"
               onclick="fantSwitch('trade')"
@@ -1730,6 +1946,9 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
   </div>
 </div>
 
+<!-- ══ STANDINGS ══ -->
+{standings_html}
+
 <!-- ══ SEASON PROJECTIONS ══ -->
 <div id="fant-proj-wrap" style="display:none">
   {proj_html}
@@ -1899,13 +2118,15 @@ function fantSwitch(which) {{
   document.getElementById('fant-h-wrap').style.display     = which==='h'     ? '' : 'none';
   document.getElementById('fant-p-wrap').style.display     = which==='p'     ? '' : 'none';
   document.getElementById('fant-trade-wrap').style.display = which==='trade' ? '' : 'none';
+  var sw = document.getElementById('fant-standings-wrap');
+  if (sw) sw.style.display = which==='standings' ? '' : 'none';
   var pw = document.getElementById('fant-proj-wrap');
   if (pw) pw.style.display = which==='proj' ? '' : 'none';
   var cw = document.getElementById('fant-cmp-wrap');
   if (cw) cw.style.display = which==='cmp' ? '' : 'none';
   var ww = document.getElementById('fant-waiver-wrap');
   if (ww) ww.style.display = which==='waiver' ? '' : 'none';
-  ['h','p','trade','proj','cmp','waiver'].forEach(function(w) {{
+  ['h','p','standings','trade','proj','cmp','waiver'].forEach(function(w) {{
     var btn = document.getElementById('fant-'+w+'-btn');
     if (!btn) return;
     var on = (w === which);
@@ -1913,6 +2134,70 @@ function fantSwitch(which) {{
     btn.style.color = on ? '#fff' : '';
   }});
 }}
+
+/* ── Standings sort: click any <th> to sort the standings table ── */
+window._standingsSort = {{col: 'rank', dir: 1}};
+function fantStandingsSort(col, type) {{
+  var tbl = document.getElementById('fant-standings-tbl');
+  if (!tbl) return;
+  var st = window._standingsSort;
+  if (st.col === col) {{ st.dir = -st.dir; }}
+  else {{ st.col = col; st.dir = 1; }}
+  var tbody = tbl.querySelector('tbody');
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+  rows.sort(function(a, b){{
+    var av, bv;
+    if (col === 'rank') {{ av = +a.dataset.rank; bv = +b.dataset.rank; }}
+    else if (col === 'team') {{ av = a.dataset.team || ''; bv = b.dataset.team || ''; }}
+    else if (col === 'record') {{ av = +a.dataset.wpct; bv = +b.dataset.wpct; }}
+    else if (col === 'wpct') {{ av = +a.dataset.wpct; bv = +b.dataset.wpct; }}
+    else if (col === 'gb')  {{ av = +a.dataset.gb;   bv = +b.dataset.gb; }}
+    else if (col === 'streak') {{
+      // W3 > W2 > W1 > T > L1 > L2: positive = win streak
+      var parse = function(s){{
+        if (!s) return 0;
+        var n = parseInt(s.slice(1), 10) || 0;
+        if (s[0] === 'W') return n;
+        if (s[0] === 'L') return -n;
+        return 0;
+      }};
+      av = parse(a.dataset.streak); bv = parse(b.dataset.streak);
+    }}
+    else if (col.indexOf('cat_') === 0) {{
+      var idx = Array.prototype.indexOf.call(tbl.querySelectorAll('thead th'),
+        tbl.querySelector('th[data-sort="' + col + '"]'));
+      var parseNum = function(td){{
+        var t = (td.textContent || '').trim();
+        if (t === '—') return null;
+        // Re-prepend leading 0 on rate stats like ".315"
+        if (t.charAt(0) === '.') t = '0' + t;
+        var f = parseFloat(t);
+        return isNaN(f) ? null : f;
+      }};
+      av = parseNum(a.cells[idx]);
+      bv = parseNum(b.cells[idx]);
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+    }}
+    if (av < bv) return -st.dir;
+    if (av > bv) return  st.dir;
+    return 0;
+  }});
+  rows.forEach(function(r){{ tbody.appendChild(r); }});
+  // Visual cue on active header
+  tbl.querySelectorAll('thead th').forEach(function(th){{
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === col) {{
+      th.classList.add(st.dir === 1 ? 'sort-asc' : 'sort-desc');
+    }}
+  }});
+}}
+// Wire up header clicks after the tab hydrates.
+document.addEventListener('click', function(e){{
+  var th = e.target.closest && e.target.closest('#fant-standings-tbl thead th[data-sort]');
+  if (th) fantStandingsSort(th.dataset.sort, th.dataset.type);
+}});
 
 /* ── SP / RP filter ──────────────────────────────────────────── */
 var _fpRole = 'all';

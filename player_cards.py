@@ -723,7 +723,11 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // ── Assemble card ─────────────────────────────────────────────────────
     var logoBadge = '';
     if (logoBgUrl) {{
-      logoBadge = '<img src="' + logoBgUrl + '" loading="lazy" style="position:absolute;top:13px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
+      // data-team holds the team abbreviation so the Save-as-image onclone
+      // callback can swap the SVG src (which html2canvas renders badly) for
+      // an ESPN PNG equivalent (which it handles fine).
+      var _teamAbbrLo = (d.team || '').toString().toLowerCase();
+      logoBadge = '<img src="' + logoBgUrl + '" loading="lazy" data-team="' + _teamAbbrLo + '" style="position:absolute;top:13px;right:6px;width:120px;height:120px;object-fit:contain;opacity:.85;z-index:1;filter:drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)" onerror="this.style.display=\\x27none\\x27"/>';
     }}
     document.getElementById('pc-card').innerHTML =
       '<div style="background:#141414;border:1px solid #2a2a2a;border-radius:10px;padding:16px;'
@@ -815,22 +819,37 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
               // the non-square MLB source gets stretched. Swap for a <div>
               // with background-image. Use background-size:contain (NOT
               // cover) so the whole headshot fits in the circle with the
-              // same framing as the live card — cover crops the hat off.
+              // same framing as the live card. No background-color — that
+              // lets the parent container's off-white gradient show through
+              // the corners of the image (matches live card).
               var bgDiv = clonedDoc.createElement('div');
               bgDiv.style.cssText =
                 'width:100%;height:100%;' +
                 'background-image:url("' + img.src + '");' +
                 'background-size:contain;background-position:center center;' +
-                'background-repeat:no-repeat;background-color:#1a1a1a';
+                'background-repeat:no-repeat';
               img.parentNode.replaceChild(bgDiv, img);
             }} else if (isPositioned) {{
-              // Team-logo watermark: html2canvas struggles with MLB's SVG
-              // team logos — it often renders them as a corrupt fragment or
-              // nothing at all. Rather than live with the broken SVG, hide
-              // the watermark entirely in the saved image. The "STL" pill
-              // badge in the header already identifies the team, so nothing
-              // important is lost.
-              img.style.setProperty('display', 'none', 'important');
+              // Team-logo watermark: MLB serves SVGs at /team-logos/{id}.svg
+              // which html2canvas renders as a corrupt fragment. ESPN serves
+              // PNG team logos at a.espncdn.com/i/teamlogos/mlb/500/{abbr}.png
+              // which html2canvas handles perfectly. Swap to that URL if we
+              // have the team abbreviation stashed as a data-team attribute
+              // by the card renderer.
+              var teamAbbr = img.getAttribute('data-team');
+              if (teamAbbr) {{
+                img.src = 'https://a.espncdn.com/i/teamlogos/mlb/500/' + teamAbbr + '.png';
+                img.crossOrigin = 'anonymous';
+              }}
+              // Shrink + reposition so it reads as a subtle corner watermark.
+              img.style.setProperty('width',   '72px', 'important');
+              img.style.setProperty('height',  '72px', 'important');
+              img.style.setProperty('top',     '12px', 'important');
+              img.style.setProperty('right',   '14px', 'important');
+              img.style.setProperty('opacity', '0.80', 'important');
+              // Strip the stacked drop-shadow filters (we already do this
+              // elsewhere but belt-and-suspenders).
+              img.style.setProperty('filter',  'none', 'important');
             }}
           }});
           // Enforce rounded-corner clipping with clip-path — more reliable
