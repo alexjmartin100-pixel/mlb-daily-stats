@@ -852,6 +852,21 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           cloned.querySelectorAll('[style*="drop-shadow"]').forEach(function(el){{
             el.style.filter = 'none';
           }});
+          // Strip linear-gradient backgrounds everywhere in the cloned card
+          // and replace with a solid fallback. html2canvas crashes with
+          // "addColorStop double value is non-finite" whenever a gradient-
+          // backed element has zero width or height (e.g. the circular
+          // headshot container when its onerror handler set display:none).
+          cloned.querySelectorAll('*').forEach(function(el){{
+            var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
+            if (bg.indexOf('gradient') >= 0) {{
+              el.style.setProperty('background', '#2a2a2a', 'important');
+              el.style.setProperty('background-image', 'none', 'important');
+              // Also clear display:none on ancestors of the headshot so
+              // its container has real dimensions for html2canvas.
+              el.style.setProperty('display', 'flex', 'important');
+            }}
+          }});
           // Walk every <img> in the cloned card once. Use the parsed inline
           // style (img.style.position) rather than pattern-matching the raw
           // style attribute string — browsers normalize whitespace and the

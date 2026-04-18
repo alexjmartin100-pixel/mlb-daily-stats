@@ -906,8 +906,8 @@ _STAT_ID_LABELS = {
     47: ("ERA",   True,  2, "pit"),
     48: ("K",     False, 0, "pit"),   # pitcher strikeouts
     53: ("SV",    False, 0, "pit"),
-    57: ("HLD",   False, 0, "pit"),
-    60: ("W",     False, 0, "pit"),   # pitcher wins
+    57: ("W",     False, 0, "pit"),   # wins
+    60: ("HLD",   False, 0, "pit"),   # holds
 }
 
 
@@ -955,21 +955,17 @@ def _render_standings_html() -> str:
             return lbl[0], lbl[1], lbl[2], lbl[3]
         return f"#{sid}", False, 0, "hit"
 
-    # Disambiguate the two "K" columns (hitter vs pitcher) so the header
-    # reads K (Bat) vs K (Pit) in the rendered table.
+    # Both K columns just display "K" — the hit/pit block separator below
+    # makes the context clear without the parenthetical labels.
     _cat_meta = []
     for sid in _cat_ids:
         name, rev, prec, group = _label_for(sid)
-        if name == "K":
-            name = "K (Bat)" if group == "hit" else "K (Pit)"
         _cat_meta.append({"sid": sid, "name": name, "reversed": rev,
                           "prec": prec, "group": group})
 
     # Fallback if scoringItems missing: use every statId we have a label for.
     if not _cat_meta:
         for sid, (name, rev, prec, group) in sorted(_STAT_ID_LABELS.items()):
-            if name == "K":
-                name = "K (Bat)" if group == "hit" else "K (Pit)"
             _cat_meta.append({"sid": sid, "name": name, "reversed": rev,
                               "prec": prec, "group": group})
 
@@ -1005,6 +1001,14 @@ def _render_standings_html() -> str:
         pct = rec.get("percentage")
         gb = rec.get("gamesBack")
         vbs = t.get("valuesByStat") or {}
+        # Stash raw numeric values per category so we can rank-color them
+        raw_cats = {}
+        for m in _cat_meta:
+            v = vbs.get(str(m["sid"]))
+            try:
+                raw_cats[m["sid"]] = float(v) if v is not None else None
+            except (TypeError, ValueError):
+                raw_cats[m["sid"]] = None
         rows.append({
             "name": t.get("name") or "",
             "abbrev": t.get("abbrev") or "",
@@ -1016,9 +1020,47 @@ def _render_standings_html() -> str:
                 m["sid"]: _fmt(vbs.get(str(m["sid"])), m["prec"])
                 for m in _cat_meta
             },
+            "raw_cats": raw_cats,
         })
     # Sort by playoff seed (ESPN's current ranking); fall back to wpct desc.
     rows.sort(key=lambda r: (r["seed"] if r["seed"] else 999, -r["wpct"]))
+
+    # ── Rank each team in each category (1 = best) so we can color-code
+    #    cells with a gold→red→blue gradient similar to the rest of the
+    #    dashboard. Ties get the same rank.
+    n_teams = len(rows)
+    cell_colors = {}  # {(row_idx, sid): hex_color}
+    def _rank_to_color(rank, n):
+        """rank 1 = gold; 2..n interpolated from red → grey → blue.
+        Matches pctColor() gradient used elsewhere."""
+        if rank <= 1:
+            return "#f0c040"  # gold for best
+        # Map rank [2..n] onto percentile [89..0]
+        # (rank=2 → 89th pct ≈ vivid red; rank=n → 0th pct ≈ deep blue)
+        if n <= 1:
+            return "#888"
+        pct = (n - rank) / (n - 1) * 100.0
+        if pct >= 50:
+            t = (pct - 50.0) / 50.0
+            r = int(round(136 + 88 * t)); g = int(round(136 - 104 * t)); b = int(round(136 - 104 * t))
+        else:
+            t = (pct - 1.0) / 49.0 if pct > 1 else 0
+            r = int(round(30 + 106 * t)); g = int(round(63 + 73 * t)); b = int(round(186 - 50 * t))
+        return f"rgb({r},{g},{b})"
+
+    for m in _cat_meta:
+        vals = [(idx, r["raw_cats"].get(m["sid"])) for idx, r in enumerate(rows)]
+        # Separate None values so they don't affect rank ordering
+        valid = [(i, v) for i, v in vals if v is not None]
+        # Sort so rank 1 = best; reversed cats = ascending, else descending
+        valid.sort(key=lambda iv: iv[1], reverse=(not m["reversed"]))
+        prev_val = object()
+        prev_rank = 0
+        for j, (i, v) in enumerate(valid, start=1):
+            rank = prev_rank if v == prev_val else j
+            cell_colors[(i, m["sid"])] = _rank_to_color(rank, len(valid))
+            prev_val = v
+            prev_rank = rank
 
     # ── HTML build ─────────────────────────────────────────────────────────
     if not rows:
@@ -1027,8 +1069,8 @@ def _render_standings_html() -> str:
                 'team records yet — season may not have started.</p></div>')
 
     # data-rev lets the sort function know whether "best" means low or high,
-    # so first click sorts teams best→worst. data-grp separates the hit/pit
-    # blocks visually with a left border in CSS.
+    # so first click sorts teams best→worst. cat-group-start adds the left
+    # border dividing record/GB from hit cats, and hit from pit cats.
     th_cells = [
         '<th class="sortable" data-sort="rank" data-type="num" data-rev="lo">Rank</th>',
         '<th class="sortable" data-sort="team" data-type="str">Team</th>',
@@ -1036,13 +1078,17 @@ def _render_standings_html() -> str:
         '<th class="sortable r" data-sort="wpct" data-type="num" data-rev="hi">Win%</th>',
         '<th class="sortable r" data-sort="gb" data-type="num" data-rev="lo">GB</th>',
     ]
+    # Flag that the NEXT column is the first category (divider before hit cats).
+    first_cat = True
     prev_group = None
     for m in _cat_meta:
         arrow = ' ▾' if m["reversed"] else ''
         rev = "lo" if m["reversed"] else "hi"
-        # Add a group-boundary class when switching from hit to pit so CSS
-        # can render a visual divider between the two category blocks.
-        border_cls = " cat-group-start" if prev_group is not None and prev_group != m["group"] else ""
+        # Add a group-boundary divider for: (a) the very first cat column
+        # after GB, and (b) whenever the group changes (hit → pit).
+        is_boundary = first_cat or (prev_group is not None and prev_group != m["group"])
+        border_cls = " cat-group-start" if is_boundary else ""
+        first_cat = False
         prev_group = m["group"]
         th_cells.append(
             f'<th class="sortable r{border_cls}" data-sort="cat_{m["sid"]}" data-type="num" '
@@ -1052,23 +1098,33 @@ def _render_standings_html() -> str:
         )
     thead = "<tr>" + "".join(th_cells) + "</tr>"
 
-    # Body rows
+    # Body rows — cells get per-category colored text based on the team's
+    # rank in that category (gold #1, red→blue 2..N).
     tr_html = []
-    for i, r in enumerate(rows, start=1):
+    for row_i, r in enumerate(rows):
+        rank = row_i + 1
         cells = []
+        first_cat = True
         prev_group = None
         for m in _cat_meta:
-            border_cls = " cat-group-start" if prev_group is not None and prev_group != m["group"] else ""
+            is_boundary = first_cat or (prev_group is not None and prev_group != m["group"])
+            border_cls = " cat-group-start" if is_boundary else ""
+            first_cat = False
             prev_group = m["group"]
-            cells.append(f'<td class="r{border_cls}">{r["cats"].get(m["sid"], "—")}</td>')
+            color = cell_colors.get((row_i, m["sid"]), "#ccc")
+            # Bold + colored for the category cells.
+            cells.append(
+                f'<td class="r{border_cls}" style="color:{color};font-weight:700">'
+                f'{r["cats"].get(m["sid"], "—")}</td>'
+            )
         cat_cells = "".join(cells)
         wpct_disp = f'{r["wpct"]:.3f}'
         wpct_disp = wpct_disp[1:] if wpct_disp.startswith("0.") else wpct_disp
         gb_disp = "—" if r["gb"] == 0 else f'{r["gb"]:.1f}'
         tr_html.append(
-            f'<tr data-rank="{i}" data-team="{r["name"]}" '
+            f'<tr data-rank="{rank}" data-team="{r["name"]}" '
             f'data-wpct="{r["wpct"]}" data-gb="{r["gb"]}">'
-            f'<td class="r">{i}</td>'
+            f'<td class="r">{rank}</td>'
             f'<td>{r["name"]}</td>'
             f'<td class="r" style="font-variant-numeric:tabular-nums">{r["record"]}</td>'
             f'<td class="r">{wpct_disp}</td>'
