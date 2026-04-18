@@ -891,21 +891,23 @@ def _render_season_projections(fdata: dict) -> str:
 # labels below. `reversed` items (lower-is-better: ERA, WHIP, K_h) are
 # flagged so CSS can color them appropriately if we decide to later.
 _STAT_ID_LABELS = {
-    # Hitting (IDs derived from ESPN's API + value-range sanity check against
-    # the real snapshot values for this 2026 league)
-    5:  ("HR",    False, 0),
-    17: ("OBP",   False, 3),
-    20: ("R",     False, 0),
-    21: ("RBI",   False, 0),
-    23: ("SB",    False, 0),
-    27: ("K",     True,  0),   # hitter strikeouts (reversed)
+    # (label, reversed_lower_is_better, decimal_precision, hit_or_pit)
+    # IDs derived from ESPN's API + value-range sanity check against
+    # the real snapshot values for this 2026 league.
+    # Hitting
+    5:  ("HR",    False, 0, "hit"),
+    17: ("OBP",   False, 3, "hit"),
+    20: ("R",     False, 0, "hit"),
+    21: ("RBI",   False, 0, "hit"),
+    23: ("SB",    False, 0, "hit"),
+    27: ("K",     True,  0, "hit"),   # hitter strikeouts (reversed)
     # Pitching
-    41: ("WHIP",  True,  3),
-    47: ("ERA",   True,  2),
-    48: ("K",     False, 0),   # pitcher strikeouts (range ~165-225 at this point)
-    53: ("SV",    False, 0),
-    57: ("HLD",   False, 0),
-    60: ("W",     False, 0),   # pitcher wins (single-digit early season)
+    41: ("WHIP",  True,  3, "pit"),
+    47: ("ERA",   True,  2, "pit"),
+    48: ("K",     False, 0, "pit"),   # pitcher strikeouts
+    53: ("SV",    False, 0, "pit"),
+    57: ("HLD",   False, 0, "pit"),
+    60: ("W",     False, 0, "pit"),   # pitcher wins
 }
 
 
@@ -950,24 +952,31 @@ def _render_standings_html() -> str:
     def _label_for(sid):
         lbl = _STAT_ID_LABELS.get(sid)
         if lbl:
-            return lbl[0], lbl[1], lbl[2]
-        return f"#{sid}", False, 0
+            return lbl[0], lbl[1], lbl[2], lbl[3]
+        return f"#{sid}", False, 0, "hit"
 
     # Disambiguate the two "K" columns (hitter vs pitcher) so the header
-    # reads Hit-K and Pit-K in the rendered table.
-    _seen_k = 0
+    # reads K (Bat) vs K (Pit) in the rendered table.
     _cat_meta = []
     for sid in _cat_ids:
-        name, rev, prec = _label_for(sid)
+        name, rev, prec, group = _label_for(sid)
         if name == "K":
-            _seen_k += 1
-            name = "K (Bat)" if rev else "K (Pit)"
-        _cat_meta.append({"sid": sid, "name": name, "reversed": rev, "prec": prec})
+            name = "K (Bat)" if group == "hit" else "K (Pit)"
+        _cat_meta.append({"sid": sid, "name": name, "reversed": rev,
+                          "prec": prec, "group": group})
 
     # Fallback if scoringItems missing: use every statId we have a label for.
     if not _cat_meta:
-        for sid, (name, rev, prec) in sorted(_STAT_ID_LABELS.items()):
-            _cat_meta.append({"sid": sid, "name": name, "reversed": rev, "prec": prec})
+        for sid, (name, rev, prec, group) in sorted(_STAT_ID_LABELS.items()):
+            if name == "K":
+                name = "K (Bat)" if group == "hit" else "K (Pit)"
+            _cat_meta.append({"sid": sid, "name": name, "reversed": rev,
+                              "prec": prec, "group": group})
+
+    # Group hitting cats first, pitching cats second. ESPN's scoringItems
+    # order interleaves the two groups, which looks messy in the table.
+    # Stable sort keeps each group in its original scoringItems order.
+    _cat_meta.sort(key=lambda m: 0 if m["group"] == "hit" else 1)
 
     # Compose team rows.
     def _fmt(val, prec):
@@ -995,15 +1004,6 @@ def _render_standings_html() -> str:
         ti = rec.get("ties") or 0
         pct = rec.get("percentage")
         gb = rec.get("gamesBack")
-        st_type = (rec.get("streakType") or "NONE").upper()
-        st_len = rec.get("streakLength") or 0
-        streak = ""
-        if st_type == "WIN":
-            streak = f"W{st_len}"
-        elif st_type == "LOSS":
-            streak = f"L{st_len}"
-        elif st_type == "TIE":
-            streak = f"T{st_len}"
         vbs = t.get("valuesByStat") or {}
         rows.append({
             "name": t.get("name") or "",
@@ -1012,7 +1012,6 @@ def _render_standings_html() -> str:
             "record": f"{w}-{l}-{ti}" if ti else f"{w}-{l}",
             "wpct": pct if pct is not None else 0.0,
             "gb": gb if gb is not None else 0.0,
-            "streak": streak,
             "cats": {
                 m["sid"]: _fmt(vbs.get(str(m["sid"])), m["prec"])
                 for m in _cat_meta
@@ -1027,19 +1026,27 @@ def _render_standings_html() -> str:
                 '<p style="color:var(--muted);font-size:.88rem">ESPN snapshot has no '
                 'team records yet — season may not have started.</p></div>')
 
-    # Header row
+    # data-rev lets the sort function know whether "best" means low or high,
+    # so first click sorts teams best→worst. data-grp separates the hit/pit
+    # blocks visually with a left border in CSS.
     th_cells = [
-        '<th class="sortable" data-sort="rank" data-type="num">Rank</th>',
+        '<th class="sortable" data-sort="rank" data-type="num" data-rev="lo">Rank</th>',
         '<th class="sortable" data-sort="team" data-type="str">Team</th>',
-        '<th class="sortable r" data-sort="record" data-type="str">Record</th>',
-        '<th class="sortable r" data-sort="wpct" data-type="num">Win%</th>',
-        '<th class="sortable r" data-sort="gb" data-type="num">GB</th>',
-        '<th class="sortable r" data-sort="streak" data-type="streak">Streak</th>',
+        '<th class="sortable r" data-sort="wpct" data-type="num" data-rev="hi">Record</th>',
+        '<th class="sortable r" data-sort="wpct" data-type="num" data-rev="hi">Win%</th>',
+        '<th class="sortable r" data-sort="gb" data-type="num" data-rev="lo">GB</th>',
     ]
+    prev_group = None
     for m in _cat_meta:
         arrow = ' ▾' if m["reversed"] else ''
+        rev = "lo" if m["reversed"] else "hi"
+        # Add a group-boundary class when switching from hit to pit so CSS
+        # can render a visual divider between the two category blocks.
+        border_cls = " cat-group-start" if prev_group is not None and prev_group != m["group"] else ""
+        prev_group = m["group"]
         th_cells.append(
-            f'<th class="sortable r" data-sort="cat_{m["sid"]}" data-type="num" '
+            f'<th class="sortable r{border_cls}" data-sort="cat_{m["sid"]}" data-type="num" '
+            f'data-rev="{rev}" data-grp="{m["group"]}" '
             f'title="statId {m["sid"]}{" (lower is better)" if m["reversed"] else ""}">'
             f'{m["name"]}{arrow}</th>'
         )
@@ -1048,21 +1055,24 @@ def _render_standings_html() -> str:
     # Body rows
     tr_html = []
     for i, r in enumerate(rows, start=1):
-        cat_cells = "".join(
-            f'<td class="r">{r["cats"].get(m["sid"], "—")}</td>' for m in _cat_meta
-        )
+        cells = []
+        prev_group = None
+        for m in _cat_meta:
+            border_cls = " cat-group-start" if prev_group is not None and prev_group != m["group"] else ""
+            prev_group = m["group"]
+            cells.append(f'<td class="r{border_cls}">{r["cats"].get(m["sid"], "—")}</td>')
+        cat_cells = "".join(cells)
         wpct_disp = f'{r["wpct"]:.3f}'
         wpct_disp = wpct_disp[1:] if wpct_disp.startswith("0.") else wpct_disp
         gb_disp = "—" if r["gb"] == 0 else f'{r["gb"]:.1f}'
         tr_html.append(
-            f'<tr data-rank="{i}" data-team="{r["name"]}" data-record="{r["record"]}" '
-            f'data-wpct="{r["wpct"]}" data-gb="{r["gb"]}" data-streak="{r["streak"] or ""}">'
+            f'<tr data-rank="{i}" data-team="{r["name"]}" '
+            f'data-wpct="{r["wpct"]}" data-gb="{r["gb"]}">'
             f'<td class="r">{i}</td>'
             f'<td>{r["name"]}</td>'
             f'<td class="r" style="font-variant-numeric:tabular-nums">{r["record"]}</td>'
             f'<td class="r">{wpct_disp}</td>'
             f'<td class="r">{gb_disp}</td>'
-            f'<td class="r">{r["streak"] or "—"}</td>'
             f'{cat_cells}'
             f'</tr>'
         )
@@ -2135,40 +2145,39 @@ function fantSwitch(which) {{
   }});
 }}
 
-/* ── Standings sort: click any <th> to sort the standings table ── */
+/* ── Standings sort: click any <th> to sort the standings table ────
+   First click on a column sorts teams BEST first: higher-is-better
+   stats (R, HR, RBI, etc.) sort descending; lower-is-better stats
+   (ERA, WHIP, K-Bat, GB, Rank) sort ascending. Subsequent clicks on
+   the same column reverse the direction. The data-rev attribute on
+   each <th> ("hi" or "lo") tells us which direction is "best". */
 window._standingsSort = {{col: 'rank', dir: 1}};
-function fantStandingsSort(col, type) {{
+function fantStandingsSort(col, type, rev) {{
   var tbl = document.getElementById('fant-standings-tbl');
   if (!tbl) return;
   var st = window._standingsSort;
-  if (st.col === col) {{ st.dir = -st.dir; }}
-  else {{ st.col = col; st.dir = 1; }}
+  if (st.col === col) {{
+    st.dir = -st.dir;
+  }} else {{
+    st.col = col;
+    // First click on a new column: 'hi' means higher-is-better → desc (-1).
+    // 'lo' means lower-is-better (or smaller rank/GB) → asc (1).
+    st.dir = (rev === 'hi') ? -1 : 1;
+  }}
   var tbody = tbl.querySelector('tbody');
   var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
   rows.sort(function(a, b){{
     var av, bv;
     if (col === 'rank') {{ av = +a.dataset.rank; bv = +b.dataset.rank; }}
     else if (col === 'team') {{ av = a.dataset.team || ''; bv = b.dataset.team || ''; }}
-    else if (col === 'record') {{ av = +a.dataset.wpct; bv = +b.dataset.wpct; }}
     else if (col === 'wpct') {{ av = +a.dataset.wpct; bv = +b.dataset.wpct; }}
-    else if (col === 'gb')  {{ av = +a.dataset.gb;   bv = +b.dataset.gb; }}
-    else if (col === 'streak') {{
-      // W3 > W2 > W1 > T > L1 > L2: positive = win streak
-      var parse = function(s){{
-        if (!s) return 0;
-        var n = parseInt(s.slice(1), 10) || 0;
-        if (s[0] === 'W') return n;
-        if (s[0] === 'L') return -n;
-        return 0;
-      }};
-      av = parse(a.dataset.streak); bv = parse(b.dataset.streak);
-    }}
+    else if (col === 'gb')   {{ av = +a.dataset.gb;   bv = +b.dataset.gb; }}
     else if (col.indexOf('cat_') === 0) {{
       var idx = Array.prototype.indexOf.call(tbl.querySelectorAll('thead th'),
         tbl.querySelector('th[data-sort="' + col + '"]'));
       var parseNum = function(td){{
         var t = (td.textContent || '').trim();
-        if (t === '—') return null;
+        if (t === '—' || t === '') return null;
         // Re-prepend leading 0 on rate stats like ".315"
         if (t.charAt(0) === '.') t = '0' + t;
         var f = parseFloat(t);
@@ -2196,7 +2205,7 @@ function fantStandingsSort(col, type) {{
 // Wire up header clicks after the tab hydrates.
 document.addEventListener('click', function(e){{
   var th = e.target.closest && e.target.closest('#fant-standings-tbl thead th[data-sort]');
-  if (th) fantStandingsSort(th.dataset.sort, th.dataset.type);
+  if (th) fantStandingsSort(th.dataset.sort, th.dataset.type, th.dataset.rev);
 }});
 
 /* ── SP / RP filter ──────────────────────────────────────────── */

@@ -760,6 +760,40 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   // API (iOS/Android modern) with a download fallback. useCORS:true re-
   // fetches images with crossorigin so MLB/Savant headshots + logos don't
   // taint the canvas. backgroundColor matches the page to avoid a white halo.
+  // Convert the MLB team-logo SVG into a PNG data URL. The raw SVG doesn't
+  // render cleanly in html2canvas, and ESPN's PNG alternative has no CORS
+  // headers (so crossOrigin="anonymous" img loads fail). MLB's SVG IS
+  // CORS-enabled (access-control-allow-origin: *), so we fetch it as text,
+  // draw to a canvas via a Blob URL, then export a PNG data URL.
+  // Data URLs have no cross-origin constraints at all — html2canvas renders
+  // them perfectly.
+  function _pcSvgToPngDataUrl(svgUrl){{
+    return fetch(svgUrl, {{mode: 'cors'}})
+      .then(function(r){{ return r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)); }})
+      .then(function(svgText){{
+        return new Promise(function(resolve, reject){{
+          var blob = new Blob([svgText], {{type: 'image/svg+xml'}});
+          var url = URL.createObjectURL(blob);
+          var im = new Image();
+          im.onload = function(){{
+            var size = 256;
+            var c = document.createElement('canvas');
+            c.width = size; c.height = size;
+            var ctx = c.getContext('2d');
+            ctx.drawImage(im, 0, 0, size, size);
+            URL.revokeObjectURL(url);
+            try {{ resolve(c.toDataURL('image/png')); }}
+            catch(e){{ reject(e); }}
+          }};
+          im.onerror = function(){{
+            URL.revokeObjectURL(url);
+            reject(new Error('svg img load failed'));
+          }};
+          im.src = url;
+        }});
+      }});
+  }}
+
   window.pcSaveAsImage = function(){{
     var card = document.getElementById('pc-card');
     var status = document.getElementById('pc-save-status');
@@ -770,6 +804,17 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
     if (btn) btn.disabled = true;
     if (status) status.textContent = 'Capturing…';
+    // Pre-convert the team logo from CORS-enabled SVG to PNG data URL so
+    // the onclone callback can swap the img's src to something html2canvas
+    // renders cleanly. Stash the result on the img as data-png-src.
+    var logoImg = card.querySelector('img[data-team]');
+    var prepLogo = Promise.resolve();
+    if (logoImg && logoImg.src && /\.svg(\?|$)/.test(logoImg.src)) {{
+      prepLogo = _pcSvgToPngDataUrl(logoImg.src)
+        .then(function(dataUrl){{ logoImg.setAttribute('data-png-src', dataUrl); }})
+        .catch(function(){{ /* logo will be hidden as fallback in onclone */ }});
+    }}
+    prepLogo.then(function(){{
     window._pcLoadHtml2Canvas(function(err){{
       if (err) {{
         if (status) status.textContent = 'Could not load capture library.';
@@ -830,26 +875,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                 'background-repeat:no-repeat';
               img.parentNode.replaceChild(bgDiv, img);
             }} else if (isPositioned) {{
-              // Team-logo watermark: MLB serves SVGs at /team-logos/{{id}}.svg
-              // which html2canvas renders as a corrupt fragment. ESPN serves
-              // PNG team logos at a.espncdn.com/i/teamlogos/mlb/500/{{abbr}}.png
-              // which html2canvas handles perfectly. Swap to that URL if we
-              // have the team abbreviation stashed as a data-team attribute
-              // by the card renderer.
-              var teamAbbr = img.getAttribute('data-team');
-              if (teamAbbr) {{
-                img.src = 'https://a.espncdn.com/i/teamlogos/mlb/500/' + teamAbbr + '.png';
-                img.crossOrigin = 'anonymous';
+              // Team-logo watermark: the live card shows an MLB SVG, which
+              // html2canvas renders as a corrupt fragment. Before calling
+              // html2canvas, pcSaveAsImage() pre-converted the SVG to a PNG
+              // data URL and stashed it on data-png-src. Swap to that here;
+              // if conversion failed, hide the logo (cleaner than garbage).
+              var pngSrc = img.getAttribute('data-png-src');
+              if (pngSrc) {{
+                img.src = pngSrc;
+                img.removeAttribute('crossorigin');
+                // Shrink + reposition so it reads as a subtle watermark.
+                img.style.setProperty('width',   '72px', 'important');
+                img.style.setProperty('height',  '72px', 'important');
+                img.style.setProperty('top',     '12px', 'important');
+                img.style.setProperty('right',   '14px', 'important');
+                img.style.setProperty('opacity', '0.80', 'important');
+                img.style.setProperty('filter',  'none', 'important');
+              }} else {{
+                // Couldn't convert SVG → PNG, hide rather than show broken.
+                img.style.setProperty('display', 'none', 'important');
               }}
-              // Shrink + reposition so it reads as a subtle corner watermark.
-              img.style.setProperty('width',   '72px', 'important');
-              img.style.setProperty('height',  '72px', 'important');
-              img.style.setProperty('top',     '12px', 'important');
-              img.style.setProperty('right',   '14px', 'important');
-              img.style.setProperty('opacity', '0.80', 'important');
-              // Strip the stacked drop-shadow filters (we already do this
-              // elsewhere but belt-and-suspenders).
-              img.style.setProperty('filter',  'none', 'important');
             }}
           }});
           // Enforce rounded-corner clipping with clip-path — more reliable
@@ -893,6 +938,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
         if (btn) btn.disabled = false;
       }});
+    }});
     }});
   }};
 

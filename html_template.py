@@ -119,6 +119,10 @@ thead th.sortable{cursor:pointer;transition:color .15s}
 thead th.sortable:hover{color:#fff}
 thead th.sort-asc::after{content:" ▲";color:var(--accent);font-size:.58rem}
 thead th.sort-desc::after{content:" ▼";color:var(--accent);font-size:.58rem}
+/* Visual divider between the hitting and pitching category blocks in the
+   Standings table — makes it obvious which group each column belongs to. */
+.standings-tbl th.cat-group-start,
+.standings-tbl td.cat-group-start{border-left:2px solid #3a3a3a;padding-left:10px}
 thead th.r{text-align:right}
 thead th.sc{color:#5d9bc8 !important}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
