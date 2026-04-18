@@ -803,15 +803,39 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           cloned.querySelectorAll('[style*="drop-shadow"]').forEach(function(el){{
             el.style.filter = 'none';
           }});
-          // Shrink the absolute-positioned team logo so it doesn't dominate
-          // the top-right of the saved image. 120→80 reads better as a
-          // background watermark when viewed at image size.
-          cloned.querySelectorAll('img[style*="position:absolute"]').forEach(function(img){{
-            img.style.width = '80px';
-            img.style.height = '80px';
-            img.style.top = '10px';
-            img.style.right = '10px';
-            img.style.opacity = '0.65';
+          // Walk every <img> in the cloned card once and apply the right
+          // transformation based on what kind of image it is. Doing both
+          // passes in a single walk with property-based checks (not string
+          // matching on the style attribute, which can fail when browsers
+          // normalize whitespace) is the reliable way.
+          cloned.querySelectorAll('img').forEach(function(img){{
+            var isHeadshot = img.id && img.id.indexOf('pc-headshot') === 0;
+            // Check computed-ish position via the element's style object —
+            // this reads the parsed inline-style value regardless of how
+            // the style attribute string is serialized.
+            var isPositioned = img.style && img.style.position === 'absolute';
+            if (isHeadshot) {{
+              // html2canvas doesn't reliably respect object-fit:contain on
+              // <img>, so the non-square MLB source gets stretched to fill
+              // the circular 120×120 container. Swap for a <div> with
+              // background-image; background-size:cover is honored correctly.
+              var bgDiv = clonedDoc.createElement('div');
+              bgDiv.style.cssText =
+                'width:100%;height:100%;' +
+                'background-image:url("' + img.src + '");' +
+                'background-size:cover;background-position:center center;' +
+                'background-repeat:no-repeat';
+              img.parentNode.replaceChild(bgDiv, img);
+            }} else if (isPositioned) {{
+              // Team logo — shrink hard so it reads as a subtle corner
+              // watermark instead of dominating the capture. Use
+              // setProperty with !important so nothing else overrides.
+              img.style.setProperty('width',   '56px', 'important');
+              img.style.setProperty('height',  '56px', 'important');
+              img.style.setProperty('top',     '12px', 'important');
+              img.style.setProperty('right',   '14px', 'important');
+              img.style.setProperty('opacity', '0.55', 'important');
+            }}
           }});
           // Enforce rounded-corner clipping with clip-path — more reliable
           // in html2canvas than overflow:hidden + border-radius.
