@@ -830,9 +830,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                 'background-repeat:no-repeat';
               img.parentNode.replaceChild(bgDiv, img);
             }} else if (isPositioned) {{
-              // Team-logo watermark: MLB serves SVGs at /team-logos/{id}.svg
+              // Team-logo watermark: MLB serves SVGs at /team-logos/{{id}}.svg
               // which html2canvas renders as a corrupt fragment. ESPN serves
-              // PNG team logos at a.espncdn.com/i/teamlogos/mlb/500/{abbr}.png
+              // PNG team logos at a.espncdn.com/i/teamlogos/mlb/500/{{abbr}}.png
               // which html2canvas handles perfectly. Swap to that URL if we
               // have the team abbreviation stashed as a data-team attribute
               // by the card renderer.
