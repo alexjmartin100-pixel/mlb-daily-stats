@@ -216,7 +216,10 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
-  .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
+  /* Extra bottom padding so buttons / tables near the end of any tab aren't
+     pinned against the bottom of the viewport (where the mobile browser's
+     URL bar / home indicator steals real estate and makes taps awkward). */
+  .tab-panel{padding:13px 8px 140px}.tab-btn{padding:10px 12px;font-size:.78rem}
   /* Trade Machine: stack Sending → Breakdown → Receiving vertically on mobile.
      Without this, flex-wrap lets the 240px breakdown column squeeze onto row 1
      next to Sending, then pushes Receiving to its own row. */
