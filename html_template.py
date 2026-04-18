@@ -217,6 +217,15 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
   .tab-panel{padding:13px 8px}.tab-btn{padding:10px 12px;font-size:.78rem}
+  /* Trade Machine: stack Sending → Breakdown → Receiving vertically on mobile.
+     Without this, flex-wrap lets the 240px breakdown column squeeze onto row 1
+     next to Sending, then pushes Receiving to its own row. */
+  .trade-three-col > *{flex:1 1 100% !important;min-width:0 !important;width:100% !important}
+}
+@media(max-width:820px){
+  /* Same fix for slightly wider phones / small tablets where the combined
+     min-widths (260+240+260 = 760 + gaps) still don't fit. */
+  .trade-three-col > *{flex:1 1 100% !important;min-width:0 !important;width:100% !important}
 }
 </style>
 </head>

@@ -1609,7 +1609,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
 <div id="fant-trade-wrap" style="display:none;padding:18px 20px 0">
 
   <!-- Two-column layout: Sending | Compare | Receiving -->
-  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+  <div class="trade-three-col" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
 
     <!-- ── SENDING ── -->
     <div style="flex:1;min-width:260px">
