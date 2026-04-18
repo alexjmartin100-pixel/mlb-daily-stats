@@ -330,6 +330,21 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   <!-- Card area -->
   <div id="pc-card"></div>
 
+  <!-- Save-as-image button. Hidden until a player card is rendered. Uses
+       html2canvas to rasterize #pc-card, then navigator.share() with a File
+       (iOS/Android modern browsers show a share sheet with "Save Image"/
+       "Save to Photos") with a download fallback for older browsers. -->
+  <div id="pc-save-wrap" style="display:none;margin-top:12px;text-align:center">
+    <button id="pc-save-btn" type="button" onclick="pcSaveAsImage()"
+            style="background:#1e1e1e;border:1px solid #444;color:#eee;
+                   padding:12px 22px;border-radius:8px;font-size:.95rem;
+                   font-weight:600;cursor:pointer;min-width:180px;min-height:44px">
+      &#x1F4F7; Save as image
+    </button>
+    <div id="pc-save-status" style="font-size:.75rem;color:var(--muted);
+         margin-top:6px;min-height:1em"></div>
+  </div>
+
 </div>
 </div>
 
@@ -716,7 +731,95 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       + logoBadge
       + header + std_html + bars_html + bb_html
       + '</div>';
+    // Show the Save-as-image button now that there's a card to capture
+    var _saveWrap = document.getElementById('pc-save-wrap');
+    if (_saveWrap) _saveWrap.style.display = '';
+    // Stash the player's name on the button so the saved filename matches
+    var _saveBtn = document.getElementById('pc-save-btn');
+    if (_saveBtn) _saveBtn.setAttribute('data-player-name', (d && d.name) || 'player-card');
+    var _saveStatus = document.getElementById('pc-save-status');
+    if (_saveStatus) _saveStatus.textContent = '';
   }};
+
+  // Lazy-load html2canvas on first use so the 150KB library doesn't bloat
+  // the initial page payload. Cached by the browser for subsequent clicks.
+  window._pcLoadHtml2Canvas = function(cb){{
+    if (window.html2canvas) {{ cb(null); return; }}
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = function(){{ cb(null); }};
+    s.onerror = function(){{ cb(new Error('Failed to load html2canvas')); }};
+    document.head.appendChild(s);
+  }};
+
+  // Save-as-image: render #pc-card to a PNG and offer it via the Web Share
+  // API (iOS/Android modern) with a download fallback. useCORS:true re-
+  // fetches images with crossorigin so MLB/Savant headshots + logos don't
+  // taint the canvas. backgroundColor matches the page to avoid a white halo.
+  window.pcSaveAsImage = function(){{
+    var card = document.getElementById('pc-card');
+    var status = document.getElementById('pc-save-status');
+    var btn = document.getElementById('pc-save-btn');
+    if (!card || !card.firstChild) {{
+      if (status) status.textContent = 'Pick a player first.';
+      return;
+    }}
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = 'Capturing…';
+    window._pcLoadHtml2Canvas(function(err){{
+      if (err) {{
+        if (status) status.textContent = 'Could not load capture library.';
+        if (btn) btn.disabled = false;
+        return;
+      }}
+      window.html2canvas(card, {{
+        useCORS: true,
+        backgroundColor: '#0a0a0a',
+        scale: window.devicePixelRatio || 2,
+        logging: false
+      }}).then(function(canvas){{
+        canvas.toBlob(function(blob){{
+          if (!blob) {{
+            if (status) status.textContent = 'Capture failed.';
+            if (btn) btn.disabled = false;
+            return;
+          }}
+          var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
+          var fname = name.replace(/[^A-Za-z0-9]+/g, '_') + '.png';
+          var file = new File([blob], fname, {{ type: 'image/png' }});
+          // Prefer native share (iOS: Save to Photos; Android: Save/Share sheet)
+          if (navigator.canShare && navigator.canShare({{ files: [file] }})) {{
+            navigator.share({{ files: [file], title: name }})
+              .then(function(){{ if (status) status.textContent = 'Shared.'; }})
+              .catch(function(e){{
+                // User canceled share sheet — treat as a soft cancel
+                if (e && e.name === 'AbortError') {{
+                  if (status) status.textContent = '';
+                }} else {{
+                  _pcTriggerDownload(blob, fname, status);
+                }}
+              }})
+              .then(function(){{ if (btn) btn.disabled = false; }});
+          }} else {{
+            _pcTriggerDownload(blob, fname, status);
+            if (btn) btn.disabled = false;
+          }}
+        }}, 'image/png');
+      }}).catch(function(e){{
+        if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
+        if (btn) btn.disabled = false;
+      }});
+    }});
+  }};
+
+  function _pcTriggerDownload(blob, fname, status){{
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){{ URL.revokeObjectURL(url); }}, 1000);
+    if (status) status.textContent = 'Saved.';
+  }}
 
 }})();</script>
 """

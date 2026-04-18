@@ -220,6 +220,15 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
      pinned against the bottom of the viewport (where the mobile browser's
      URL bar / home indicator steals real estate and makes taps awkward). */
   .tab-panel{padding:13px 8px 140px}.tab-btn{padding:10px 12px;font-size:.78rem}
+  /* The Fantasy sub-tab wrappers (Trade Machine, Season Projections, Waiver
+     Wire, Compare Players) are SIBLINGS of #fantasy-panel, not children, so
+     the .tab-panel padding rule above doesn't reach them. Their inline styles
+     set bottom padding to 0, which pins the "Show standings" / "Show updated
+     lineups" buttons flush against the mobile browser's URL bar. Force a
+     comfortable bottom padding with !important to beat the inline style. */
+  #fant-trade-wrap,#fant-proj-wrap,#fant-waiver-wrap,#fant-cmp-wrap{
+    padding-bottom:160px !important
+  }
   /* Trade Machine: stack Sending → Breakdown → Receiving vertically on mobile.
      Without this, flex-wrap lets the 240px breakdown column squeeze onto row 1
      next to Sending, then pushes Receiving to its own row. */
