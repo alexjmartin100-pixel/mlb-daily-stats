@@ -775,8 +775,37 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       window.html2canvas(card, {{
         useCORS: true,
         backgroundColor: '#0a0a0a',
-        scale: window.devicePixelRatio || 2,
-        logging: false
+        scale: Math.max(2, window.devicePixelRatio || 2),
+        logging: false,
+        // Clean up the cloned DOM just for the capture: native <select>
+        // dropdowns don't render well in html2canvas (blank box, weird
+        // baseline, etc.), and drop-shadow filters can overflow their
+        // container. Both would show as "distortion" in the saved PNG.
+        onclone: function(clonedDoc){{
+          var cloned = clonedDoc.getElementById('pc-card');
+          if (!cloned) return;
+          // Replace every <select> with a styled <span> showing its value
+          cloned.querySelectorAll('select').forEach(function(sel){{
+            var span = clonedDoc.createElement('span');
+            span.textContent = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : sel.value;
+            // Copy the visual styling from the select so the replacement
+            // occupies the same space with the same look.
+            span.setAttribute('style',
+              'background:#1a1a1a;color:#eee;border:1px solid #444;border-radius:6px;'
+              + 'padding:2px 10px;font-size:.72rem;font-weight:700;margin-left:8px;'
+              + 'display:inline-block;line-height:1.4;vertical-align:middle');
+            sel.parentNode.replaceChild(span, sel);
+          }});
+          // Strip drop-shadow filters: they bleed outside their container
+          // and render incorrectly in html2canvas.
+          cloned.querySelectorAll('[style*="drop-shadow"]').forEach(function(el){{
+            el.style.filter = 'none';
+          }});
+          // Force overflow:hidden on the outer card container so the team
+          // logo doesn't spill past the rounded corners in the capture.
+          var outer = cloned.firstChild;
+          if (outer && outer.style) outer.style.overflow = 'hidden';
+        }}
       }}).then(function(canvas){{
         canvas.toBlob(function(blob){{
           if (!blob) {{

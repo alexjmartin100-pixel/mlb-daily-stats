@@ -214,12 +214,24 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 .col-picker-item{display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--text);
   cursor:pointer;padding:3px 0;white-space:nowrap}
 .col-picker-item input{cursor:pointer;accent-color:var(--accent);flex-shrink:0}
+/* IMPORTANT ABOUT MOBILE MEDIA QUERIES: the <meta name="viewport"> tag at
+   the top of <head> is set to width=760 (a fixed pixel width, not
+   device-width). That means on phones, the CSS viewport is ALWAYS reported
+   as 760px — so naive width-based mobile queries like @media(max-width:640px)
+   NEVER trigger on actual phones. We use pointer:coarse / hover:none to
+   detect touch devices (reliable on iOS + Android), and max-width:820px as
+   a secondary catch for narrow desktop windows. */
 @media(max-width:640px){
   .site-header{padding:11px 13px}.hdr-title{font-size:1rem}
-  /* Extra bottom padding so buttons / tables near the end of any tab aren't
-     pinned against the bottom of the viewport (where the mobile browser's
-     URL bar / home indicator steals real estate and makes taps awkward). */
-  .tab-panel{padding:13px 8px 140px}.tab-btn{padding:10px 12px;font-size:.78rem}
+  .tab-btn{padding:10px 12px;font-size:.78rem}
+}
+@media(pointer:coarse), (hover:none), (max-width:820px){
+  /* Generous bottom padding so buttons / tables near the end of any tab
+     aren't pinned against the bottom of the viewport (where the mobile
+     browser's URL bar / home indicator steals real estate and makes taps
+     awkward). Uses env(safe-area-inset-bottom) to account for the iPhone
+     home indicator strip on top of the 240px we already reserve. */
+  .tab-panel{padding-bottom:calc(240px + env(safe-area-inset-bottom, 0px)) !important}
   /* The Fantasy sub-tab wrappers (Trade Machine, Season Projections, Waiver
      Wire, Compare Players) are SIBLINGS of #fantasy-panel, not children, so
      the .tab-panel padding rule above doesn't reach them. Their inline styles
@@ -227,16 +239,14 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
      lineups" buttons flush against the mobile browser's URL bar. Force a
      comfortable bottom padding with !important to beat the inline style. */
   #fant-trade-wrap,#fant-proj-wrap,#fant-waiver-wrap,#fant-cmp-wrap{
-    padding-bottom:160px !important
+    padding-bottom:calc(240px + env(safe-area-inset-bottom, 0px)) !important
   }
+  /* Belt-and-suspenders: extra body-level padding so even if some deep
+     element bypasses the wrappers above, we still guarantee scroll room. */
+  body{padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px))}
   /* Trade Machine: stack Sending → Breakdown → Receiving vertically on mobile.
      Without this, flex-wrap lets the 240px breakdown column squeeze onto row 1
      next to Sending, then pushes Receiving to its own row. */
-  .trade-three-col > *{flex:1 1 100% !important;min-width:0 !important;width:100% !important}
-}
-@media(max-width:820px){
-  /* Same fix for slightly wider phones / small tablets where the combined
-     min-widths (260+240+260 = 760 + gaps) still don't fit. */
   .trade-three-col > *{flex:1 1 100% !important;min-width:0 !important;width:100% !important}
 }
 </style>
