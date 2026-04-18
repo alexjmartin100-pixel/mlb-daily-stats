@@ -268,13 +268,19 @@ def main():
         # This is what feeds the front-end's ALL_MLB_PLAYERS search dropdown,
         # so we want it narrow — only real 40-man roster guys, not the deep
         # minor-league system that fullRoster returns.
+        #
+        # IMPORTANT: both the 40Man and fullRoster endpoints put position at
+        # `entry.position.abbreviation`, NOT at `entry.person.primaryPosition`
+        # (the person sub-object is a stub with just id/fullName/link).
+        # The old code was reading from `person.primaryPosition` which was
+        # always None here, so every 40-man entry silently got is_pitcher=False
+        # and the downstream IL-filter dropped them.
         _all_ids_seen = set()
         for _tid, _abbr in _team_abbrs.items():
             try:
                 _r40 = requests.get(
                     f"https://statsapi.mlb.com/api/v1/teams/{_tid}/roster"
-                    f"?rosterType=40Man&season=2026"
-                    f"&fields=roster,person,id,fullName,primaryPosition,abbreviation",
+                    f"?rosterType=40Man&season=2026",
                     timeout=15)
                 _r40.raise_for_status()
                 for _entry in _r40.json().get("roster", []):
@@ -283,7 +289,7 @@ def main():
                     if not _pid or _pid in _all_ids_seen:
                         continue
                     _all_ids_seen.add(_pid)
-                    _ppos = (_person.get("primaryPosition") or {}).get("abbreviation", "")
+                    _ppos = (_entry.get("position") or {}).get("abbreviation", "")
                     _is_pitcher = _ppos in ("P", "SP", "RP", "TWP")
                     _nm40 = (_person.get("fullName") or "").strip()
                     all_mlb_players.append({
