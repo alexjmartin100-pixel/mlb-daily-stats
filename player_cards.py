@@ -803,38 +803,34 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           cloned.querySelectorAll('[style*="drop-shadow"]').forEach(function(el){{
             el.style.filter = 'none';
           }});
-          // Walk every <img> in the cloned card once and apply the right
-          // transformation based on what kind of image it is. Doing both
-          // passes in a single walk with property-based checks (not string
-          // matching on the style attribute, which can fail when browsers
-          // normalize whitespace) is the reliable way.
+          // Walk every <img> in the cloned card once. Use the parsed inline
+          // style (img.style.position) rather than pattern-matching the raw
+          // style attribute string — browsers normalize whitespace and the
+          // substring matcher can silently miss.
           cloned.querySelectorAll('img').forEach(function(img){{
             var isHeadshot = img.id && img.id.indexOf('pc-headshot') === 0;
-            // Check computed-ish position via the element's style object —
-            // this reads the parsed inline-style value regardless of how
-            // the style attribute string is serialized.
             var isPositioned = img.style && img.style.position === 'absolute';
             if (isHeadshot) {{
-              // html2canvas doesn't reliably respect object-fit:contain on
-              // <img>, so the non-square MLB source gets stretched to fill
-              // the circular 120×120 container. Swap for a <div> with
-              // background-image; background-size:cover is honored correctly.
+              // html2canvas doesn't reliably respect object-fit on <img>, so
+              // the non-square MLB source gets stretched. Swap for a <div>
+              // with background-image. Use background-size:contain (NOT
+              // cover) so the whole headshot fits in the circle with the
+              // same framing as the live card — cover crops the hat off.
               var bgDiv = clonedDoc.createElement('div');
               bgDiv.style.cssText =
                 'width:100%;height:100%;' +
                 'background-image:url("' + img.src + '");' +
-                'background-size:cover;background-position:center center;' +
-                'background-repeat:no-repeat';
+                'background-size:contain;background-position:center center;' +
+                'background-repeat:no-repeat;background-color:#1a1a1a';
               img.parentNode.replaceChild(bgDiv, img);
             }} else if (isPositioned) {{
-              // Team logo — shrink hard so it reads as a subtle corner
-              // watermark instead of dominating the capture. Use
-              // setProperty with !important so nothing else overrides.
-              img.style.setProperty('width',   '56px', 'important');
-              img.style.setProperty('height',  '56px', 'important');
-              img.style.setProperty('top',     '12px', 'important');
-              img.style.setProperty('right',   '14px', 'important');
-              img.style.setProperty('opacity', '0.55', 'important');
+              // Team-logo watermark: html2canvas struggles with MLB's SVG
+              // team logos — it often renders them as a corrupt fragment or
+              // nothing at all. Rather than live with the broken SVG, hide
+              // the watermark entirely in the saved image. The "STL" pill
+              // badge in the header already identifies the team, so nothing
+              // important is lost.
+              img.style.setProperty('display', 'none', 'important');
             }}
           }});
           // Enforce rounded-corner clipping with clip-path — more reliable
