@@ -330,10 +330,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   <!-- Card area -->
   <div id="pc-card"></div>
 
-  <!-- Save-as-image button. Hidden until a player card is rendered. Uses
-       html2canvas to rasterize #pc-card, then navigator.share() with a File
-       (iOS/Android modern browsers show a share sheet with "Save Image"/
-       "Save to Photos") with a download fallback for older browsers. -->
+  <!-- Save-as-image button. Hidden until a player card is rendered. The
+       status area below the button shows step-by-step progress and any
+       errors (critical for iOS debugging — no dev console available). -->
   <div id="pc-save-wrap" style="display:none;margin-top:12px;text-align:center">
     <button id="pc-save-btn" type="button" onclick="pcSaveAsImage()"
             style="background:#1e1e1e;border:1px solid #444;color:#eee;
@@ -341,8 +340,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                    font-weight:600;cursor:pointer;min-width:180px;min-height:44px">
       &#x1F4F7; Save as image
     </button>
-    <div id="pc-save-status" style="font-size:.75rem;color:var(--muted);
-         margin-top:6px;min-height:1em"></div>
+    <div id="pc-save-status" style="font-size:.82rem;color:#eee;
+         margin-top:10px;padding:8px 12px;border-radius:6px;text-align:left;
+         white-space:pre-wrap;display:none;background:#1a1a1a;
+         border:1px solid #333;max-width:420px;margin-left:auto;
+         margin-right:auto;font-family:ui-monospace,Menlo,monospace;
+         line-height:1.4"></div>
   </div>
 
 </div>
@@ -794,40 +797,63 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       }});
   }}
 
+  // Helpers to append visible progress/error lines to the status box.
+  // iOS Safari users can't easily access a dev console, so we surface every
+  // step on-screen instead. They can screenshot and send to debug.
+  function _pcStatus(status, msg, isErr){{
+    if (!status) return;
+    status.style.display = 'block';
+    var line = (isErr ? '❌ ' : '• ') + msg;
+    status.textContent = status.textContent
+      ? status.textContent + '\n' + line
+      : line;
+    if (isErr) status.style.borderColor = '#c04040';
+  }}
+
   window.pcSaveAsImage = function(){{
-    console.log('[pcSaveAsImage] click received');
-    var card = document.getElementById('pc-card');
     var status = document.getElementById('pc-save-status');
     var btn = document.getElementById('pc-save-btn');
-    if (!card || !card.firstChild) {{
-      if (status) status.textContent = 'Pick a player first.';
-      return;
-    }}
+    // Reset the status box on every click so we don't accumulate history.
+    if (status) {{ status.textContent = ''; status.style.borderColor = '#333'; }}
+    _pcStatus(status, 'Click received');
+    console.log('[pcSaveAsImage] click received');
+    var card = document.getElementById('pc-card');
+    if (!card) {{ _pcStatus(status, 'ERROR: #pc-card not found', true); return; }}
+    if (!card.firstChild) {{ _pcStatus(status, 'Pick a player first.', true); return; }}
+    _pcStatus(status, 'Card ready, starting capture…');
     if (btn) btn.disabled = true;
-    if (status) status.textContent = 'Capturing… (this can take a few seconds)';
-    console.log('[pcSaveAsImage] starting capture');
-    // Removed the SVG preload step entirely — it was an async dependency
-    // that could hang on iOS Safari with flaky CORS / network behavior.
-    // The team logo just gets hidden in the saved image (onclone's branch
-    // when data-png-src is absent). Losing the logo is better than losing
-    // the whole save flow.
-    // Safety-net timeout: if html2canvas hasn't finished within 15 sec,
-    // show a visible error. Without this, a silent hang leaves the user
-    // staring at "Capturing…" forever with no feedback.
+
+    // Global error listener for the duration of this capture — catches
+    // anything that slips past our try/catch/catch chain.
+    var errHandler = function(e){{
+      _pcStatus(status, 'Window error: ' + (e.message || e.type), true);
+    }};
+    var rejHandler = function(e){{
+      _pcStatus(status, 'Unhandled rejection: ' + (e.reason && e.reason.message || String(e.reason)), true);
+    }};
+    window.addEventListener('error', errHandler);
+    window.addEventListener('unhandledrejection', rejHandler);
+    var cleanup = function(){{
+      window.removeEventListener('error', errHandler);
+      window.removeEventListener('unhandledrejection', rejHandler);
+      if (btn) btn.disabled = false;
+    }};
+
+    // Safety-net: if html2canvas hangs, we need to show SOMETHING after 15s.
     var captureDone = false;
     setTimeout(function(){{
       if (captureDone) return;
-      console.error('[pcSaveAsImage] timeout — html2canvas did not complete');
-      if (status) status.textContent = 'Capture timed out. Try again? (If this keeps happening, tell the dev.)';
-      if (btn) btn.disabled = false;
+      _pcStatus(status, 'Timed out after 15s — html2canvas never returned', true);
+      cleanup();
     }}, 15000);
     (function startCapture(){{
+    _pcStatus(status, 'Loading capture library…');
     window._pcLoadHtml2Canvas(function(err){{
       if (err) {{
-        if (status) status.textContent = 'Could not load capture library.';
-        if (btn) btn.disabled = false;
-        return;
+        _pcStatus(status, 'Library load failed: ' + (err.message || 'unknown'), true);
+        captureDone = true; cleanup(); return;
       }}
+      _pcStatus(status, 'Library loaded, rendering card…');
       window.html2canvas(card, {{
         useCORS: true,
         backgroundColor: '#0a0a0a',
@@ -930,30 +956,27 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }}
       }}).then(function(canvas){{
         captureDone = true;
-        console.log('[pcSaveAsImage] canvas ready', canvas.width, 'x', canvas.height);
+        _pcStatus(status, 'Canvas rendered: ' + canvas.width + '×' + canvas.height);
         var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
         var dataUrl;
         try {{ dataUrl = canvas.toDataURL('image/png'); }}
         catch(e){{
-          console.error('[pcSaveAsImage] toDataURL failed:', e);
-          if (status) status.textContent = 'Capture failed: ' + e.message;
-          if (btn) btn.disabled = false;
-          return;
+          _pcStatus(status, 'toDataURL failed: ' + e.message, true);
+          cleanup(); return;
         }}
+        _pcStatus(status, 'Image generated (' + Math.round(dataUrl.length/1024) + ' KB), opening modal…');
         try {{ _pcShowSaveModal(dataUrl, name); }}
         catch(e){{
-          console.error('[pcSaveAsImage] modal failed:', e);
-          if (status) status.textContent = 'Modal failed: ' + e.message;
-          if (btn) btn.disabled = false;
-          return;
+          _pcStatus(status, 'Modal failed: ' + e.message, true);
+          cleanup(); return;
         }}
-        if (status) status.textContent = '';
-        if (btn) btn.disabled = false;
+        // Success — hide the status box so it doesn't linger on screen.
+        setTimeout(function(){{ if (status) status.style.display = 'none'; }}, 500);
+        cleanup();
       }}).catch(function(e){{
         captureDone = true;
-        console.error('[pcSaveAsImage] html2canvas error:', e);
-        if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
-        if (btn) btn.disabled = false;
+        _pcStatus(status, 'html2canvas failed: ' + (e && e.message || 'unknown'), true);
+        cleanup();
       }});
     }});
     }})();

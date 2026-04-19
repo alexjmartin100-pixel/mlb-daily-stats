@@ -1211,7 +1211,6 @@ def _render_standings_html() -> str:
     first_cat = True
     prev_group = None
     for m in _cat_meta:
-        arrow = ' ▾' if m["reversed"] else ''
         rev = "lo" if m["reversed"] else "hi"
         is_boundary = first_cat or (prev_group is not None and prev_group != m["group"])
         border_cls = " cat-group-start" if is_boundary else ""
@@ -1222,7 +1221,7 @@ def _render_standings_html() -> str:
             f'data-rev="{rev}" data-grp="{m["group"]}" '
             f'style="text-align:center" '
             f'title="statId {m["sid"]}{" (lower is better)" if m["reversed"] else ""}">'
-            f'{m["name"]}{arrow}</th>'
+            f'{m["name"]}</th>'
         )
     thead = "<tr>" + "".join(th_cells) + "</tr>"
 
@@ -1272,8 +1271,7 @@ def _render_standings_html() -> str:
         '<h4 style="color:var(--text);margin:18px 0 8px;font-size:.9rem;'
         'font-weight:700">Category Totals</h4>'
         '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
-        'Click any column to sort (best first). '
-        '<span style="opacity:.7">&#x25BE; = lower is better</span></p>'
+        'Click any column to sort (best first).</p>'
         '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
         '<table id="fant-standings-tbl" class="standings-tbl" '
         'style="min-width:720px;font-size:.82rem;border-collapse:collapse;width:100%">'
