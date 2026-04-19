@@ -1110,44 +1110,70 @@ def _render_standings_html() -> str:
             div_order.append((did, "League" if did == -1 else f"Division {did}"))
 
     def _build_division_table(div_name, teams_in_div):
-        # Sort within division by div_wpct desc (best first)
+        # Sort within division by overall win% desc (best first), then by GB.
         teams_in_div = sorted(teams_in_div,
-                              key=lambda x: (-x["div_wpct"], x["div_gb"]))
+                              key=lambda x: (-x["wpct"], x["gb"]))
+        # Compute GB within this division relative to the leader's record.
+        # ESPN's own `record.division.gamesBack` is confusing when the user
+        # asked to drop division-specific columns, so we derive GB here from
+        # the overall records of the teams in each division: GB = ((leaderW −
+        # teamW) + (teamL − leaderL)) / 2.
+        lw = teams_in_div[0]["wpct"] if teams_in_div else 0
         rows_html = []
         for i, r in enumerate(teams_in_div, start=1):
+            # Parse W and L out of the "W-L" or "W-L-T" record string
+            try:
+                parts = r["record"].split("-")
+                tw, tl = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
+                tw = tl = 0
+            if i == 1:
+                gb_disp = "—"
+            else:
+                # Use leader's parsed W/L
+                try:
+                    lp = teams_in_div[0]["record"].split("-")
+                    lead_w, lead_l = int(lp[0]), int(lp[1])
+                    gb_val = ((lead_w - tw) + (tl - lead_l)) / 2.0
+                    gb_disp = f"{gb_val:.1f}" if gb_val > 0 else "—"
+                except Exception:
+                    gb_disp = "—"
             rows_html.append(
                 f'<tr>'
                 f'<td style="text-align:center;color:var(--muted)">{i}</td>'
                 f'<td style="padding-left:8px">{r["name"]}</td>'
-                f'<td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600">{r["div_record"]}</td>'
-                f'<td style="text-align:center">{_fmt_wpct(r["div_wpct"])}</td>'
-                f'<td style="text-align:center">{_fmt_gb(r["div_gb"])}</td>'
-                f'<td style="text-align:center;color:var(--muted)">{r["record"]}</td>'
-                f'<td style="text-align:center;color:var(--muted)">{_fmt_wpct(r["wpct"])}</td>'
+                f'<td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600">{r["record"]}</td>'
+                f'<td style="text-align:center">{_fmt_wpct(r["wpct"])}</td>'
+                f'<td style="text-align:center">{gb_disp}</td>'
                 f'</tr>'
             )
+        # table-layout:fixed + explicit colgroup widths makes the two
+        # division tables line up pixel-for-pixel next to each other.
         return (
             f'<div style="margin-bottom:16px">'
             f'<div style="font-size:.72rem;font-weight:700;color:var(--accent);'
             f'text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">'
             f'{div_name}</div>'
             f'<table class="standings-div-tbl" style="width:100%;font-size:.82rem;'
-            f'border-collapse:collapse">'
+            f'border-collapse:collapse;table-layout:fixed">'
+            f'<colgroup>'
+            f'<col style="width:42px">'
+            f'<col>'
+            f'<col style="width:78px">'
+            f'<col style="width:58px">'
+            f'<col style="width:50px">'
+            f'</colgroup>'
             f'<thead><tr style="border-bottom:1px solid #333">'
-            f'<th style="width:40px;text-align:center;padding:6px 4px;color:var(--muted);'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
             f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">#</th>'
             f'<th style="text-align:left;padding:6px 8px;color:var(--muted);'
             f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Team</th>'
             f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Div</th>'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W-L-T</th>'
             f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
             f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">PCT</th>'
             f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
             f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">GB</th>'
-            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Overall</th>'
-            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">PCT</th>'
             f'</tr></thead>'
             f'<tbody>{"".join(rows_html)}</tbody>'
             f'</table>'

@@ -795,15 +795,18 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   }}
 
   window.pcSaveAsImage = function(){{
+    console.log('[pcSaveAsImage] click received');
     var card = document.getElementById('pc-card');
     var status = document.getElementById('pc-save-status');
     var btn = document.getElementById('pc-save-btn');
     if (!card || !card.firstChild) {{
       if (status) status.textContent = 'Pick a player first.';
+      console.warn('[pcSaveAsImage] no card content');
       return;
     }}
     if (btn) btn.disabled = true;
     if (status) status.textContent = 'Capturing…';
+    console.log('[pcSaveAsImage] starting capture');
     // Pre-convert the team logo from CORS-enabled SVG to PNG data URL so
     // the onclone callback can swap the img's src to something html2canvas
     // renders cleanly. Stash the result on the img as data-png-src.
@@ -824,7 +827,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       window.html2canvas(card, {{
         useCORS: true,
         backgroundColor: '#0a0a0a',
-        scale: 3,
+        scale: window.devicePixelRatio > 2 ? 2 : 3,
         logging: false,
         // Clean up the cloned DOM just for the capture. html2canvas has
         // several well-known rendering limitations we work around here:
@@ -922,33 +925,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           }}
         }}
       }}).then(function(canvas){{
-        canvas.toBlob(function(blob){{
-          if (!blob) {{
-            if (status) status.textContent = 'Capture failed.';
-            if (btn) btn.disabled = false;
-            return;
-          }}
-          var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
-          var fname = name.replace(/[^A-Za-z0-9]+/g, '_') + '.png';
-          var file = new File([blob], fname, {{ type: 'image/png' }});
-          // Prefer native share (iOS: Save to Photos; Android: Save/Share sheet)
-          if (navigator.canShare && navigator.canShare({{ files: [file] }})) {{
-            navigator.share({{ files: [file], title: name }})
-              .then(function(){{ if (status) status.textContent = 'Shared.'; }})
-              .catch(function(e){{
-                // User canceled share sheet — treat as a soft cancel
-                if (e && e.name === 'AbortError') {{
-                  if (status) status.textContent = '';
-                }} else {{
-                  _pcTriggerDownload(blob, fname, status);
-                }}
-              }})
-              .then(function(){{ if (btn) btn.disabled = false; }});
-          }} else {{
-            _pcTriggerDownload(blob, fname, status);
-            if (btn) btn.disabled = false;
-          }}
-        }}, 'image/png');
+        // Display the captured image in a modal so the user can long-press
+        // (iOS) / right-click (desktop) to save it. This sidesteps iOS's
+        // strict "user gesture must not be lost" rule on navigator.share()
+        // and the iOS quirk that auto-downloading blob URLs often just
+        // opens a new tab instead of saving. Long-press is reliable on
+        // every iOS Safari version, and works for Android Chrome too.
+        var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
+        var dataUrl;
+        try {{ dataUrl = canvas.toDataURL('image/png'); }}
+        catch(e){{
+          if (status) status.textContent = 'Capture failed: ' + e.message;
+          if (btn) btn.disabled = false;
+          return;
+        }}
+        _pcShowSaveModal(dataUrl, name);
+        if (status) status.textContent = '';
+        if (btn) btn.disabled = false;
       }}).catch(function(e){{
         console.error('[pcSaveAsImage] html2canvas error:', e);
         if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
@@ -963,14 +956,58 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }});
   }};
 
-  function _pcTriggerDownload(blob, fname, status){{
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url; a.download = fname;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function(){{ URL.revokeObjectURL(url); }}, 1000);
-    if (status) status.textContent = 'Saved.';
+  // Show a modal overlay with the captured image. On iOS the user long-
+  // presses the <img> → Safari's "Save Image to Photos" menu appears,
+  // which is the reliable way to get a PNG into the camera roll. On
+  // desktop they can right-click → Save Image As, or drag to their
+  // desktop. The modal closes on tap outside or the ✕ button.
+  function _pcShowSaveModal(dataUrl, playerName){{
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    var instr = isIOS
+      ? 'Long-press the image, then tap <strong>Save to Photos</strong>.'
+      : 'Right-click the image and choose <strong>Save Image As…</strong>, or drag it to your desktop.';
+    var modal = document.createElement('div');
+    modal.id = 'pc-save-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:flex-start;' +
+      'padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
+      'backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
+    modal.innerHTML =
+      '<div style="max-width:560px;width:100%;color:#eee;text-align:center;' +
+      'padding-bottom:80px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;' +
+        'padding:12px 4px 16px">' +
+          '<div style="font-size:.88rem;font-weight:700">' + (playerName || 'Player Card') + '</div>' +
+          '<button type="button" aria-label="Close" ' +
+          'style="background:#1e1e1e;border:1px solid #555;color:#fff;' +
+          'width:36px;height:36px;border-radius:50%;font-size:1.1rem;' +
+          'cursor:pointer" onclick="_pcCloseSaveModal()">&times;</button>' +
+        '</div>' +
+        '<div style="font-size:.82rem;color:#bbb;margin-bottom:14px;' +
+        'padding:10px 14px;background:rgba(255,255,255,.06);border-radius:8px;' +
+        'border:1px solid rgba(255,255,255,.1)">' + instr + '</div>' +
+        '<img src="' + dataUrl + '" alt="' + (playerName || 'player card') + '" ' +
+        'style="max-width:100%;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.6);' +
+        'display:block;margin:0 auto" />' +
+        '<button type="button" onclick="_pcCloseSaveModal()" ' +
+        'style="margin-top:18px;background:#1e1e1e;border:1px solid #555;' +
+        'color:#eee;padding:10px 20px;border-radius:8px;cursor:pointer;' +
+        'font-size:.9rem;font-weight:600">Close</button>' +
+      '</div>';
+    modal.addEventListener('click', function(e){{
+      if (e.target === modal) _pcCloseSaveModal();
+    }});
+    document.body.appendChild(modal);
+    // Prevent background scroll while modal is open
+    document.body.style.overflow = 'hidden';
   }}
+  window._pcCloseSaveModal = function(){{
+    var m = document.getElementById('pc-save-modal');
+    if (m) m.remove();
+    document.body.style.overflow = '';
+  }};
 
 }})();</script>
 """
