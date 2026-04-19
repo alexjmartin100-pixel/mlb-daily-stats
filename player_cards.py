@@ -759,6 +759,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     document.head.appendChild(s);
   }};
 
+  // html-to-image is a more iOS-friendly alternative to html2canvas.
+  // html2canvas uses its own rasterizer that re-fetches images with
+  // crossOrigin="anonymous" — iOS Safari often hangs indefinitely on this.
+  // html-to-image renders via <foreignObject> inline SVG, which iOS handles
+  // cleanly. ~20KB library.
+  window._pcLoadHtmlToImage = function(cb){{
+    if (window.htmlToImage) {{ cb(null); return; }}
+    var called = false;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js';
+    s.onload  = function(){{ if (!called) {{ called = true; cb(null); }} }};
+    s.onerror = function(){{ if (!called) {{ called = true; cb(new Error('Script load failed')); }} }};
+    // 8-second safety timeout in case the script tag never fires either
+    // event (iOS network edge cases).
+    setTimeout(function(){{
+      if (!called) {{ called = true; cb(window.htmlToImage ? null : new Error('Script load timed out')); }}
+    }}, 8000);
+    document.head.appendChild(s);
+  }};
+
   // Save-as-image: render #pc-card to a PNG and offer it via the Web Share
   // API (iOS/Android modern) with a download fallback. useCORS:true re-
   // fetches images with crossorigin so MLB/Savant headshots + logos don't
@@ -848,99 +868,66 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}, 15000);
     (function startCapture(){{
     _pcStatus(status, 'Loading capture library…');
-    window._pcLoadHtml2Canvas(function(err){{
+    window._pcLoadHtmlToImage(function(err){{
       if (err) {{
         _pcStatus(status, 'Library load failed: ' + (err.message || 'unknown'), true);
         captureDone = true; cleanup(); return;
       }}
       _pcStatus(status, 'Library loaded, rendering card…');
-      window.html2canvas(card, {{
-        // Don't try to re-fetch images with crossOrigin=anonymous. On iOS
-        // Safari that frequently hangs forever if the response chain has
-        // any redirect without CORS headers. The onclone below strips every
-        // image anyway, so useCORS is unnecessary.
-        useCORS: false,
-        allowTaint: false,
-        imageTimeout: 3000,
-        backgroundColor: '#0a0a0a',
-        scale: 2,
-        logging: false,
-        onclone: function(clonedDoc){{
-          var cloned = clonedDoc.getElementById('pc-card');
-          if (!cloned) return;
-          // Replace <select> with styled <span>. Live dropdown is preserved.
-          cloned.querySelectorAll('select').forEach(function(sel){{
-            var span = clonedDoc.createElement('span');
-            span.textContent = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : sel.value;
-            span.setAttribute('style',
-              'background:#1a1a1a;color:#eee;border:1px solid #444;border-radius:6px;'
-              + 'padding:2px 10px;font-size:.72rem;font-weight:700;margin-left:8px;'
-              + 'display:inline-block;line-height:1.4;vertical-align:middle');
-            sel.parentNode.replaceChild(span, sel);
-          }});
-          // Strip drop-shadow filters (the team logo has 4 stacked ones for
-          // the white outline — stacks render poorly in html2canvas).
-          cloned.querySelectorAll('[style*="drop-shadow"]').forEach(function(el){{
-            el.style.filter = 'none';
-          }});
-          // Strip linear-gradient backgrounds everywhere in the cloned card
-          // and replace with a solid fallback. html2canvas crashes with
-          // "addColorStop double value is non-finite" whenever a gradient-
-          // backed element has zero width or height (e.g. the circular
-          // headshot container when its onerror handler set display:none).
-          cloned.querySelectorAll('*').forEach(function(el){{
-            var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
-            if (bg.indexOf('gradient') >= 0) {{
-              el.style.setProperty('background', '#2a2a2a', 'important');
-              el.style.setProperty('background-image', 'none', 'important');
-              // Also clear display:none on ancestors of the headshot so
-              // its container has real dimensions for html2canvas.
-              el.style.setProperty('display', 'flex', 'important');
-            }}
-          }});
-          // Strip every <img> in the cloned card. On iOS Safari html2canvas
-          // frequently hangs when fetching images (even CORS-enabled ones),
-          // so we remove them rather than risk a deadlock. The tradeoff is
-          // no headshot and no team logo in the saved PNG. The rest of the
-          // card (name, badges, stats, percentile bars, batted-ball block)
-          // captures cleanly. Can restore images later via data-URL
-          // pre-fetch once the basic save flow is confirmed stable.
-          cloned.querySelectorAll('img').forEach(function(img){{
-            img.style.setProperty('display', 'none', 'important');
-          }});
-          // Enforce rounded-corner clipping with clip-path — more reliable
-          // in html2canvas than overflow:hidden + border-radius.
-          var outer = cloned.firstChild;
-          if (outer && outer.style) {{
-            outer.style.overflow = 'hidden';
-            outer.style.clipPath = 'inset(0 round 10px)';
-            outer.style.webkitClipPath = 'inset(0 round 10px)';
-          }}
-        }}
-      }}).then(function(canvas){{
-        captureDone = true;
-        _pcStatus(status, 'Canvas rendered: ' + canvas.width + '×' + canvas.height);
-        var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
-        var dataUrl;
-        try {{ dataUrl = canvas.toDataURL('image/png'); }}
-        catch(e){{
-          _pcStatus(status, 'toDataURL failed: ' + e.message, true);
-          cleanup(); return;
-        }}
-        _pcStatus(status, 'Image generated (' + Math.round(dataUrl.length/1024) + ' KB), opening modal…');
-        try {{ _pcShowSaveModal(dataUrl, name); }}
-        catch(e){{
-          _pcStatus(status, 'Modal failed: ' + e.message, true);
-          cleanup(); return;
-        }}
-        // Success — hide the status box so it doesn't linger on screen.
-        setTimeout(function(){{ if (status) status.style.display = 'none'; }}, 500);
-        cleanup();
-      }}).catch(function(e){{
-        captureDone = true;
-        _pcStatus(status, 'html2canvas failed: ' + (e && e.message || 'unknown'), true);
-        cleanup();
+      // Manipulate the live DOM briefly: strip every img to avoid iOS hangs,
+      // and normalize any gradients that have zero-sized containers (which
+      // could crash the rasterizer). Restore originals after capture.
+      var restoreFns = [];
+      card.querySelectorAll('img').forEach(function(img){{
+        var prev = img.style.display;
+        img.style.setProperty('display', 'none', 'important');
+        restoreFns.push(function(){{ img.style.display = prev; }});
       }});
+      card.querySelectorAll('*').forEach(function(el){{
+        var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
+        if (bg.indexOf('gradient') >= 0) {{
+          var prevBg = el.style.background;
+          var prevBgImg = el.style.backgroundImage;
+          var prevDisp = el.style.display;
+          el.style.setProperty('background', '#2a2a2a', 'important');
+          el.style.setProperty('background-image', 'none', 'important');
+          if (el.offsetWidth === 0 || el.offsetHeight === 0) {{
+            el.style.setProperty('display', 'flex', 'important');
+          }}
+          restoreFns.push(function(){{
+            el.style.background = prevBg;
+            el.style.backgroundImage = prevBgImg;
+            el.style.display = prevDisp;
+          }});
+        }}
+      }});
+      var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
+      window.htmlToImage.toPng(card, {{
+        backgroundColor: '#0a0a0a',
+        pixelRatio: 2,
+        cacheBust: false,
+        skipFonts: false,
+        filter: function(node){{
+          // Extra safety — skip any remaining images
+          return !(node.tagName === 'IMG');
+        }}
+      }})
+        .then(function(dataUrl){{
+          captureDone = true;
+          restoreDom();
+          _pcStatus(status, 'Image generated (' + Math.round(dataUrl.length/1024) + ' KB), opening modal…');
+          var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
+          try {{ _pcShowSaveModal(dataUrl, name); }}
+          catch(e){{ _pcStatus(status, 'Modal failed: ' + e.message, true); cleanup(); return; }}
+          setTimeout(function(){{ if (status) status.style.display = 'none'; }}, 500);
+          cleanup();
+        }})
+        .catch(function(e){{
+          captureDone = true;
+          restoreDom();
+          _pcStatus(status, 'Render failed: ' + (e && e.message || 'unknown'), true);
+          cleanup();
+        }});
     }});
     }})();
   }};
