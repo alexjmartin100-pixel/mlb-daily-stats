@@ -773,7 +773,13 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }})
         .then(function(dataUrl){{
           // Only swap if the card is still showing the same player.
-          if (document.getElementById(pcImgId) === hsImg) hsImg.src = dataUrl;
+          if (document.getElementById(pcImgId) === hsImg) {{
+            // CRITICAL: strip crossorigin before setting a data: URL —
+            // browsers reject data URLs when crossorigin is set, leaving
+            // the img permanently unloaded (complete=false, naturalW=0).
+            hsImg.removeAttribute('crossorigin');
+            hsImg.src = dataUrl;
+          }}
         }})
         .catch(function(){{ /* leave original URL; save may miss the image */ }});
     }})();
