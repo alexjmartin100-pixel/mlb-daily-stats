@@ -874,43 +874,27 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         captureDone = true; cleanup(); return;
       }}
       _pcStatus(status, 'Library loaded, rendering card…');
-      // Manipulate the live DOM briefly: strip every img to avoid iOS hangs,
-      // and normalize any gradients that have zero-sized containers (which
-      // could crash the rasterizer). Restore originals after capture.
+      // Fix gradient-backed zero-dimension elements (the circular headshot
+      // container when its onerror handler set display:none would otherwise
+      // crash the renderer). Restore originals after capture.
       var restoreFns = [];
-      card.querySelectorAll('img').forEach(function(img){{
-        var prev = img.style.display;
-        img.style.setProperty('display', 'none', 'important');
-        restoreFns.push(function(){{ img.style.display = prev; }});
-      }});
       card.querySelectorAll('*').forEach(function(el){{
         var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
-        if (bg.indexOf('gradient') >= 0) {{
-          var prevBg = el.style.background;
-          var prevBgImg = el.style.backgroundImage;
+        if (bg.indexOf('gradient') >= 0 && (el.offsetWidth === 0 || el.offsetHeight === 0)) {{
           var prevDisp = el.style.display;
-          el.style.setProperty('background', '#2a2a2a', 'important');
-          el.style.setProperty('background-image', 'none', 'important');
-          if (el.offsetWidth === 0 || el.offsetHeight === 0) {{
-            el.style.setProperty('display', 'flex', 'important');
-          }}
-          restoreFns.push(function(){{
-            el.style.background = prevBg;
-            el.style.backgroundImage = prevBgImg;
-            el.style.display = prevDisp;
-          }});
+          el.style.setProperty('display', 'flex', 'important');
+          restoreFns.push(function(){{ el.style.display = prevDisp; }});
         }}
       }});
       var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
+      // html-to-image handles CORS-enabled images natively (MLB headshots
+      // and team-logos SVG both serve CORS). Let it render them — this is
+      // the whole reason we switched off html2canvas.
       window.htmlToImage.toPng(card, {{
         backgroundColor: '#0a0a0a',
         pixelRatio: 2,
-        cacheBust: false,
-        skipFonts: false,
-        filter: function(node){{
-          // Extra safety — skip any remaining images
-          return !(node.tagName === 'IMG');
-        }}
+        cacheBust: true,
+        skipFonts: false
       }})
         .then(function(dataUrl){{
           captureDone = true;
