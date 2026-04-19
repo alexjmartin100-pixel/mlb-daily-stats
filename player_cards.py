@@ -381,18 +381,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   <!-- Card area -->
   <div id="pc-card"></div>
 
-  <!-- Save-as-image button. Hidden until a player card is rendered. The
-       status area below the button shows step-by-step progress and any
-       errors (critical for iOS debugging — no dev console available). -->
-  <div id="pc-save-wrap" style="display:none;margin-top:12px;text-align:center">
-    <button id="pc-save-btn" type="button" onclick="pcSaveAsImage()"
-            style="background:#1e1e1e;border:1px solid #444;color:#eee;
-                   padding:12px 22px;border-radius:8px;font-size:.95rem;
-                   font-weight:600;cursor:pointer;min-width:180px;min-height:44px">
-      &#x1F4F7; Save as image
-    </button>
-    <div id="pc-save-status" style="font-size:.82rem;color:#eee;
-         margin-top:10px;padding:8px 12px;border-radius:6px;text-align:left;
+  <!-- Hint + status area. The card itself becomes a long-pressable <img>
+       automatically a moment after a player is selected. No save button
+       needed — iOS Safari's native "Save Image" appears on long-press. -->
+  <div id="pc-save-wrap" style="display:none;margin-top:10px;text-align:center">
+    <div id="pc-save-hint" style="font-size:.78rem;color:var(--muted);
+         font-style:italic">&#x1F4F7; Long-press the card to save it to your photos</div>
+    <div id="pc-save-status" style="font-size:.8rem;color:#eee;
+         margin-top:8px;padding:6px 10px;border-radius:6px;text-align:left;
          white-space:pre-wrap;display:none;background:#1a1a1a;
          border:1px solid #333;max-width:420px;margin-left:auto;
          margin-right:auto;font-family:ui-monospace,Menlo,monospace;
@@ -799,18 +795,70 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       + logoBadge
       + header + std_html + bars_html + bb_html
       + '</div>';
-    // Show the Save-as-image button now that there's a card to capture
+    // Show the save-hint ("long-press to save") under the card.
     var _saveWrap = document.getElementById('pc-save-wrap');
     if (_saveWrap) _saveWrap.style.display = '';
-    // Stash the player's name on the button so the saved filename matches
-    var _saveBtn = document.getElementById('pc-save-btn');
-    if (_saveBtn) _saveBtn.setAttribute('data-player-name', (d && d.name) || 'player-card');
     var _saveStatus = document.getElementById('pc-save-status');
-    if (_saveStatus) _saveStatus.textContent = '';
-    // (Headshot is now baked in as a data URL server-side — no client-
-    // side pre-fetch needed. If a player is missing from the pre-fetched
-    // batch, the img src falls back to the MLB CDN URL and the save
-    // simply won't include the headshot for that specific player.)
+    if (_saveStatus) {{ _saveStatus.textContent = ''; _saveStatus.style.display = 'none'; }}
+    // Auto-convert the just-rendered HTML card into a long-pressable <img>.
+    // iOS Safari's native "Save Image to Photos" menu only appears on <img>
+    // elements, so we rasterize the card immediately and swap it in.
+    // `_pcCurrentId` tracks which player is being displayed so if the user
+    // picks a different player mid-capture, we don't clobber their card.
+    _pcAutoCaptureCard((d && d.name) || 'player-card', id);
+  }};
+
+  // Rasterize #pc-card via html-to-image and replace its contents with a
+  // single <img> so iOS users can long-press → Save to Photos. Falls back
+  // to leaving the HTML card as-is (with a visible error in the status
+  // box) if capture fails.
+  window._pcAutoCaptureCard = function(playerName, capturedForId){{
+    var card = document.getElementById('pc-card');
+    var status = document.getElementById('pc-save-status');
+    if (!card || !card.firstChild) return;
+    window._pcLoadHtmlToImage(function(err){{
+      if (err) {{
+        if (status) {{ status.style.display = 'block'; status.textContent = '❌ Could not load image library: ' + (err.message || ''); }}
+        return;
+      }}
+      // If the user has since picked a different player, abort.
+      if (capturedForId !== _pcCurrentId) return;
+      // Gradient-zero-dim guard: same fix we use in the manual save flow.
+      var restoreFns = [];
+      card.querySelectorAll('*').forEach(function(el){{
+        var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
+        if (bg.indexOf('gradient') >= 0 && (el.offsetWidth === 0 || el.offsetHeight === 0)) {{
+          var prevDisp = el.style.display;
+          el.style.setProperty('display', 'flex', 'important');
+          restoreFns.push(function(){{ el.style.display = prevDisp; }});
+        }}
+      }});
+      var w = card.offsetWidth;
+      window.htmlToImage.toPng(card, {{
+        backgroundColor: '#0a0a0a',
+        pixelRatio: 2,
+        cacheBust: false,
+        skipFonts: false
+      }}).then(function(dataUrl){{
+        restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }});
+        // Another abort check — player may have changed while rendering.
+        if (capturedForId !== _pcCurrentId) return;
+        // Swap the card contents with a single <img>. The img is styled
+        // to fill the same footprint as the HTML card; browsers show the
+        // native long-press context menu on <img> elements.
+        card.innerHTML = '<img src="' + dataUrl + '" alt="' +
+          (playerName || 'Player Card').replace(/"/g, '&quot;') + '" ' +
+          'style="width:' + w + 'px;max-width:100%;display:block;' +
+          'border-radius:10px;user-select:none;-webkit-user-select:none;' +
+          '-webkit-touch-callout:default" />';
+      }}).catch(function(e){{
+        restoreFns.forEach(function(f){{ try{{ f(); }} catch(e2){{}} }});
+        if (status) {{
+          status.style.display = 'block';
+          status.textContent = '❌ Image capture failed: ' + (e && e.message || 'unknown');
+        }}
+      }});
+    }});
   }};
 
   // Lazy-load html2canvas on first use so the 150KB library doesn't bloat
