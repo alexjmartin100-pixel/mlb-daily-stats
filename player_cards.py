@@ -304,6 +304,57 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     idx_json  = json.dumps(player_index, separators=(',', ':'))
     data_json = json.dumps(player_data,  separators=(',', ':'))
 
+    # ── Pre-fetch every player's headshot as a base64 data URL ────────────
+    # iOS Safari has proven unreliable at fetching cross-origin images at
+    # save time (either via img tags with crossorigin or fetch() with
+    # mode:'cors'), which kept the saved PNG coming back with a blank
+    # headshot circle. Doing the fetch in Python at build time eliminates
+    # every runtime CORS / network variable — the data URL is embedded
+    # straight into the HTML.
+    #
+    # Uses a small image size (w_120 low-quality JPEG, ~3-5KB per player)
+    # to keep the HTML payload reasonable. Parallelised with 20 workers
+    # so the whole fetch completes in 15-30 seconds even for ~700 players.
+    import base64, concurrent.futures as _cf
+    import requests as _requests_pc
+    _PC_HEADSHOT_SIZE = 'w_180,q_auto:low'
+    def _fetch_headshot_b64(pid):
+        try:
+            url = ('https://img.mlbstatic.com/mlb-photos/image/upload/'
+                   'd_people:generic:headshot:67:current.png/'
+                   f'{_PC_HEADSHOT_SIZE}/v1/people/{pid}/headshot/67/current')
+            r = _requests_pc.get(url, timeout=6)
+            if not r.ok or len(r.content) < 200:
+                return pid, None
+            ctype = r.headers.get('content-type', 'image/jpeg')
+            b64 = base64.b64encode(r.content).decode('ascii')
+            return pid, f'data:{ctype};base64,{b64}'
+        except Exception:
+            return pid, None
+
+    _photo_ids = []
+    for entry in player_index:
+        pid = entry.get('id')
+        if pid and pid not in _photo_ids:
+            _photo_ids.append(pid)
+    _photos = {}
+    _pc_ok = 0
+    _pc_fail = 0
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=20) as _ex:
+            for pid, du in _ex.map(_fetch_headshot_b64, _photo_ids):
+                if du:
+                    _photos[str(pid)] = du
+                    _pc_ok += 1
+                else:
+                    _pc_fail += 1
+        print(f"  [headshots] pre-fetched {_pc_ok} / {len(_photo_ids)} "
+              f"({_pc_fail} failed)")
+    except Exception as _e:
+        print(f"  [headshots] pre-fetch failed: {_e}")
+
+    photos_json = json.dumps(_photos, separators=(',', ':'))
+
     inner = f"""
 <style>
 .pc-dd-item{{padding:9px 12px;cursor:pointer;font-size:.88rem;
@@ -358,6 +409,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   var _pcLeaders = {leaders_json};
   var _pcHist = {hist_json};
   var _pcAvailYears = {avail_json};
+  // Server-side pre-fetched headshot data URLs, keyed by player id.
+  // iOS Safari couldn't reliably fetch cross-origin headshots at save
+  // time, so we bake them into the HTML at build time instead.
+  var _pcPhotos = {photos_json};
   var _pcCurrentYear = 2026;
   var _pcCurrentId = null;
 
@@ -421,16 +476,15 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
-    // Live display uses MLB's direct CDN URL — loads fast everywhere, no
-    // CORS needed for plain <img> display. The save-capture pre-fetch
-    // below separately routes through weserv.nl (which sends CORS) to
-    // get a data URL that html-to-image can embed. Decoupling the two
-    // means display never fails because of a proxy hiccup.
+    // Prefer the server-side pre-fetched data URL (baked into HTML at
+    // build time). It's a same-origin string that html-to-image can
+    // rasterize natively — no CORS, no network, no iOS Safari quirks.
+    // Falls back to the MLB CDN URL if for some reason the player's
+    // headshot wasn't in the pre-fetch batch.
     var _mlbPhotoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
       + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
-    var photoUrl      = _mlbPhotoUrl;
-    var photoProxyUrl = 'https://images.weserv.nl/?url=' + encodeURIComponent(_mlbPhotoUrl);
+    var photoUrl = (_pcPhotos && _pcPhotos[String(id)]) || _mlbPhotoUrl;
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
@@ -753,34 +807,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     if (_saveBtn) _saveBtn.setAttribute('data-player-name', (d && d.name) || 'player-card');
     var _saveStatus = document.getElementById('pc-save-status');
     if (_saveStatus) _saveStatus.textContent = '';
-    // Stash the proxy URL on the img as a data attribute so the save flow
-    // can convert it to a data URL at capture time (not display time).
-    // Keeps the live display on MLB's fast direct CDN — if the proxy
-    // fetch later fails, live display is unaffected.
-    (function preloadHeadshot(){{
-      var hsImg = document.getElementById(pcImgId);
-      if (!hsImg) return;
-      hsImg.setAttribute('data-proxy-url', photoProxyUrl);
-      // Kick off the fetch immediately so the data URL is ready when the
-      // user taps Save. Result is stashed as data-png-src on the img.
-      fetch(photoProxyUrl, {{mode: 'cors', cache: 'force-cache'}})
-        .then(function(r){{ return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); }})
-        .then(function(blob){{
-          return new Promise(function(res, rej){{
-            var fr = new FileReader();
-            fr.onload = function(){{ res(fr.result); }};
-            fr.onerror = function(){{ rej(new Error('FileReader failed')); }};
-            fr.readAsDataURL(blob);
-          }});
-        }})
-        .then(function(dataUrl){{
-          // Only stash if the card is still showing the same player.
-          if (document.getElementById(pcImgId) === hsImg) {{
-            hsImg.setAttribute('data-png-src', dataUrl);
-          }}
-        }})
-        .catch(function(){{ /* save path will re-try the fetch */ }});
-    }})();
+    // (Headshot is now baked in as a data URL server-side — no client-
+    // side pre-fetch needed. If a player is missing from the pre-fetched
+    // batch, the img src falls back to the MLB CDN URL and the save
+    // simply won't include the headshot for that specific player.)
   }};
 
   // Lazy-load html2canvas on first use so the 150KB library doesn't bloat
@@ -908,7 +938,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         _pcStatus(status, 'Library load failed: ' + (err.message || 'unknown'), true);
         captureDone = true; cleanup(); return;
       }}
-      _pcStatus(status, 'Library loaded, preparing image…');
+      _pcStatus(status, 'Library loaded, rendering card…');
+      // Fix gradient-backed zero-dimension elements (rasterizer crash guard).
       var restoreFns = [];
       card.querySelectorAll('*').forEach(function(el){{
         var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
@@ -918,59 +949,15 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           restoreFns.push(function(){{ el.style.display = prevDisp; }});
         }}
       }});
-      // Swap headshot src → data URL (stashed as data-png-src by the
-      // background pre-fetch). If pre-fetch hasn't finished, try to fetch
-      // it synchronously here. If that also fails, capture without the
-      // headshot — better than a hung save.
-      var hsImg = card.querySelector('img[id^="pc-headshot"]');
-      function swapHeadshotIfPossible(){{
-        if (!hsImg) return Promise.resolve();
-        var pngSrc = hsImg.getAttribute('data-png-src');
-        if (pngSrc) {{
-          var origSrc = hsImg.src;
-          hsImg.src = pngSrc;
-          restoreFns.push(function(){{ hsImg.src = origSrc; }});
-          _pcStatus(status, 'Headshot ready (pre-fetched)');
-          return Promise.resolve();
-        }}
-        var proxyUrl = hsImg.getAttribute('data-proxy-url');
-        if (!proxyUrl) return Promise.resolve();
-        _pcStatus(status, 'Fetching headshot via proxy…');
-        return Promise.race([
-          fetch(proxyUrl, {{mode: 'cors', cache: 'force-cache'}})
-            .then(function(r){{ return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); }})
-            .then(function(blob){{
-              return new Promise(function(res, rej){{
-                var fr = new FileReader();
-                fr.onload = function(){{ res(fr.result); }};
-                fr.onerror = function(){{ rej(new Error('FileReader failed')); }};
-                fr.readAsDataURL(blob);
-              }});
-            }})
-            .then(function(dataUrl){{
-              var origSrc = hsImg.src;
-              hsImg.src = dataUrl;
-              restoreFns.push(function(){{ hsImg.src = origSrc; }});
-            }}),
-          // 4s timeout — if proxy is slow, skip the headshot rather than
-          // blocking the save entirely.
-          new Promise(function(res){{ setTimeout(res, 4000); }})
-        ]).catch(function(e){{
-          _pcStatus(status, 'Headshot fetch failed (continuing): ' + (e.message || ''), false);
-        }});
-      }}
       var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
-      // Do the headshot swap first, then capture. Everything is chained
-      // through a single promise so errors in either step flow to the same
-      // catch handler.
-      swapHeadshotIfPossible().then(function(){{
-      _pcStatus(status, 'Rendering card…');
-      return window.htmlToImage.toPng(card, {{
+      // Headshot is already a data URL baked into _pcPhotos at build time.
+      // html-to-image can embed it natively. No runtime network work needed.
+      window.htmlToImage.toPng(card, {{
         backgroundColor: '#0a0a0a',
         pixelRatio: 2,
         cacheBust: true,
         skipFonts: false
-      }});}})
+      }})
         .then(function(dataUrl){{
           captureDone = true;
           restoreDom();
