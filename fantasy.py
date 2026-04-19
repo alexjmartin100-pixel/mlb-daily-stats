@@ -1785,9 +1785,21 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
     # Falls back to an instructional placeholder if the JSON isn't there yet.
     proj_html = _render_season_projections(fdata)
     # Standings sub-tab — reads espn_rosters.json for live team records +
-    # category totals. Returns a self-contained wrapper div whose display
-    # is toggled by fantSwitch('standings') below.
-    standings_html = _render_standings_html()
+    # category totals. Wrap in try/except so an edge case in the snapshot
+    # data (missing fields, new ESPN schema, etc.) can't take down the
+    # whole dashboard build. Empty wrapper still gets rendered so the
+    # sub-tab button doesn't dangle.
+    try:
+        standings_html = _render_standings_html()
+    except Exception as _e:
+        import traceback as _tb
+        print(f"  [standings] render failed: {_e}")
+        _tb.print_exc()
+        standings_html = (
+            '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+            f'<p style="color:var(--muted);font-size:.88rem">Standings render '
+            f'failed: <code>{str(_e)[:200]}</code></p></div>'
+        )
 
     # ── Phase 3: trade-machine league-state payload ────────────────────────
     # Builds the per-team rostered-player snapshot the JS uses to recompute
