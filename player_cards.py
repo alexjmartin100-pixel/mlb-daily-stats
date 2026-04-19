@@ -421,9 +421,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
-    var photoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
+    // MLB's img.mlbstatic.com headshot CDN doesn't send CORS headers,
+    // which blocks html-to-image from embedding the image in the saved
+    // PNG (tainted canvas). Route through images.weserv.nl — a free,
+    // reliable image proxy that caches aggressively and *does* send CORS.
+    // This means both the live card AND the saved image load through
+    // the proxy, which is fine (it's fast and adds no visible lag).
+    var _mlbPhotoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
       + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
+    var photoUrl = 'https://images.weserv.nl/?url=' + encodeURIComponent(_mlbPhotoUrl);
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
