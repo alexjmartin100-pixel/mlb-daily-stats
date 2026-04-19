@@ -855,18 +855,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       }}
       _pcStatus(status, 'Library loaded, rendering card…');
       window.html2canvas(card, {{
-        useCORS: true,
+        // Don't try to re-fetch images with crossOrigin=anonymous. On iOS
+        // Safari that frequently hangs forever if the response chain has
+        // any redirect without CORS headers. The onclone below strips every
+        // image anyway, so useCORS is unnecessary.
+        useCORS: false,
+        allowTaint: false,
+        imageTimeout: 3000,
         backgroundColor: '#0a0a0a',
-        scale: window.devicePixelRatio > 2 ? 2 : 3,
+        scale: 2,
         logging: false,
-        // Clean up the cloned DOM just for the capture. html2canvas has
-        // several well-known rendering limitations we work around here:
-        //   - native <select> dropdowns render as empty boxes
-        //   - stacked drop-shadow filters bleed outside their container
-        //   - overflow:hidden + border-radius doesn't reliably clip children
-        //     (clip-path is more robust)
-        //   - images with position:absolute + large sizes look oversized
-        //     in the saved PNG (the live card is scaled; the capture isn't)
         onclone: function(clonedDoc){{
           var cloned = clonedDoc.getElementById('pc-card');
           if (!cloned) return;
@@ -900,50 +898,15 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
               el.style.setProperty('display', 'flex', 'important');
             }}
           }});
-          // Walk every <img> in the cloned card once. Use the parsed inline
-          // style (img.style.position) rather than pattern-matching the raw
-          // style attribute string — browsers normalize whitespace and the
-          // substring matcher can silently miss.
+          // Strip every <img> in the cloned card. On iOS Safari html2canvas
+          // frequently hangs when fetching images (even CORS-enabled ones),
+          // so we remove them rather than risk a deadlock. The tradeoff is
+          // no headshot and no team logo in the saved PNG. The rest of the
+          // card (name, badges, stats, percentile bars, batted-ball block)
+          // captures cleanly. Can restore images later via data-URL
+          // pre-fetch once the basic save flow is confirmed stable.
           cloned.querySelectorAll('img').forEach(function(img){{
-            var isHeadshot = img.id && img.id.indexOf('pc-headshot') === 0;
-            var isPositioned = img.style && img.style.position === 'absolute';
-            if (isHeadshot) {{
-              // html2canvas doesn't reliably respect object-fit on <img>, so
-              // the non-square MLB source gets stretched. Swap for a <div>
-              // with background-image. Use background-size:contain (NOT
-              // cover) so the whole headshot fits in the circle with the
-              // same framing as the live card. No background-color — that
-              // lets the parent container's off-white gradient show through
-              // the corners of the image (matches live card).
-              var bgDiv = clonedDoc.createElement('div');
-              bgDiv.style.cssText =
-                'width:100%;height:100%;' +
-                'background-image:url("' + img.src + '");' +
-                'background-size:contain;background-position:center center;' +
-                'background-repeat:no-repeat';
-              img.parentNode.replaceChild(bgDiv, img);
-            }} else if (isPositioned) {{
-              // Team-logo watermark: the live card shows an MLB SVG, which
-              // html2canvas renders as a corrupt fragment. Before calling
-              // html2canvas, pcSaveAsImage() pre-converted the SVG to a PNG
-              // data URL and stashed it on data-png-src. Swap to that here;
-              // if conversion failed, hide the logo (cleaner than garbage).
-              var pngSrc = img.getAttribute('data-png-src');
-              if (pngSrc) {{
-                img.src = pngSrc;
-                img.removeAttribute('crossorigin');
-                // Shrink + reposition so it reads as a subtle watermark.
-                img.style.setProperty('width',   '72px', 'important');
-                img.style.setProperty('height',  '72px', 'important');
-                img.style.setProperty('top',     '12px', 'important');
-                img.style.setProperty('right',   '14px', 'important');
-                img.style.setProperty('opacity', '0.80', 'important');
-                img.style.setProperty('filter',  'none', 'important');
-              }} else {{
-                // Couldn't convert SVG → PNG, hide rather than show broken.
-                img.style.setProperty('display', 'none', 'important');
-              }}
-            }}
+            img.style.setProperty('display', 'none', 'important');
           }});
           // Enforce rounded-corner clipping with clip-path — more reliable
           // in html2canvas than overflow:hidden + border-radius.
