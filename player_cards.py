@@ -485,6 +485,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:linear-gradient(to bottom, #a0a0a3 0%, #ececf0 100%)">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" loading="lazy" '
+      +   'crossorigin="anonymous" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
       + '</div>'
