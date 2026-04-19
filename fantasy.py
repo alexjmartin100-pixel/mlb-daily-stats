@@ -1150,7 +1150,7 @@ def _render_standings_html() -> str:
         # table-layout:fixed + explicit colgroup widths makes the two
         # division tables line up pixel-for-pixel next to each other.
         return (
-            f'<div style="margin-bottom:16px">'
+            f'<div>'
             f'<div style="font-size:.72rem;font-weight:700;color:var(--accent);'
             f'text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">'
             f'{div_name}</div>'
@@ -1180,11 +1180,24 @@ def _render_standings_html() -> str:
             f'</div>'
         )
 
-    div_tables_html = ""
+    # Render division tables side-by-side when there are ≥2 divisions. Each
+    # goes in a flex column that shrinks/wraps on narrow mobile screens.
+    div_tables_list = []
     for did, dname in div_order:
         teams_here = div_groups.get(did, [])
         if teams_here:
-            div_tables_html += _build_division_table(dname, teams_here)
+            div_tables_list.append(_build_division_table(dname, teams_here))
+    if len(div_tables_list) >= 2:
+        div_tables_html = (
+            '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px">'
+            + "".join(
+                f'<div style="flex:1 1 320px;min-width:280px">{t}</div>'
+                for t in div_tables_list
+            )
+            + '</div>'
+        )
+    else:
+        div_tables_html = "".join(div_tables_list)
 
     # ── BOTTOM SECTION: category stats table (no division split) ───────────
     # data-rev → first-click direction (hi=desc/best first, lo=asc/best first)

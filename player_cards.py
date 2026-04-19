@@ -801,23 +801,27 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var btn = document.getElementById('pc-save-btn');
     if (!card || !card.firstChild) {{
       if (status) status.textContent = 'Pick a player first.';
-      console.warn('[pcSaveAsImage] no card content');
       return;
     }}
     if (btn) btn.disabled = true;
-    if (status) status.textContent = 'Capturing…';
+    if (status) status.textContent = 'Capturing… (this can take a few seconds)';
     console.log('[pcSaveAsImage] starting capture');
-    // Pre-convert the team logo from CORS-enabled SVG to PNG data URL so
-    // the onclone callback can swap the img's src to something html2canvas
-    // renders cleanly. Stash the result on the img as data-png-src.
-    var logoImg = card.querySelector('img[data-team]');
-    var prepLogo = Promise.resolve();
-    if (logoImg && logoImg.src && /\.svg(\?|$)/.test(logoImg.src)) {{
-      prepLogo = _pcSvgToPngDataUrl(logoImg.src)
-        .then(function(dataUrl){{ logoImg.setAttribute('data-png-src', dataUrl); }})
-        .catch(function(){{ /* logo will be hidden as fallback in onclone */ }});
-    }}
-    prepLogo.then(function(){{
+    // Removed the SVG preload step entirely — it was an async dependency
+    // that could hang on iOS Safari with flaky CORS / network behavior.
+    // The team logo just gets hidden in the saved image (onclone's branch
+    // when data-png-src is absent). Losing the logo is better than losing
+    // the whole save flow.
+    // Safety-net timeout: if html2canvas hasn't finished within 15 sec,
+    // show a visible error. Without this, a silent hang leaves the user
+    // staring at "Capturing…" forever with no feedback.
+    var captureDone = false;
+    setTimeout(function(){{
+      if (captureDone) return;
+      console.error('[pcSaveAsImage] timeout — html2canvas did not complete');
+      if (status) status.textContent = 'Capture timed out. Try again? (If this keeps happening, tell the dev.)';
+      if (btn) btn.disabled = false;
+    }}, 15000);
+    (function startCapture(){{
     window._pcLoadHtml2Canvas(function(err){{
       if (err) {{
         if (status) status.textContent = 'Could not load capture library.';
@@ -925,35 +929,34 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           }}
         }}
       }}).then(function(canvas){{
-        // Display the captured image in a modal so the user can long-press
-        // (iOS) / right-click (desktop) to save it. This sidesteps iOS's
-        // strict "user gesture must not be lost" rule on navigator.share()
-        // and the iOS quirk that auto-downloading blob URLs often just
-        // opens a new tab instead of saving. Long-press is reliable on
-        // every iOS Safari version, and works for Android Chrome too.
+        captureDone = true;
+        console.log('[pcSaveAsImage] canvas ready', canvas.width, 'x', canvas.height);
         var name = (btn && btn.getAttribute('data-player-name')) || 'player-card';
         var dataUrl;
         try {{ dataUrl = canvas.toDataURL('image/png'); }}
         catch(e){{
+          console.error('[pcSaveAsImage] toDataURL failed:', e);
           if (status) status.textContent = 'Capture failed: ' + e.message;
           if (btn) btn.disabled = false;
           return;
         }}
-        _pcShowSaveModal(dataUrl, name);
+        try {{ _pcShowSaveModal(dataUrl, name); }}
+        catch(e){{
+          console.error('[pcSaveAsImage] modal failed:', e);
+          if (status) status.textContent = 'Modal failed: ' + e.message;
+          if (btn) btn.disabled = false;
+          return;
+        }}
         if (status) status.textContent = '';
         if (btn) btn.disabled = false;
       }}).catch(function(e){{
+        captureDone = true;
         console.error('[pcSaveAsImage] html2canvas error:', e);
         if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
         if (btn) btn.disabled = false;
       }});
     }});
-    }}).catch(function(e){{
-      // Catch-all for promise-chain failures before html2canvas gets called
-      console.error('[pcSaveAsImage] pre-capture error:', e);
-      if (status) status.textContent = 'Error: ' + (e && e.message || 'unknown');
-      if (btn) btn.disabled = false;
-    }});
+    }})();
   }};
 
   // Show a modal overlay with the captured image. On iOS the user long-
