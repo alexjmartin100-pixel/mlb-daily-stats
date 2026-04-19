@@ -805,7 +805,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     status.style.display = 'block';
     var line = (isErr ? '❌ ' : '• ') + msg;
     status.textContent = status.textContent
-      ? status.textContent + '\n' + line
+      ? status.textContent + '\\n' + line
       : line;
     if (isErr) status.style.borderColor = '#c04040';
   }}

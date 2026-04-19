@@ -971,10 +971,30 @@ def _render_standings_html() -> str:
             _cat_meta.append({"sid": sid, "name": name, "reversed": rev,
                               "prec": prec, "group": group})
 
-    # Group hitting cats first, pitching cats second. ESPN's scoringItems
-    # order interleaves the two groups, which looks messy in the table.
-    # Stable sort keeps each group in its original scoringItems order.
-    _cat_meta.sort(key=lambda m: 0 if m["group"] == "hit" else 1)
+    # Explicit display order the user requested:
+    #   Hitters:  R → HR → RBI → K → SB → OBP
+    #   Pitchers: K → W  → SV  → HLD → ERA → WHIP
+    # Keyed by statId so it's independent of ESPN's scoringItems ordering.
+    _CAT_DISPLAY_ORDER = {
+        # Hitters
+        20: 0,   # R
+        5:  1,   # HR
+        21: 2,   # RBI
+        27: 3,   # K (hitter, reversed)
+        23: 4,   # SB
+        17: 5,   # OBP
+        # Pitchers
+        48: 10,  # K (pitcher)
+        57: 11,  # W
+        53: 12,  # SV
+        60: 13,  # HLD
+        47: 14,  # ERA
+        41: 15,  # WHIP
+    }
+    _cat_meta.sort(key=lambda m: (
+        0 if m["group"] == "hit" else 1,
+        _CAT_DISPLAY_ORDER.get(m["sid"], 99),
+    ))
 
     # Compose team rows.
     def _fmt(val, prec):
