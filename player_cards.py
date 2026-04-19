@@ -421,16 +421,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
-    // MLB's img.mlbstatic.com headshot CDN doesn't send CORS headers,
-    // which blocks html-to-image from embedding the image in the saved
-    // PNG (tainted canvas). Route through images.weserv.nl — a free,
-    // reliable image proxy that caches aggressively and *does* send CORS.
-    // This means both the live card AND the saved image load through
-    // the proxy, which is fine (it's fast and adds no visible lag).
+    // Live display uses MLB's direct CDN URL — loads fast everywhere, no
+    // CORS needed for plain <img> display. The save-capture pre-fetch
+    // below separately routes through weserv.nl (which sends CORS) to
+    // get a data URL that html-to-image can embed. Decoupling the two
+    // means display never fails because of a proxy hiccup.
     var _mlbPhotoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
       + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
-    var photoUrl = 'https://images.weserv.nl/?url=' + encodeURIComponent(_mlbPhotoUrl);
+    var photoUrl      = _mlbPhotoUrl;
+    var photoProxyUrl = 'https://images.weserv.nl/?url=' + encodeURIComponent(_mlbPhotoUrl);
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
@@ -485,7 +485,6 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
       + '<div style="width:120px;height:120px;flex-shrink:0;border-radius:50%;overflow:hidden;background:linear-gradient(to bottom, #a0a0a3 0%, #ececf0 100%)">'
       + '<img id="' + pcImgId + '" src="' + photoUrl + '" loading="lazy" '
-      +   'crossorigin="anonymous" '
       +   'onerror="this.parentElement.style.display=\\x27none\\x27" '
       +   'style="width:100%;height:100%;object-fit:contain;object-position:center center"/>'
       + '</div>'
@@ -754,14 +753,17 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     if (_saveBtn) _saveBtn.setAttribute('data-player-name', (d && d.name) || 'player-card');
     var _saveStatus = document.getElementById('pc-save-status');
     if (_saveStatus) _saveStatus.textContent = '';
-    // Pre-convert the headshot to a data URL immediately so that by the
-    // time the user clicks Save, the img src is already an embedded data:
-    // URL that html-to-image can rasterize with zero network work. This
-    // sidesteps every CORS / lazy-load / timing flake we've hit so far.
+    // Stash the proxy URL on the img as a data attribute so the save flow
+    // can convert it to a data URL at capture time (not display time).
+    // Keeps the live display on MLB's fast direct CDN — if the proxy
+    // fetch later fails, live display is unaffected.
     (function preloadHeadshot(){{
       var hsImg = document.getElementById(pcImgId);
       if (!hsImg) return;
-      fetch(photoUrl, {{mode: 'cors', cache: 'force-cache'}})
+      hsImg.setAttribute('data-proxy-url', photoProxyUrl);
+      // Kick off the fetch immediately so the data URL is ready when the
+      // user taps Save. Result is stashed as data-png-src on the img.
+      fetch(photoProxyUrl, {{mode: 'cors', cache: 'force-cache'}})
         .then(function(r){{ return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); }})
         .then(function(blob){{
           return new Promise(function(res, rej){{
@@ -772,16 +774,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           }});
         }})
         .then(function(dataUrl){{
-          // Only swap if the card is still showing the same player.
+          // Only stash if the card is still showing the same player.
           if (document.getElementById(pcImgId) === hsImg) {{
-            // CRITICAL: strip crossorigin before setting a data: URL —
-            // browsers reject data URLs when crossorigin is set, leaving
-            // the img permanently unloaded (complete=false, naturalW=0).
-            hsImg.removeAttribute('crossorigin');
-            hsImg.src = dataUrl;
+            hsImg.setAttribute('data-png-src', dataUrl);
           }}
         }})
-        .catch(function(){{ /* leave original URL; save may miss the image */ }});
+        .catch(function(){{ /* save path will re-try the fetch */ }});
     }})();
   }};
 
@@ -910,10 +908,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         _pcStatus(status, 'Library load failed: ' + (err.message || 'unknown'), true);
         captureDone = true; cleanup(); return;
       }}
-      _pcStatus(status, 'Library loaded, rendering card…');
-      // Fix gradient-backed zero-dimension elements (the circular headshot
-      // container when its onerror handler set display:none would otherwise
-      // crash the renderer). Restore originals after capture.
+      _pcStatus(status, 'Library loaded, preparing image…');
       var restoreFns = [];
       card.querySelectorAll('*').forEach(function(el){{
         var bg = el.style && (el.style.background || el.style.backgroundImage) || '';
@@ -923,16 +918,59 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           restoreFns.push(function(){{ el.style.display = prevDisp; }});
         }}
       }});
+      // Swap headshot src → data URL (stashed as data-png-src by the
+      // background pre-fetch). If pre-fetch hasn't finished, try to fetch
+      // it synchronously here. If that also fails, capture without the
+      // headshot — better than a hung save.
+      var hsImg = card.querySelector('img[id^="pc-headshot"]');
+      function swapHeadshotIfPossible(){{
+        if (!hsImg) return Promise.resolve();
+        var pngSrc = hsImg.getAttribute('data-png-src');
+        if (pngSrc) {{
+          var origSrc = hsImg.src;
+          hsImg.src = pngSrc;
+          restoreFns.push(function(){{ hsImg.src = origSrc; }});
+          _pcStatus(status, 'Headshot ready (pre-fetched)');
+          return Promise.resolve();
+        }}
+        var proxyUrl = hsImg.getAttribute('data-proxy-url');
+        if (!proxyUrl) return Promise.resolve();
+        _pcStatus(status, 'Fetching headshot via proxy…');
+        return Promise.race([
+          fetch(proxyUrl, {{mode: 'cors', cache: 'force-cache'}})
+            .then(function(r){{ return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); }})
+            .then(function(blob){{
+              return new Promise(function(res, rej){{
+                var fr = new FileReader();
+                fr.onload = function(){{ res(fr.result); }};
+                fr.onerror = function(){{ rej(new Error('FileReader failed')); }};
+                fr.readAsDataURL(blob);
+              }});
+            }})
+            .then(function(dataUrl){{
+              var origSrc = hsImg.src;
+              hsImg.src = dataUrl;
+              restoreFns.push(function(){{ hsImg.src = origSrc; }});
+            }}),
+          // 4s timeout — if proxy is slow, skip the headshot rather than
+          // blocking the save entirely.
+          new Promise(function(res){{ setTimeout(res, 4000); }})
+        ]).catch(function(e){{
+          _pcStatus(status, 'Headshot fetch failed (continuing): ' + (e.message || ''), false);
+        }});
+      }}
       var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
-      // html-to-image handles CORS-enabled images natively (MLB headshots
-      // and team-logos SVG both serve CORS). Let it render them — this is
-      // the whole reason we switched off html2canvas.
-      window.htmlToImage.toPng(card, {{
+      // Do the headshot swap first, then capture. Everything is chained
+      // through a single promise so errors in either step flow to the same
+      // catch handler.
+      swapHeadshotIfPossible().then(function(){{
+      _pcStatus(status, 'Rendering card…');
+      return window.htmlToImage.toPng(card, {{
         backgroundColor: '#0a0a0a',
         pixelRatio: 2,
         cacheBust: true,
         skipFonts: false
-      }})
+      }});}})
         .then(function(dataUrl){{
           captureDone = true;
           restoreDom();
