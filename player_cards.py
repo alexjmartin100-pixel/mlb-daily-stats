@@ -378,6 +378,20 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
            max-height:260px;overflow-y:auto;margin-bottom:12px;
            box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
 
+  <!-- Year selector — lives OUTSIDE #pc-card so it remains interactive
+       after the card's content is replaced with a static <img> by the
+       auto-capture flow. Hidden until a player is selected. -->
+  <div id="pc-year-wrap" style="display:none;margin:0 0 10px;text-align:right">
+    <label style="font-size:.72rem;color:var(--muted);font-weight:700;
+                  text-transform:uppercase;letter-spacing:.04em;margin-right:6px">
+      Season:
+    </label>
+    <select id="pc-year-sel"
+            style="background:#1a1a1a;color:#eee;border:1px solid #444;
+                   border-radius:6px;padding:3px 8px;font-size:.78rem;
+                   font-weight:700;cursor:pointer;outline:none"></select>
+  </div>
+
   <!-- Card area -->
   <div id="pc-card"></div>
 
@@ -500,18 +514,29 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         + 'font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:10px;'
         + 'letter-spacing:.04em">[NQ]</span>';
 
-    // ── Year dropdown ──────────────────────────────────────────────────────
+    // ── Year label (static, inside card) + External dropdown (live) ───
+    // The label is a plain text badge inside the card so the year shows
+    // up in the saved image. The interactive dropdown lives OUTSIDE the
+    // card (#pc-year-wrap) so year switching still works after the card
+    // is rasterized to a static <img>.
     var availYrs = _pcAvailYears[String(id)] || [2026];
-    var yearDropdown = '';
-    if (availYrs.length > 1) {{
+    var yearDropdown =
+      '<span style="background:#1a1a1a;color:#ddd;border:1px solid #444;'
+      + 'border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;'
+      + 'margin-left:8px;display:inline-block;line-height:1.4;'
+      + 'vertical-align:middle">' + year + '</span>';
+    (function updateExternalYearSel(){{
+      var wrap = document.getElementById('pc-year-wrap');
+      var sel  = document.getElementById('pc-year-sel');
+      if (!wrap || !sel) return;
+      if (availYrs.length <= 1) {{ wrap.style.display = 'none'; return; }}
+      wrap.style.display = '';
       var opts = availYrs.map(function(y) {{
         return '<option value="' + y + '"' + (y===year?' selected':'') + '>' + y + '</option>';
       }}).join('');
-      yearDropdown = '<select onchange="_pcShow(' + id + ',parseInt(this.value))" '
-        + 'style="background:#1a1a1a;color:#eee;border:1px solid #444;border-radius:6px;'
-        + 'padding:2px 6px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:8px;'
-        + 'outline:none">' + opts + '</select>';
-    }}
+      sel.innerHTML = opts;
+      sel.onchange = function(){{ _pcShow(id, parseInt(sel.value, 10)); }};
+    }})();
 
     // ── Dollar value badge (right of qualified marker) — 2026 only ─────────
     var dvBadge = '';
