@@ -947,6 +947,8 @@ def _render_standings_html() -> str:
     _scoring = (_settings.get("scoringSettings") or {}).get("scoringItems") or []
     # Preserve the league's own ordering of categories where possible.
     _cat_ids = [item.get("statId") for item in _scoring if item.get("statId") is not None]
+    # Division list: [{"id": int, "name": str, "size": int}, ...]
+    _divisions = ((_settings.get("scheduleSettings") or {}).get("divisions")) or []
 
     # Build the header row of category columns using our label map.
     def _label_for(sid):
@@ -994,14 +996,20 @@ def _render_standings_html() -> str:
 
     rows = []
     for t in _teams:
-        rec = ((t.get("record") or {}).get("overall")) or {}
-        w = rec.get("wins") or 0
-        l = rec.get("losses") or 0
-        ti = rec.get("ties") or 0
-        pct = rec.get("percentage")
-        gb = rec.get("gamesBack")
+        rec_ov = ((t.get("record") or {}).get("overall")) or {}
+        rec_dv = ((t.get("record") or {}).get("division")) or {}
+        w = rec_ov.get("wins") or 0
+        l = rec_ov.get("losses") or 0
+        ti = rec_ov.get("ties") or 0
+        pct = rec_ov.get("percentage")
+        gb = rec_ov.get("gamesBack")
+        # Division-relative stats for the top (per-division) records table.
+        dw = rec_dv.get("wins") or 0
+        dl = rec_dv.get("losses") or 0
+        dti = rec_dv.get("ties") or 0
+        dpct = rec_dv.get("percentage")
+        dgb = rec_dv.get("gamesBack")
         vbs = t.get("valuesByStat") or {}
-        # Stash raw numeric values per category so we can rank-color them
         raw_cats = {}
         for m in _cat_meta:
             v = vbs.get(str(m["sid"]))
@@ -1013,9 +1021,13 @@ def _render_standings_html() -> str:
             "name": t.get("name") or "",
             "abbrev": t.get("abbrev") or "",
             "seed": t.get("playoffSeed") or 0,
+            "division_id": t.get("divisionId") if t.get("divisionId") is not None else -1,
             "record": f"{w}-{l}-{ti}" if ti else f"{w}-{l}",
             "wpct": pct if pct is not None else 0.0,
             "gb": gb if gb is not None else 0.0,
+            "div_record": f"{dw}-{dl}-{dti}" if dti else f"{dw}-{dl}",
+            "div_wpct": dpct if dpct is not None else 0.0,
+            "div_gb": dgb if dgb is not None else 0.0,
             "cats": {
                 m["sid"]: _fmt(vbs.get(str(m["sid"])), m["prec"])
                 for m in _cat_meta
@@ -1026,17 +1038,17 @@ def _render_standings_html() -> str:
     rows.sort(key=lambda r: (r["seed"] if r["seed"] else 999, -r["wpct"]))
 
     # ── Rank each team in each category (1 = best) so we can color-code
-    #    cells with a gold→red→blue gradient similar to the rest of the
-    #    dashboard. Ties get the same rank.
+    #    cells with a gold→red→blue gradient AND display the rank below
+    #    the value (matching the Season Projections table style). Ties
+    #    share the same rank.
     n_teams = len(rows)
     cell_colors = {}  # {(row_idx, sid): hex_color}
+    cell_ranks = {}   # {(row_idx, sid): int_rank}
     def _rank_to_color(rank, n):
         """rank 1 = gold; 2..n interpolated from red → grey → blue.
         Matches pctColor() gradient used elsewhere."""
         if rank <= 1:
             return "#f0c040"  # gold for best
-        # Map rank [2..n] onto percentile [89..0]
-        # (rank=2 → 89th pct ≈ vivid red; rank=n → 0th pct ≈ deep blue)
         if n <= 1:
             return "#888"
         pct = (n - rank) / (n - 1) * 100.0
@@ -1050,7 +1062,6 @@ def _render_standings_html() -> str:
 
     for m in _cat_meta:
         vals = [(idx, r["raw_cats"].get(m["sid"])) for idx, r in enumerate(rows)]
-        # Separate None values so they don't affect rank ordering
         valid = [(i, v) for i, v in vals if v is not None]
         # Sort so rank 1 = best; reversed cats = ascending, else descending
         valid.sort(key=lambda iv: iv[1], reverse=(not m["reversed"]))
@@ -1059,6 +1070,7 @@ def _render_standings_html() -> str:
         for j, (i, v) in enumerate(valid, start=1):
             rank = prev_rank if v == prev_val else j
             cell_colors[(i, m["sid"])] = _rank_to_color(rank, len(valid))
+            cell_ranks[(i, m["sid"])] = rank
             prev_val = v
             prev_rank = rank
 
@@ -1068,38 +1080,113 @@ def _render_standings_html() -> str:
                 '<p style="color:var(--muted);font-size:.88rem">ESPN snapshot has no '
                 'team records yet — season may not have started.</p></div>')
 
-    # data-rev lets the sort function know whether "best" means low or high,
-    # so first click sorts teams best→worst. cat-group-start adds the left
-    # border dividing record/GB from hit cats, and hit from pit cats.
+    # ── TOP SECTION: per-division records tables (ESPN-style) ──────────────
+    def _fmt_wpct(p):
+        s = f"{p:.3f}"
+        return s[1:] if s.startswith("0.") else s
+
+    def _fmt_gb(g):
+        return "—" if g in (0, 0.0) else f"{g:.1f}"
+
+    # Group rows by divisionId
+    div_groups = {}  # {div_id: [row, ...]}
+    for r in rows:
+        div_groups.setdefault(r["division_id"], []).append(r)
+
+    # Build an ordered list of (div_id, div_name) pairs. Use the settings
+    # division list if present; otherwise fall back to whatever IDs appear
+    # in team data. Unknown ID (-1) is labeled "Unassigned" and placed last.
+    div_order = []
+    if _divisions:
+        for d in _divisions:
+            did = d.get("id")
+            dname = d.get("name") or f"Division {did}"
+            div_order.append((did, dname))
+        for did in div_groups:
+            if did not in [d[0] for d in div_order]:
+                div_order.append((did, f"Division {did}"))
+    else:
+        for did in sorted(div_groups.keys()):
+            div_order.append((did, "League" if did == -1 else f"Division {did}"))
+
+    def _build_division_table(div_name, teams_in_div):
+        # Sort within division by div_wpct desc (best first)
+        teams_in_div = sorted(teams_in_div,
+                              key=lambda x: (-x["div_wpct"], x["div_gb"]))
+        rows_html = []
+        for i, r in enumerate(teams_in_div, start=1):
+            rows_html.append(
+                f'<tr>'
+                f'<td style="text-align:center;color:var(--muted)">{i}</td>'
+                f'<td style="padding-left:8px">{r["name"]}</td>'
+                f'<td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600">{r["div_record"]}</td>'
+                f'<td style="text-align:center">{_fmt_wpct(r["div_wpct"])}</td>'
+                f'<td style="text-align:center">{_fmt_gb(r["div_gb"])}</td>'
+                f'<td style="text-align:center;color:var(--muted)">{r["record"]}</td>'
+                f'<td style="text-align:center;color:var(--muted)">{_fmt_wpct(r["wpct"])}</td>'
+                f'</tr>'
+            )
+        return (
+            f'<div style="margin-bottom:16px">'
+            f'<div style="font-size:.72rem;font-weight:700;color:var(--accent);'
+            f'text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">'
+            f'{div_name}</div>'
+            f'<table class="standings-div-tbl" style="width:100%;font-size:.82rem;'
+            f'border-collapse:collapse">'
+            f'<thead><tr style="border-bottom:1px solid #333">'
+            f'<th style="width:40px;text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">#</th>'
+            f'<th style="text-align:left;padding:6px 8px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Team</th>'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Div</th>'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">PCT</th>'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">GB</th>'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Overall</th>'
+            f'<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+            f'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">PCT</th>'
+            f'</tr></thead>'
+            f'<tbody>{"".join(rows_html)}</tbody>'
+            f'</table>'
+            f'</div>'
+        )
+
+    div_tables_html = ""
+    for did, dname in div_order:
+        teams_here = div_groups.get(did, [])
+        if teams_here:
+            div_tables_html += _build_division_table(dname, teams_here)
+
+    # ── BOTTOM SECTION: category stats table (no division split) ───────────
+    # data-rev → first-click direction (hi=desc/best first, lo=asc/best first)
+    # cat-group-start → left border divider
     th_cells = [
-        '<th class="sortable" data-sort="rank" data-type="num" data-rev="lo">Rank</th>',
-        '<th class="sortable" data-sort="team" data-type="str">Team</th>',
-        '<th class="sortable r" data-sort="wpct" data-type="num" data-rev="hi">Record</th>',
-        '<th class="sortable r" data-sort="wpct" data-type="num" data-rev="hi">Win%</th>',
-        '<th class="sortable r" data-sort="gb" data-type="num" data-rev="lo">GB</th>',
+        '<th class="sortable" data-sort="rank" data-type="num" data-rev="lo" '
+        'style="text-align:center">Rank</th>',
+        '<th class="sortable" data-sort="team" data-type="str" '
+        'style="text-align:left">Team</th>',
     ]
-    # Flag that the NEXT column is the first category (divider before hit cats).
     first_cat = True
     prev_group = None
     for m in _cat_meta:
         arrow = ' ▾' if m["reversed"] else ''
         rev = "lo" if m["reversed"] else "hi"
-        # Add a group-boundary divider for: (a) the very first cat column
-        # after GB, and (b) whenever the group changes (hit → pit).
         is_boundary = first_cat or (prev_group is not None and prev_group != m["group"])
         border_cls = " cat-group-start" if is_boundary else ""
         first_cat = False
         prev_group = m["group"]
         th_cells.append(
-            f'<th class="sortable r{border_cls}" data-sort="cat_{m["sid"]}" data-type="num" '
+            f'<th class="sortable{border_cls}" data-sort="cat_{m["sid"]}" data-type="num" '
             f'data-rev="{rev}" data-grp="{m["group"]}" '
+            f'style="text-align:center" '
             f'title="statId {m["sid"]}{" (lower is better)" if m["reversed"] else ""}">'
             f'{m["name"]}{arrow}</th>'
         )
     thead = "<tr>" + "".join(th_cells) + "</tr>"
 
-    # Body rows — cells get per-category colored text based on the team's
-    # rank in that category (gold #1, red→blue 2..N).
     tr_html = []
     for row_i, r in enumerate(rows):
         rank = row_i + 1
@@ -1112,34 +1199,41 @@ def _render_standings_html() -> str:
             first_cat = False
             prev_group = m["group"]
             color = cell_colors.get((row_i, m["sid"]), "#ccc")
-            # Bold + colored for the category cells.
+            cat_rank = cell_ranks.get((row_i, m["sid"]))
+            val_html = r["cats"].get(m["sid"], "—")
+            rank_html = (f'<div style="font-size:.58rem;color:#666;line-height:1.1;'
+                         f'margin-top:2px">#{cat_rank}</div>') if cat_rank else ''
             cells.append(
-                f'<td class="r{border_cls}" style="color:{color};font-weight:700">'
-                f'{r["cats"].get(m["sid"], "—")}</td>'
+                f'<td class="{border_cls.strip()}" style="text-align:center">'
+                f'<div style="color:{color};font-weight:700;line-height:1.1">{val_html}</div>'
+                f'{rank_html}'
+                f'</td>'
             )
         cat_cells = "".join(cells)
-        wpct_disp = f'{r["wpct"]:.3f}'
-        wpct_disp = wpct_disp[1:] if wpct_disp.startswith("0.") else wpct_disp
-        gb_disp = "—" if r["gb"] == 0 else f'{r["gb"]:.1f}'
         tr_html.append(
             f'<tr data-rank="{rank}" data-team="{r["name"]}" '
             f'data-wpct="{r["wpct"]}" data-gb="{r["gb"]}">'
-            f'<td class="r">{rank}</td>'
-            f'<td>{r["name"]}</td>'
-            f'<td class="r" style="font-variant-numeric:tabular-nums">{r["record"]}</td>'
-            f'<td class="r">{wpct_disp}</td>'
-            f'<td class="r">{gb_disp}</td>'
+            f'<td style="text-align:center;color:var(--muted)">{rank}</td>'
+            f'<td style="text-align:left;padding-left:8px">{r["name"]}</td>'
             f'{cat_cells}'
             f'</tr>'
         )
 
-    # Wrap in a horizontally-scrollable container for mobile.
+    # ── Final wrapper. Division tables don't need horizontal scroll; the
+    #    category table does on mobile (14 columns).
     return (
         '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
         '<h3 style="color:var(--accent);margin:0 0 10px;font-size:1.05rem">'
         '&#x1F3C6; League Standings</h3>'
-        '<p style="color:var(--muted);font-size:.78rem;margin:0 0 12px">'
-        'Live from ESPN snapshot (last roster sync). Click any column header to sort. '
+        '<p style="color:var(--muted);font-size:.78rem;margin:0 0 14px">'
+        'Live from ESPN snapshot (last roster sync).</p>'
+        # --- Divisional records ---
+        + div_tables_html +
+        # --- Category stats ---
+        '<h4 style="color:var(--text);margin:18px 0 8px;font-size:.9rem;'
+        'font-weight:700">Category Totals</h4>'
+        '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
+        'Click any column to sort (best first). '
         '<span style="opacity:.7">&#x25BE; = lower is better</span></p>'
         '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
         '<table id="fant-standings-tbl" class="standings-tbl" '

@@ -950,10 +950,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           }}
         }}, 'image/png');
       }}).catch(function(e){{
+        console.error('[pcSaveAsImage] html2canvas error:', e);
         if (status) status.textContent = 'Capture failed: ' + (e && e.message || 'unknown error');
         if (btn) btn.disabled = false;
       }});
     }});
+    }}).catch(function(e){{
+      // Catch-all for promise-chain failures before html2canvas gets called
+      console.error('[pcSaveAsImage] pre-capture error:', e);
+      if (status) status.textContent = 'Error: ' + (e && e.message || 'unknown');
+      if (btn) btn.disabled = false;
     }});
   }};
 

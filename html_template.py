@@ -123,6 +123,18 @@ thead th.sort-desc::after{content:" ▼";color:var(--accent);font-size:.58rem}
    Standings table — makes it obvious which group each column belongs to. */
 .standings-tbl th.cat-group-start,
 .standings-tbl td.cat-group-start{border-left:2px solid #3a3a3a;padding-left:10px}
+/* Consistent cell padding for the category stats table. */
+.standings-tbl th,.standings-tbl td{padding:6px 8px}
+.standings-tbl thead th{color:var(--muted);font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.05em;border-bottom:1px solid #333;font-weight:700}
+.standings-tbl tbody tr{border-bottom:1px solid #222}
+.standings-tbl tbody tr:last-child{border-bottom:none}
+.standings-tbl tbody tr:hover{background:#141414}
+/* Per-division records table. */
+.standings-div-tbl tbody tr{border-bottom:1px solid #222}
+.standings-div-tbl tbody tr:last-child{border-bottom:none}
+.standings-div-tbl tbody tr:hover{background:#141414}
+.standings-div-tbl td{padding:6px 4px}
 thead th.r{text-align:right}
 thead th.sc{color:#5d9bc8 !important}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
