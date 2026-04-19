@@ -754,6 +754,29 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     if (_saveBtn) _saveBtn.setAttribute('data-player-name', (d && d.name) || 'player-card');
     var _saveStatus = document.getElementById('pc-save-status');
     if (_saveStatus) _saveStatus.textContent = '';
+    // Pre-convert the headshot to a data URL immediately so that by the
+    // time the user clicks Save, the img src is already an embedded data:
+    // URL that html-to-image can rasterize with zero network work. This
+    // sidesteps every CORS / lazy-load / timing flake we've hit so far.
+    (function preloadHeadshot(){{
+      var hsImg = document.getElementById(pcImgId);
+      if (!hsImg) return;
+      fetch(photoUrl, {{mode: 'cors', cache: 'force-cache'}})
+        .then(function(r){{ return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); }})
+        .then(function(blob){{
+          return new Promise(function(res, rej){{
+            var fr = new FileReader();
+            fr.onload = function(){{ res(fr.result); }};
+            fr.onerror = function(){{ rej(new Error('FileReader failed')); }};
+            fr.readAsDataURL(blob);
+          }});
+        }})
+        .then(function(dataUrl){{
+          // Only swap if the card is still showing the same player.
+          if (document.getElementById(pcImgId) === hsImg) hsImg.src = dataUrl;
+        }})
+        .catch(function(){{ /* leave original URL; save may miss the image */ }});
+    }})();
   }};
 
   // Lazy-load html2canvas on first use so the 150KB library doesn't bloat
