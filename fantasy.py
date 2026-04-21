@@ -928,7 +928,7 @@ def _render_standings_html() -> str:
             snap_path = cand
             break
     if not snap_path:
-        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 96px">'
                 '<p style="color:var(--muted);font-size:.88rem">'
                 'No ESPN snapshot found — run the bookmarklet to populate standings.'
                 '</p></div>')
@@ -937,7 +937,7 @@ def _render_standings_html() -> str:
         with open(snap_path, "r", encoding="utf-8") as _f:
             _snap = _json_s.load(_f)
     except Exception as _e:
-        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 96px">'
                 f'<p style="color:var(--muted);font-size:.88rem">Could not parse '
                 f'espn_rosters.json: {_e}</p></div>')
 
@@ -1129,7 +1129,7 @@ def _render_standings_html() -> str:
 
     # ── HTML build ─────────────────────────────────────────────────────────
     if not rows:
-        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+        return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 96px">'
                 '<p style="color:var(--muted);font-size:.88rem">ESPN snapshot has no '
                 'team records yet — season may not have started.</p></div>')
 
@@ -1488,21 +1488,37 @@ def _render_standings_html() -> str:
             )
         return "".join(out)
 
-    # Mickey Mouse silhouette: classic three-circle head shape — two ears
-    # sitting at ~45° upper-outer angles atop a larger head circle. All
-    # three filled the same color with no per-circle outline so they
-    # merge into one unified silhouette (the iconic Disney mark). Light
-    # fill on the dark panel background mirrors the way Disney renders
-    # the logo white-on-black for merchandising. Proportions: ear/head
-    # radius ratio ≈ 0.54, matches the registered shape spec.
-    _mickey_svg = (
-        '<svg viewBox="0 0 100 100" width="60" height="60" '
-        'xmlns="http://www.w3.org/2000/svg" style="flex:0 0 auto">'
-        '<circle cx="27" cy="37" r="15" fill="#f5f5f5"/>'
-        '<circle cx="73" cy="37" r="15" fill="#f5f5f5"/>'
-        '<circle cx="50" cy="60" r="28" fill="#f5f5f5"/>'
-        '</svg>'
-    )
+    # Mickey art — prefer a user-supplied image (mickey.png/jpg/webp at
+    # the repo root) and fall back to the classic three-circle silhouette
+    # SVG if no image file is present. Browser resolves <img src="mickey.png">
+    # relative to the dashboard HTML (also at repo root), so no path
+    # munging is needed. Image file is picked up automatically by the
+    # GHA workflow's `git add .` step and deployed to Firebase.
+    _mickey_img_file = None
+    for _cand in ("mickey.png", "mickey.jpg", "mickey.jpeg",
+                  "mickey.webp", "mickey.gif"):
+        if _os_s.path.exists(_os_s.path.join(base, _cand)):
+            _mickey_img_file = _cand
+            break
+
+    if _mickey_img_file:
+        _mickey_svg = (
+            f'<img src="{_mickey_img_file}" alt="Mickey Teams" '
+            f'width="64" height="64" '
+            f'style="flex:0 0 auto;object-fit:contain;border-radius:4px">'
+        )
+    else:
+        # Classic three-circle Mickey silhouette — ear/head radius ratio
+        # ≈ 0.54 (Disney spec), ears at ~45° upper-outer angles, no
+        # per-circle stroke so they merge into one unified shape.
+        _mickey_svg = (
+            '<svg viewBox="0 0 100 100" width="60" height="60" '
+            'xmlns="http://www.w3.org/2000/svg" style="flex:0 0 auto">'
+            '<circle cx="27" cy="37" r="15" fill="#f5f5f5"/>'
+            '<circle cx="73" cy="37" r="15" fill="#f5f5f5"/>'
+            '<circle cx="50" cy="60" r="28" fill="#f5f5f5"/>'
+            '</svg>'
+        )
     # Israeli flag: white field, two horizontal blue stripes, Star of
     # David (two overlapping triangles) in the center. Standard colors.
     _israel_flag_svg = (
@@ -1738,7 +1754,7 @@ def _render_standings_html() -> str:
     # ── Final wrapper. Division tables don't need horizontal scroll; the
     #    category table does on mobile (14 columns).
     return (
-        '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+        '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 96px">'
         '<h3 style="color:var(--accent);margin:0 0 10px;font-size:1.05rem">'
         '&#x1F3C6; League Standings</h3>'
         '<p style="color:var(--muted);font-size:.78rem;margin:0 0 14px">'
@@ -2261,7 +2277,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         print(f"  [standings] render failed: {_e}")
         _tb.print_exc()
         standings_html = (
-            '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
+            '<div id="fant-standings-wrap" style="display:none;padding:18px 20px 96px">'
             f'<p style="color:var(--muted);font-size:.88rem">Standings render '
             f'failed: <code>{str(_e)[:200]}</code></p></div>'
         )

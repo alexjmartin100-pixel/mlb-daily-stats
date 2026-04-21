@@ -20,6 +20,12 @@ git add fetch_mlb_stats.py fantasy.py parse_espn_rosters.py lineup_optimizer.py 
         push_update.bat espn_rosters.json ^
         .github\workflows\daily.yml 2>nul
 
+REM Pick up Standings-tab image assets (mickey.*) if present.
+REM Guarded with `if exist` so missing files don't error out the script.
+for %%F in (mickey.png mickey.jpg mickey.jpeg mickey.webp mickey.gif) do (
+    if exist "%%F" git add "%%F"
+)
+
 git diff --cached --quiet
 if %errorlevel% equ 0 (
     echo   No staged changes to commit.
