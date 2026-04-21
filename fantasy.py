@@ -1094,6 +1094,39 @@ def _render_standings_html() -> str:
             prev_val = v
             prev_rank = rank
 
+    # ── Compute z-scores per category (positive = good; reversed cats
+    #    sign-flipped so low ERA/WHIP/K-hit yields a positive z). Skipped
+    #    when fewer than 2 teams have a value or stdev is 0. ─────────────
+    cell_z = {}                 # {(row_i, sid): float}
+    total_z = [0.0] * n_teams   # sum of z across all cats, per team
+    for m in _cat_meta:
+        nums = [r["raw_cats"].get(m["sid"]) for r in rows]
+        pairs = [(i, v) for i, v in enumerate(nums) if v is not None]
+        if len(pairs) < 2:
+            continue
+        vals_only = [v for _, v in pairs]
+        mu = sum(vals_only) / len(vals_only)
+        var = sum((v - mu) ** 2 for v in vals_only) / len(vals_only)
+        sd = var ** 0.5
+        if sd == 0:
+            for i, _ in pairs:
+                cell_z[(i, m["sid"])] = 0.0
+            continue
+        for i, v in pairs:
+            z = (v - mu) / sd
+            if m["reversed"]:
+                z = -z
+            cell_z[(i, m["sid"])] = z
+            total_z[i] += z
+
+    # Average category rank per team (simple mean of ranks across cats).
+    avg_rank = [0.0] * n_teams
+    for i in range(n_teams):
+        rks = [cell_ranks[(i, m["sid"])] for m in _cat_meta
+               if (i, m["sid"]) in cell_ranks]
+        if rks:
+            avg_rank[i] = sum(rks) / len(rks)
+
     # ── HTML build ─────────────────────────────────────────────────────────
     if not rows:
         return ('<div id="fant-standings-wrap" style="display:none;padding:18px 20px 0">'
@@ -1261,10 +1294,19 @@ def _render_standings_html() -> str:
             val_html = r["cats"].get(m["sid"], "—")
             rank_html = (f'<div style="font-size:.58rem;color:#666;line-height:1.1;'
                          f'margin-top:2px">#{cat_rank}</div>') if cat_rank else ''
+            cat_z = cell_z.get((row_i, m["sid"]))
+            if cat_z is not None:
+                z_sign = "+" if cat_z >= 0 else ""
+                z_color = "#6fa86f" if cat_z >= 0 else "#b66"
+                z_html = (f'<div style="font-size:.55rem;color:{z_color};'
+                          f'line-height:1.1">z {z_sign}{cat_z:.2f}</div>')
+            else:
+                z_html = ''
             cells.append(
                 f'<td class="{border_cls.strip()}" style="text-align:center">'
                 f'<div style="color:{color};font-weight:700;line-height:1.1">{val_html}</div>'
                 f'{rank_html}'
+                f'{z_html}'
                 f'</td>'
             )
         cat_cells = "".join(cells)
@@ -1276,6 +1318,258 @@ def _render_standings_html() -> str:
             f'{cat_cells}'
             f'</tr>'
         )
+
+    # ── wRank summary table: Team | Avg Cat Rank | wRank (total z) | W-L | W%
+    #    Sorted by wRank desc so the "truest" team sits on top.
+    summary = []
+    for i, r in enumerate(rows):
+        summary.append({
+            "name": r["name"],
+            "abbrev": r["abbrev"],
+            "avg_rank": avg_rank[i],
+            "wrank": total_z[i],
+            "record": r["record"],
+            "wpct": r["wpct"] or 0.0,
+        })
+    summary.sort(key=lambda s: -s["wrank"])
+
+    def _fmt_wpct_s(p):
+        s = f"{p:.3f}"
+        return s[1:] if s.startswith("0.") else s
+
+    summary_rows_html = []
+    for i, s in enumerate(summary, start=1):
+        w_sign = "+" if s["wrank"] >= 0 else ""
+        w_color = "#6fa86f" if s["wrank"] >= 0 else "#b66"
+        summary_rows_html.append(
+            f'<tr>'
+            f'<td style="text-align:center;color:var(--muted)">{i}</td>'
+            f'<td style="padding-left:8px">{s["name"]}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{s["avg_rank"]:.2f}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums;'
+            f'font-weight:700;color:{w_color}">{w_sign}{s["wrank"]:.2f}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{s["record"]}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{_fmt_wpct_s(s["wpct"])}</td>'
+            f'</tr>'
+        )
+    summary_table_html = (
+        '<h4 style="color:var(--text);margin:22px 0 6px;font-size:.9rem;'
+        'font-weight:700">Expected Strength (wRank)</h4>'
+        '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
+        'wRank = sum of z-scores across all 12 categories (lower-is-better '
+        'cats sign-flipped so positive = good). Sorted best first.</p>'
+        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
+        '<table class="wrank-tbl" '
+        'style="min-width:520px;font-size:.82rem;border-collapse:collapse;width:100%">'
+        '<thead><tr style="border-bottom:1px solid #333">'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">#</th>'
+        '<th style="text-align:left;padding:6px 8px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Team</th>'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em" '
+        'title="Average of the team\'s rank across all 12 categories">Avg Rank</th>'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em" '
+        'title="Total z-score across all 12 categories">wRank</th>'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W-L</th>'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W%</th>'
+        '</tr></thead>'
+        f'<tbody>{"".join(summary_rows_html)}</tbody>'
+        '</table></div>'
+    )
+
+    # ── Scatter plot: wRank (x) vs W% (y). Pure inline SVG — no JS libs.
+    #    Points are labeled with the team owner's name (not team name);
+    #    mapping kept here as a list of (substring, owner) tuples in
+    #    priority order so "Floyd Bros" resolves to Dave before "Floyd"
+    #    falls through to Floyd's own team. Easy to extend mid-season.
+    _OWNER_MAP = [
+        ("floyd bros",   "Dave"),
+        ("lawn serv",    "Dave"),
+        ("lockwood",     "Nate"),
+        ("honey nut",    "Needham"),
+        ("chourio",      "Needham"),
+        ("roman empire", "Alex B"),
+        ("yankees",      "Don"),
+        ("team alex",    "Lex"),
+        ("team jason",   "Jason"),
+        ("team floyd",   "Floyd"),
+        ("cleveland",    "Ryan"),
+        ("indians",      "Ryan"),
+        ("duh bing",     "Dom"),
+    ]
+
+    def _owner_for(team_name: str, abbrev: str) -> str:
+        nm = (team_name or "").lower()
+        for needle, owner in _OWNER_MAP:
+            if needle in nm:
+                return owner
+        return abbrev or (team_name[:6] if team_name else "")
+
+    _VB_W, _VB_H = 620, 360
+    _ML, _MR, _MT, _MB = 58, 20, 28, 44
+    plot_w = _VB_W - _ML - _MR
+    plot_h = _VB_H - _MT - _MB
+
+    if summary:
+        xs = [s["wrank"] for s in summary]
+        ys = [s["wpct"] for s in summary]
+        x_min, x_max = min(xs), max(xs)
+        if x_min == x_max:
+            x_min -= 1.0; x_max += 1.0
+        x_pad = (x_max - x_min) * 0.12
+        x_min -= x_pad; x_max += x_pad
+        # Y axis: anchor at 0-1 for W%; pad to the actual data with a margin.
+        y_min = max(0.0, min(ys) - 0.05) if ys else 0.0
+        y_max = min(1.0, max(ys) + 0.05) if ys else 1.0
+        if y_min == y_max:
+            y_min = max(0.0, y_min - 0.1); y_max = min(1.0, y_max + 0.1)
+
+        def _sx(v):
+            return _ML + (v - x_min) / (x_max - x_min) * plot_w
+        def _sy(v):
+            return _MT + (1 - (v - y_min) / (y_max - y_min)) * plot_h
+
+        # Build 5 x-axis ticks and 5 y-axis ticks evenly spaced.
+        def _nice_ticks(lo, hi, n=5):
+            step = (hi - lo) / (n - 1)
+            return [lo + i * step for i in range(n)]
+
+        x_ticks = _nice_ticks(x_min, x_max, 5)
+        y_ticks = _nice_ticks(y_min, y_max, 5)
+
+        # Linear regression for the trendline (least squares on the data).
+        # Compute slope/intercept on RAW (data-space) values, then project
+        # both endpoints into pixel space and clip them to the visible y
+        # range so the line never escapes the plot rect.
+        n_pts = len(xs)
+        mx_raw = sum(xs) / n_pts
+        my_raw = sum(ys) / n_pts
+        denom = sum((x - mx_raw) ** 2 for x in xs)
+        if denom > 0:
+            slope = sum((x - mx_raw) * (y - my_raw) for x, y in zip(xs, ys)) / denom
+        else:
+            slope = 0.0
+        intercept = my_raw - slope * mx_raw
+
+        def _line_y(x):
+            return slope * x + intercept
+
+        # Solve for x where the line crosses the y-axis bounds, and clip.
+        endpoints = []
+        for x_end in (x_min, x_max):
+            y_end = _line_y(x_end)
+            if y_min <= y_end <= y_max:
+                endpoints.append((x_end, y_end))
+        if slope != 0:
+            for y_bound in (y_min, y_max):
+                x_at = (y_bound - intercept) / slope
+                if x_min <= x_at <= x_max:
+                    endpoints.append((x_at, y_bound))
+        # Dedup near-identical endpoints, keep the two extremes by x.
+        endpoints = sorted(set((round(x, 6), round(y, 6)) for x, y in endpoints))
+        if len(endpoints) >= 2:
+            (tx1, ty1), (tx2, ty2) = endpoints[0], endpoints[-1]
+            trend_segment = (
+                f'<line x1="{_sx(tx1):.1f}" y1="{_sy(ty1):.1f}" '
+                f'x2="{_sx(tx2):.1f}" y2="{_sy(ty2):.1f}" '
+                f'stroke="#f0c040" stroke-width="1.5" stroke-opacity=".55" '
+                f'stroke-dasharray="6,4"/>'
+            )
+        else:
+            trend_segment = ""
+
+        svg_parts = [
+            f'<svg viewBox="0 0 {_VB_W} {_VB_H}" xmlns="http://www.w3.org/2000/svg" '
+            f'style="width:100%;height:auto;max-width:720px;display:block;'
+            f'margin:6px auto 0;font-family:inherit">',
+            # plot-area background
+            f'<rect x="{_ML}" y="{_MT}" width="{plot_w}" height="{plot_h}" '
+            f'fill="#1a1a1a" stroke="#333" stroke-width="1"/>',
+        ]
+        # Grid + x-axis tick labels
+        for t in x_ticks:
+            x = _sx(t)
+            svg_parts.append(
+                f'<line x1="{x:.1f}" y1="{_MT}" x2="{x:.1f}" y2="{_MT + plot_h}" '
+                f'stroke="#2a2a2a" stroke-width="1"/>'
+            )
+            svg_parts.append(
+                f'<text x="{x:.1f}" y="{_MT + plot_h + 14}" fill="#888" '
+                f'font-size="10" text-anchor="middle">{t:+.1f}</text>'
+            )
+        # Grid + y-axis tick labels
+        for t in y_ticks:
+            y = _sy(t)
+            svg_parts.append(
+                f'<line x1="{_ML}" y1="{y:.1f}" x2="{_ML + plot_w}" y2="{y:.1f}" '
+                f'stroke="#2a2a2a" stroke-width="1"/>'
+            )
+            yl = f"{t:.3f}".lstrip("0") if 0 < t < 1 else f"{t:.2f}"
+            svg_parts.append(
+                f'<text x="{_ML - 6}" y="{y + 3:.1f}" fill="#888" '
+                f'font-size="10" text-anchor="end">{yl}</text>'
+            )
+        # Zero line for x-axis if 0 is in range
+        if x_min < 0 < x_max:
+            zx = _sx(0)
+            svg_parts.append(
+                f'<line x1="{zx:.1f}" y1="{_MT}" x2="{zx:.1f}" y2="{_MT + plot_h}" '
+                f'stroke="#555" stroke-width="1" stroke-dasharray="3,3"/>'
+            )
+        # .500 reference line if in range
+        if y_min < 0.5 < y_max:
+            zy = _sy(0.5)
+            svg_parts.append(
+                f'<line x1="{_ML}" y1="{zy:.1f}" x2="{_ML + plot_w}" y2="{zy:.1f}" '
+                f'stroke="#555" stroke-width="1" stroke-dasharray="3,3"/>'
+            )
+        # Axis labels
+        svg_parts.append(
+            f'<text x="{_ML + plot_w / 2:.1f}" y="{_VB_H - 8}" fill="#bbb" '
+            f'font-size="11" text-anchor="middle" font-weight="600">wRank (total z)</text>'
+        )
+        svg_parts.append(
+            f'<text x="14" y="{_MT + plot_h / 2:.1f}" fill="#bbb" '
+            f'font-size="11" text-anchor="middle" font-weight="600" '
+            f'transform="rotate(-90 14 {_MT + plot_h / 2:.1f})">Win %</text>'
+        )
+        # Trendline drawn BEFORE points so dots sit on top of the line.
+        if trend_segment:
+            svg_parts.append(trend_segment)
+
+        # Points + labels (labels use owner name, not team name)
+        for s in summary:
+            cx = _sx(s["wrank"])
+            cy = _sy(s["wpct"])
+            label = _owner_for(s["name"], s["abbrev"])
+            svg_parts.append(
+                f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4.5" '
+                f'fill="#f0c040" stroke="#1a1a1a" stroke-width="1">'
+                f'<title>{s["name"]} ({label}): wRank {s["wrank"]:+.2f}, W% '
+                f'{_fmt_wpct_s(s["wpct"])}</title></circle>'
+            )
+            svg_parts.append(
+                f'<text x="{cx + 7:.1f}" y="{cy - 6:.1f}" fill="#ddd" '
+                f'font-size="10" font-weight="600">{label}</text>'
+            )
+        svg_parts.append('</svg>')
+        scatter_html = (
+            '<h4 style="color:var(--text);margin:22px 0 6px;font-size:.9rem;'
+            'font-weight:700">wRank vs Win %</h4>'
+            '<p style="color:var(--muted);font-size:.72rem;margin:0 0 4px">'
+            'Teams above the diagonal are outperforming their underlying '
+            'category strength; teams below are underperforming.</p>'
+            + "".join(svg_parts)
+        )
+    else:
+        scatter_html = ""
 
     # ── Final wrapper. Division tables don't need horizontal scroll; the
     #    category table does on mobile (14 columns).
@@ -1291,13 +1585,18 @@ def _render_standings_html() -> str:
         '<h4 style="color:var(--text);margin:18px 0 8px;font-size:.9rem;'
         'font-weight:700">Category Totals</h4>'
         '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
-        'Click any column to sort (best first).</p>'
+        'Click any column to sort (best first). Each cell shows the category '
+        'total, rank (#n), and z-score.</p>'
         '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
         '<table id="fant-standings-tbl" class="standings-tbl" '
         'style="min-width:720px;font-size:.82rem;border-collapse:collapse;width:100%">'
         f'<thead>{thead}</thead>'
         f'<tbody>{"".join(tr_html)}</tbody>'
         '</table></div>'
+        # --- wRank summary table ---
+        + summary_table_html
+        # --- Scatter plot ---
+        + scatter_html +
         '</div>'
     )
 
