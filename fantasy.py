@@ -1297,9 +1297,10 @@ def _render_standings_html() -> str:
             cat_z = cell_z.get((row_i, m["sid"]))
             if cat_z is not None:
                 z_sign = "+" if cat_z >= 0 else ""
-                z_color = "#6fa86f" if cat_z >= 0 else "#b66"
-                z_html = (f'<div style="font-size:.55rem;color:{z_color};'
-                          f'line-height:1.1">z {z_sign}{cat_z:.2f}</div>')
+                # Use the same rank-based gradient as the value above so the
+                # whole cell reads as one color block.
+                z_html = (f'<div style="font-size:.55rem;color:{color};'
+                          f'opacity:.8;line-height:1.1">z {z_sign}{cat_z:.2f}</div>')
             else:
                 z_html = ''
             cells.append(
@@ -1319,76 +1320,9 @@ def _render_standings_html() -> str:
             f'</tr>'
         )
 
-    # ── wRank summary table: Team | Avg Cat Rank | wRank (total z) | W-L | W%
-    #    Sorted by wRank desc so the "truest" team sits on top.
-    summary = []
-    for i, r in enumerate(rows):
-        summary.append({
-            "name": r["name"],
-            "abbrev": r["abbrev"],
-            "avg_rank": avg_rank[i],
-            "wrank": total_z[i],
-            "record": r["record"],
-            "wpct": r["wpct"] or 0.0,
-        })
-    summary.sort(key=lambda s: -s["wrank"])
-
-    def _fmt_wpct_s(p):
-        s = f"{p:.3f}"
-        return s[1:] if s.startswith("0.") else s
-
-    summary_rows_html = []
-    for i, s in enumerate(summary, start=1):
-        w_sign = "+" if s["wrank"] >= 0 else ""
-        w_color = "#6fa86f" if s["wrank"] >= 0 else "#b66"
-        summary_rows_html.append(
-            f'<tr>'
-            f'<td style="text-align:center;color:var(--muted)">{i}</td>'
-            f'<td style="padding-left:8px">{s["name"]}</td>'
-            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
-            f'{s["avg_rank"]:.2f}</td>'
-            f'<td style="text-align:center;font-variant-numeric:tabular-nums;'
-            f'font-weight:700;color:{w_color}">{w_sign}{s["wrank"]:.2f}</td>'
-            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
-            f'{s["record"]}</td>'
-            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
-            f'{_fmt_wpct_s(s["wpct"])}</td>'
-            f'</tr>'
-        )
-    summary_table_html = (
-        '<h4 style="color:var(--text);margin:22px 0 6px;font-size:.9rem;'
-        'font-weight:700">Expected Strength (wRank)</h4>'
-        '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
-        'wRank = sum of z-scores across all 12 categories (lower-is-better '
-        'cats sign-flipped so positive = good). Sorted best first.</p>'
-        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
-        '<table class="wrank-tbl" '
-        'style="min-width:520px;font-size:.82rem;border-collapse:collapse;width:100%">'
-        '<thead><tr style="border-bottom:1px solid #333">'
-        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">#</th>'
-        '<th style="text-align:left;padding:6px 8px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">Team</th>'
-        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em" '
-        'title="Average of the team\'s rank across all 12 categories">Avg Rank</th>'
-        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em" '
-        'title="Total z-score across all 12 categories">wRank</th>'
-        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W-L</th>'
-        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
-        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W%</th>'
-        '</tr></thead>'
-        f'<tbody>{"".join(summary_rows_html)}</tbody>'
-        '</table></div>'
-    )
-
-    # ── Scatter plot: wRank (x) vs W% (y). Pure inline SVG — no JS libs.
-    #    Points are labeled with the team owner's name (not team name);
-    #    mapping kept here as a list of (substring, owner) tuples in
-    #    priority order so "Floyd Bros" resolves to Dave before "Floyd"
-    #    falls through to Floyd's own team. Easy to extend mid-season.
+    # ── Owner-name mapping (used in the scatter plot AND the luck panels).
+    #    Priority-ordered list of (substring, owner) so "Floyd Bros" resolves
+    #    to Dave before "Floyd" falls through to Floyd's own team.
     _OWNER_MAP = [
         ("floyd bros",   "Dave"),
         ("lawn serv",    "Dave"),
@@ -1412,14 +1346,253 @@ def _render_standings_html() -> str:
                 return owner
         return abbrev or (team_name[:6] if team_name else "")
 
+    # ── wRank summary table: Team | Avg Cat Rank | wRank (total z) | W-L | W%
+    #    Sorted by wRank desc so the "truest" team sits on top.
+    summary = []
+    for i, r in enumerate(rows):
+        summary.append({
+            "name": r["name"],
+            "abbrev": r["abbrev"],
+            "owner": _owner_for(r["name"], r["abbrev"]),
+            "avg_rank": avg_rank[i],
+            "wrank": total_z[i],
+            "record": r["record"],
+            "wpct": r["wpct"] or 0.0,
+        })
+    summary.sort(key=lambda s: -s["wrank"])
+
+    def _fmt_wpct_s(p):
+        s = f"{p:.3f}"
+        return s[1:] if s.startswith("0.") else s
+
+    # ── Trendline (OLS) on wRank → W%. Computed here so BOTH the luck
+    #    panels AND the scatter plot use the same line.
+    xs = [s["wrank"] for s in summary]
+    ys = [s["wpct"] for s in summary]
+    if len(xs) >= 2:
+        mx_raw = sum(xs) / len(xs)
+        my_raw = sum(ys) / len(ys)
+        denom = sum((x - mx_raw) ** 2 for x in xs)
+        trend_slope = (sum((x - mx_raw) * (y - my_raw)
+                           for x, y in zip(xs, ys)) / denom) if denom > 0 else 0.0
+        trend_intercept = my_raw - trend_slope * mx_raw
+    else:
+        trend_slope, trend_intercept = 0.0, (ys[0] if ys else 0.0)
+
+    # Luck = actual W% − trendline-predicted W% given team's wRank.
+    for s in summary:
+        s["predicted_wpct"] = trend_slope * s["wrank"] + trend_intercept
+        s["luck"] = s["wpct"] - s["predicted_wpct"]
+
+    # Rank teams by wRank desc so wRank cells can use the dashboard's
+    # standard rank-based gold→grey→blue gradient.
+    wrank_sorted = sorted(range(len(summary)), key=lambda i: -summary[i]["wrank"])
+    wrank_pos = {idx: rk for rk, idx in enumerate(wrank_sorted, start=1)}
+
+    summary_rows_html = []
+    for i, s in enumerate(summary, start=1):
+        w_sign = "+" if s["wrank"] >= 0 else ""
+        w_color = _rank_to_color(wrank_pos[i - 1], len(summary))
+        ar_str = f'{s["avg_rank"]:.2f}'
+        wp_str = _fmt_wpct_s(s["wpct"])
+        summary_rows_html.append(
+            f'<tr data-rank="{i}" data-team="{s["name"]}" '
+            f'data-avgrank="{s["avg_rank"]:.4f}" '
+            f'data-wrank="{s["wrank"]:.4f}" '
+            f'data-wpct="{s["wpct"]:.4f}">'
+            f'<td style="text-align:center;color:var(--muted)">{i}</td>'
+            f'<td style="padding-left:8px">{s["name"]}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{ar_str}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums;'
+            f'font-weight:700;color:{w_color}">{w_sign}{s["wrank"]:.2f}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{s["record"]}</td>'
+            f'<td style="text-align:center;font-variant-numeric:tabular-nums">'
+            f'{wp_str}</td>'
+            f'</tr>'
+        )
+
+    # Header with sort affordances — data-sort/data-type/data-rev mirror
+    # the pattern already used by the main standings table so users get a
+    # consistent click-to-sort experience.
+    summary_thead = (
+        '<thead><tr style="border-bottom:1px solid #333">'
+        '<th class="sortable" data-sort="rank" data-type="num" data-rev="lo" '
+        'style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;'
+        'cursor:pointer">#</th>'
+        '<th class="sortable" data-sort="team" data-type="str" data-rev="lo" '
+        'style="text-align:left;padding:6px 8px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;'
+        'cursor:pointer">Team</th>'
+        '<th class="sortable" data-sort="avgrank" data-type="num" data-rev="lo" '
+        'style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;'
+        'cursor:pointer" '
+        'title="Average of the team\'s rank across all 12 categories">Avg Rank</th>'
+        '<th class="sortable" data-sort="wrank" data-type="num" data-rev="hi" '
+        'style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;'
+        'cursor:pointer" '
+        'title="Total z-score across all 12 categories">wRank</th>'
+        '<th style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">W-L</th>'
+        '<th class="sortable" data-sort="wpct" data-type="num" data-rev="hi" '
+        'style="text-align:center;padding:6px 4px;color:var(--muted);'
+        'font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;'
+        'cursor:pointer">W%</th>'
+        '</tr></thead>'
+    )
+
+    summary_table_html = (
+        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1 1 420px;min-width:320px">'
+        '<h4 style="color:var(--text);margin:0 0 6px;font-size:.9rem;'
+        'font-weight:700">Expected Strength (wRank)</h4>'
+        '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
+        'wRank = sum of z-scores across all 12 categories (lower-is-better '
+        'cats sign-flipped so positive = good). Click any column to sort.</p>'
+        '<table id="fant-wrank-tbl" class="wrank-tbl" '
+        'style="font-size:.82rem;border-collapse:collapse;width:100%">'
+        + summary_thead +
+        f'<tbody>{"".join(summary_rows_html)}</tbody>'
+        '</table></div>'
+    )
+
+    # ── Mickey & Snakebit panels ──────────────────────────────────────
+    # Luck = actual W% − expected W% from the trendline. Top 3 of each
+    # tail flanks the wRank table.
+    def _fmt_luck(v):
+        sign = "+" if v >= 0 else "−"
+        return f'{sign}.{abs(v):.3f}'.replace("-.", ".").replace("+.", "+.")\
+            .replace(".0", ".0") if False else f'{sign}{abs(v):.3f}'
+
+    def _luck_rows_html(teams, color):
+        out = []
+        for rk, s in enumerate(teams, start=1):
+            l = s["luck"]
+            sign = "+" if l >= 0 else "−"
+            luck_str = f'{sign}{abs(l):.3f}'
+            out.append(
+                f'<div style="display:flex;justify-content:space-between;'
+                f'align-items:baseline;padding:4px 0;'
+                f'border-bottom:1px solid #2a2a2a;font-size:.82rem">'
+                f'<span><span style="color:var(--muted);'
+                f'font-variant-numeric:tabular-nums">{rk}.</span> '
+                f'<span style="font-weight:600">{s["owner"]}</span>'
+                f'<span style="color:var(--muted);font-size:.7rem;'
+                f'margin-left:6px">({s["record"]})</span></span>'
+                f'<span style="color:{color};font-weight:700;'
+                f'font-variant-numeric:tabular-nums">{luck_str}</span>'
+                f'</div>'
+            )
+        return "".join(out)
+
+    # Mickey Mouse silhouette: two ear circles atop a larger head circle.
+    # Pure black-on-transparent — Disney's iconic registered shape.
+    _mickey_svg = (
+        '<svg viewBox="0 0 60 60" width="44" height="44" '
+        'xmlns="http://www.w3.org/2000/svg" style="flex:0 0 auto">'
+        '<circle cx="13" cy="14" r="10" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
+        '<circle cx="47" cy="14" r="10" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
+        '<circle cx="30" cy="37" r="18" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
+        '</svg>'
+    )
+    # Israeli flag: white field, two horizontal blue stripes, Star of
+    # David (two overlapping triangles) in the center. Standard colors.
+    _israel_flag_svg = (
+        '<svg viewBox="0 0 66 44" width="58" height="40" '
+        'xmlns="http://www.w3.org/2000/svg" '
+        'style="flex:0 0 auto;border:1px solid #2a2a2a">'
+        '<rect width="66" height="44" fill="#ffffff"/>'
+        '<rect x="0" y="5"  width="66" height="5" fill="#0038b8"/>'
+        '<rect x="0" y="34" width="66" height="5" fill="#0038b8"/>'
+        # Star of David — upward triangle
+        '<polygon points="33,13 40,25 26,25" fill="none" '
+        'stroke="#0038b8" stroke-width="1.7"/>'
+        # downward triangle
+        '<polygon points="33,31 40,19 26,19" fill="none" '
+        'stroke="#0038b8" stroke-width="1.7"/>'
+        '</svg>'
+    )
+
+    mickey_top = sorted(summary, key=lambda s: -s["luck"])[:3]
+    jewed_top = sorted(summary, key=lambda s: s["luck"])[:3]
+
+    mickey_panel_html = (
+        '<div style="flex:0 0 auto;width:220px;padding:10px 12px;'
+        'background:#141414;border:1px solid #2a2a2a;border-radius:6px">'
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + _mickey_svg +
+        '<div>'
+        '<div style="color:var(--accent);font-weight:700;font-size:.88rem;'
+        'line-height:1.1">Mickey Teams</div>'
+        '<div style="color:var(--muted);font-size:.66rem;line-height:1.1;'
+        'margin-top:2px">Luckiest over expected</div>'
+        '</div></div>'
+        + _luck_rows_html(mickey_top, "#6fa86f") +
+        '</div>'
+    )
+
+    jewed_panel_html = (
+        '<div style="flex:0 0 auto;width:220px;padding:10px 12px;'
+        'background:#141414;border:1px solid #2a2a2a;border-radius:6px">'
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + _israel_flag_svg +
+        '<div>'
+        '<div style="color:var(--accent);font-weight:700;font-size:.88rem;'
+        'line-height:1.1">Jewed Teams</div>'
+        '<div style="color:var(--muted);font-size:.66rem;line-height:1.1;'
+        'margin-top:2px">Unluckiest below expected</div>'
+        '</div></div>'
+        + _luck_rows_html(jewed_top, "#d46a6a") +
+        '</div>'
+    )
+
+    # Wrap Mickey panel + summary table + Jewed panel in a flex row.
+    luck_row_html = (
+        '<div style="display:flex;gap:14px;align-items:flex-start;'
+        'flex-wrap:wrap;margin-top:22px">'
+        + mickey_panel_html
+        + summary_table_html
+        + jewed_panel_html +
+        '</div>'
+    )
+
+    # Sort handler for the wRank summary table. Mirrors fantStandingsSort
+    # but scoped to #fant-wrank-tbl. Idempotent via the global flag.
+    wrank_sort_js = (
+        '<script>(function(){'
+        'if(window._wrankSortBound)return;window._wrankSortBound=true;'
+        'var st={col:"wrank",dir:-1};'
+        'function srt(col,type,rev){'
+        'var tbl=document.getElementById("fant-wrank-tbl");if(!tbl)return;'
+        'if(st.col===col){st.dir=-st.dir;}'
+        'else{st.col=col;st.dir=(rev==="hi")?-1:1;}'
+        'var tb=tbl.querySelector("tbody");'
+        'var rs=Array.prototype.slice.call(tb.querySelectorAll("tr"));'
+        'rs.sort(function(a,b){'
+        'var av=a.dataset[col],bv=b.dataset[col];'
+        'if(type==="num"){av=parseFloat(av);bv=parseFloat(bv);}'
+        'if(av<bv)return -st.dir;if(av>bv)return st.dir;return 0;});'
+        'rs.forEach(function(r){tb.appendChild(r);});'
+        'tbl.querySelectorAll("thead th").forEach(function(th){'
+        'th.classList.remove("sort-asc","sort-desc");'
+        'if(th.dataset.sort===col)th.classList.add(st.dir===1?"sort-asc":"sort-desc");});'
+        '}'
+        'document.addEventListener("click",function(e){'
+        'var th=e.target.closest&&e.target.closest("#fant-wrank-tbl thead th[data-sort]");'
+        'if(th)srt(th.dataset.sort,th.dataset.type,th.dataset.rev);});'
+        '})();</script>'
+    )
+
     _VB_W, _VB_H = 620, 360
     _ML, _MR, _MT, _MB = 58, 20, 28, 44
     plot_w = _VB_W - _ML - _MR
     plot_h = _VB_H - _MT - _MB
 
     if summary:
-        xs = [s["wrank"] for s in summary]
-        ys = [s["wpct"] for s in summary]
+        # xs/ys already computed above for the trendline.
         x_min, x_max = min(xs), max(xs)
         if x_min == x_max:
             x_min -= 1.0; x_max += 1.0
@@ -1444,35 +1617,22 @@ def _render_standings_html() -> str:
         x_ticks = _nice_ticks(x_min, x_max, 5)
         y_ticks = _nice_ticks(y_min, y_max, 5)
 
-        # Linear regression for the trendline (least squares on the data).
-        # Compute slope/intercept on RAW (data-space) values, then project
-        # both endpoints into pixel space and clip them to the visible y
-        # range so the line never escapes the plot rect.
-        n_pts = len(xs)
-        mx_raw = sum(xs) / n_pts
-        my_raw = sum(ys) / n_pts
-        denom = sum((x - mx_raw) ** 2 for x in xs)
-        if denom > 0:
-            slope = sum((x - mx_raw) * (y - my_raw) for x, y in zip(xs, ys)) / denom
-        else:
-            slope = 0.0
-        intercept = my_raw - slope * mx_raw
-
+        # Trendline endpoints — trend_slope/trend_intercept already computed
+        # up above (shared with the luck panels). Clip the line to the
+        # visible plot bounds so it never escapes the rect.
         def _line_y(x):
-            return slope * x + intercept
+            return trend_slope * x + trend_intercept
 
-        # Solve for x where the line crosses the y-axis bounds, and clip.
         endpoints = []
         for x_end in (x_min, x_max):
             y_end = _line_y(x_end)
             if y_min <= y_end <= y_max:
                 endpoints.append((x_end, y_end))
-        if slope != 0:
+        if trend_slope != 0:
             for y_bound in (y_min, y_max):
-                x_at = (y_bound - intercept) / slope
+                x_at = (y_bound - trend_intercept) / trend_slope
                 if x_min <= x_at <= x_max:
                     endpoints.append((x_at, y_bound))
-        # Dedup near-identical endpoints, keep the two extremes by x.
         endpoints = sorted(set((round(x, 6), round(y, 6)) for x, y in endpoints))
         if len(endpoints) >= 2:
             (tx1, ty1), (tx2, ty2) = endpoints[0], endpoints[-1]
@@ -1593,10 +1753,12 @@ def _render_standings_html() -> str:
         f'<thead>{thead}</thead>'
         f'<tbody>{"".join(tr_html)}</tbody>'
         '</table></div>'
-        # --- wRank summary table ---
-        + summary_table_html
+        # --- Mickey panel + wRank summary table + Jewed panel flex row ---
+        + luck_row_html
         # --- Scatter plot ---
-        + scatter_html +
+        + scatter_html
+        # --- Sort handler for the wRank summary table ---
+        + wrank_sort_js +
         '</div>'
     )
 
