@@ -1446,14 +1446,14 @@ def _render_standings_html() -> str:
     )
 
     summary_table_html = (
-        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1 1 420px;min-width:320px">'
-        '<h4 style="color:var(--text);margin:0 0 6px;font-size:.9rem;'
+        '<h4 style="color:var(--text);margin:22px 0 6px;font-size:.9rem;'
         'font-weight:700">Expected Strength (wRank)</h4>'
         '<p style="color:var(--muted);font-size:.72rem;margin:0 0 8px">'
         'wRank = sum of z-scores across all 12 categories (lower-is-better '
         'cats sign-flipped so positive = good). Click any column to sort.</p>'
+        '<div class="table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">'
         '<table id="fant-wrank-tbl" class="wrank-tbl" '
-        'style="font-size:.82rem;border-collapse:collapse;width:100%">'
+        'style="min-width:520px;font-size:.82rem;border-collapse:collapse;width:100%">'
         + summary_thead +
         f'<tbody>{"".join(summary_rows_html)}</tbody>'
         '</table></div>'
@@ -1488,20 +1488,25 @@ def _render_standings_html() -> str:
             )
         return "".join(out)
 
-    # Mickey Mouse silhouette: two ear circles atop a larger head circle.
-    # Pure black-on-transparent — Disney's iconic registered shape.
+    # Mickey Mouse silhouette: classic three-circle head shape — two ears
+    # sitting at ~45° upper-outer angles atop a larger head circle. All
+    # three filled the same color with no per-circle outline so they
+    # merge into one unified silhouette (the iconic Disney mark). Light
+    # fill on the dark panel background mirrors the way Disney renders
+    # the logo white-on-black for merchandising. Proportions: ear/head
+    # radius ratio ≈ 0.54, matches the registered shape spec.
     _mickey_svg = (
-        '<svg viewBox="0 0 60 60" width="44" height="44" '
+        '<svg viewBox="0 0 100 100" width="60" height="60" '
         'xmlns="http://www.w3.org/2000/svg" style="flex:0 0 auto">'
-        '<circle cx="13" cy="14" r="10" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
-        '<circle cx="47" cy="14" r="10" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
-        '<circle cx="30" cy="37" r="18" fill="#111" stroke="#f0c040" stroke-width="1.5"/>'
+        '<circle cx="27" cy="37" r="15" fill="#f5f5f5"/>'
+        '<circle cx="73" cy="37" r="15" fill="#f5f5f5"/>'
+        '<circle cx="50" cy="60" r="28" fill="#f5f5f5"/>'
         '</svg>'
     )
     # Israeli flag: white field, two horizontal blue stripes, Star of
     # David (two overlapping triangles) in the center. Standard colors.
     _israel_flag_svg = (
-        '<svg viewBox="0 0 66 44" width="58" height="40" '
+        '<svg viewBox="0 0 66 44" width="78" height="52" '
         'xmlns="http://www.w3.org/2000/svg" '
         'style="flex:0 0 auto;border:1px solid #2a2a2a">'
         '<rect width="66" height="44" fill="#ffffff"/>'
@@ -1520,42 +1525,30 @@ def _render_standings_html() -> str:
     jewed_top = sorted(summary, key=lambda s: s["luck"])[:3]
 
     mickey_panel_html = (
-        '<div style="flex:0 0 auto;width:220px;padding:10px 12px;'
+        '<div style="flex:0 0 auto;width:260px;padding:14px 16px;'
         'background:#141414;border:1px solid #2a2a2a;border-radius:6px">'
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
         + _mickey_svg +
-        '<div>'
-        '<div style="color:var(--accent);font-weight:700;font-size:.88rem;'
-        'line-height:1.1">Mickey Teams</div>'
-        '<div style="color:var(--muted);font-size:.66rem;line-height:1.1;'
-        'margin-top:2px">Luckiest over expected</div>'
-        '</div></div>'
+        '<div style="color:var(--accent);font-weight:700;font-size:1rem;'
+        'line-height:1.15">Mickey Teams '
+        '<span style="color:var(--muted);font-weight:500;font-size:.8rem">'
+        '(luckiest)</span></div>'
+        '</div>'
         + _luck_rows_html(mickey_top, "#6fa86f") +
         '</div>'
     )
 
     jewed_panel_html = (
-        '<div style="flex:0 0 auto;width:220px;padding:10px 12px;'
+        '<div style="flex:0 0 auto;width:260px;padding:14px 16px;'
         'background:#141414;border:1px solid #2a2a2a;border-radius:6px">'
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
         + _israel_flag_svg +
-        '<div>'
-        '<div style="color:var(--accent);font-weight:700;font-size:.88rem;'
-        'line-height:1.1">Jewed Teams</div>'
-        '<div style="color:var(--muted);font-size:.66rem;line-height:1.1;'
-        'margin-top:2px">Unluckiest below expected</div>'
-        '</div></div>'
-        + _luck_rows_html(jewed_top, "#d46a6a") +
+        '<div style="color:var(--accent);font-weight:700;font-size:1rem;'
+        'line-height:1.15">Jewed Teams '
+        '<span style="color:var(--muted);font-weight:500;font-size:.8rem">'
+        '(unluckiest)</span></div>'
         '</div>'
-    )
-
-    # Wrap Mickey panel + summary table + Jewed panel in a flex row.
-    luck_row_html = (
-        '<div style="display:flex;gap:14px;align-items:flex-start;'
-        'flex-wrap:wrap;margin-top:22px">'
-        + mickey_panel_html
-        + summary_table_html
-        + jewed_panel_html +
+        + _luck_rows_html(jewed_top, "#d46a6a") +
         '</div>'
     )
 
@@ -1720,13 +1713,24 @@ def _render_standings_html() -> str:
                 f'font-size="10" font-weight="600">{label}</text>'
             )
         svg_parts.append('</svg>')
+        scatter_svg_html = "".join(svg_parts)
+        # Scatter sits in the middle of a flex row, flanked by the Mickey
+        # (left) and Jewed (right) luck panels. Header + caption stay
+        # above the row so the three columns share a single title.
         scatter_html = (
             '<h4 style="color:var(--text);margin:22px 0 6px;font-size:.9rem;'
             'font-weight:700">wRank vs Win %</h4>'
-            '<p style="color:var(--muted);font-size:.72rem;margin:0 0 4px">'
-            'Teams above the diagonal are outperforming their underlying '
+            '<p style="color:var(--muted);font-size:.72rem;margin:0 0 10px">'
+            'Teams above the trendline are outperforming their underlying '
             'category strength; teams below are underperforming.</p>'
-            + "".join(svg_parts)
+            '<div style="display:flex;gap:14px;align-items:center;'
+            'flex-wrap:wrap;justify-content:center">'
+            + mickey_panel_html
+            + '<div style="flex:1 1 420px;min-width:320px;max-width:760px">'
+            + scatter_svg_html
+            + '</div>'
+            + jewed_panel_html +
+            '</div>'
         )
     else:
         scatter_html = ""
@@ -1753,9 +1757,9 @@ def _render_standings_html() -> str:
         f'<thead>{thead}</thead>'
         f'<tbody>{"".join(tr_html)}</tbody>'
         '</table></div>'
-        # --- Mickey panel + wRank summary table + Jewed panel flex row ---
-        + luck_row_html
-        # --- Scatter plot ---
+        # --- wRank summary table (full width) ---
+        + summary_table_html
+        # --- Scatter plot, flanked by Mickey + Jewed panels ---
         + scatter_html
         # --- Sort handler for the wRank summary table ---
         + wrank_sort_js +
