@@ -88,7 +88,22 @@ def identify_starters(df: pd.DataFrame) -> set:
     return starters
 
 def fetch_pitcher_box_data(date_str: str) -> dict:
-    """Returns {mlbam_id: {w, sv, hld, bs}} from official MLB box scores."""
+    """Returns {mlbam_id: {w, sv, hld, bs, outs, hits, r, er, bb, k, bf}}
+    from official MLB box scores.
+
+    The counting-stat fields (outs, hits, r, er, bb, k, bf) are pulled
+    from the per-pitcher boxscore so that build_pitcher_stats() can use
+    them as the source of truth instead of re-deriving from Statcast
+    pitch-by-pitch events. Statcast-derived counts miss two real-world
+    cases: (1) outs recorded via caught-stealing/pickoff events that
+    aren't in OUT_WEIGHTS, and (2) inherited runners that score against
+    a relieved pitcher on the next pitcher's pitch (those runs aren't
+    in the original pitcher's gdf at all). MLB's official boxscore
+    handles both correctly per the rulebook.
+    """
+    EMPTY = {"w": 0, "sv": 0, "hld": 0, "bs": 0,
+             "outs": None, "hits": None, "r": None, "er": None,
+             "bb": None, "k": None, "bf": None}
     try:
         print(f"  Fetching pitcher box score data via MLB Stats API for {date_str}…")
         games = statsapi.schedule(date=date_str)
@@ -106,6 +121,7 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
                 continue
 
             # Per-pitcher stats: W, HLD, BS (saves unreliable here — handled below)
+            # PLUS counting stats (outs/hits/r/er/bb/k/bf) used as source of truth.
             for side in ("home", "away"):
                 for pk, pd_ in boxscore.get(side, {}).get("players", {}).items():
                     if not pk.startswith("ID"):
@@ -115,12 +131,47 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
                     except Exception:
                         continue
                     pit = pd_.get("stats", {}).get("pitching", {})
-                    w      = int(pit.get("wins", 0))
-                    hld    = int(pit.get("holds", 0))
-                    bs_val = int(pit.get("blownSaves", 0))
-                    if w or hld or bs_val:
-                        prev = box_map.get(mid, {"w": 0, "sv": 0, "hld": 0, "bs": 0})
-                        box_map[mid] = {"w": prev["w"]+w, "sv": prev["sv"], "hld": prev["hld"]+hld, "bs": prev["bs"]+bs_val}
+                    if not pit:
+                        continue
+                    w      = int(pit.get("wins", 0) or 0)
+                    hld    = int(pit.get("holds", 0) or 0)
+                    bs_val = int(pit.get("blownSaves", 0) or 0)
+
+                    # Counting stats — only set if the player actually pitched
+                    # in this game. battersFaced > 0 is the cleanest filter.
+                    bf = pit.get("battersFaced")
+                    try:
+                        bf_int = int(bf) if bf not in (None, "") else 0
+                    except (ValueError, TypeError):
+                        bf_int = 0
+
+                    counting = {}
+                    if bf_int > 0:
+                        def _i(v):
+                            try: return int(v) if v not in (None, "") else None
+                            except (ValueError, TypeError): return None
+                        counting = {
+                            "outs":  _i(pit.get("outs")),
+                            "hits":  _i(pit.get("hits")),
+                            "r":     _i(pit.get("runs")),
+                            "er":    _i(pit.get("earnedRuns")),
+                            "bb":    _i(pit.get("baseOnBalls")),
+                            "k":     _i(pit.get("strikeOuts")),
+                            "bf":    bf_int,
+                        }
+
+                    if w or hld or bs_val or counting:
+                        prev = box_map.get(mid, dict(EMPTY))
+                        prev["w"]   += w
+                        prev["hld"] += hld
+                        prev["bs"]  += bs_val
+                        # Counting stats are per-game; if a pitcher somehow
+                        # has multiple boxscore entries (doesn't happen in
+                        # MLB), the later one wins. None values don't override.
+                        for k_, v_ in counting.items():
+                            if v_ is not None:
+                                prev[k_] = v_
+                        box_map[mid] = prev
 
             # Saves from game decisions endpoint — more reliable than per-pitcher boxscore
             try:
@@ -128,14 +179,17 @@ def fetch_pitcher_box_data(date_str: str) -> dict:
                 save_info = game_data.get("liveData", {}).get("decisions", {}).get("save", {})
                 save_id   = save_info.get("id")
                 if save_id:
-                    prev = box_map.get(int(save_id), {"w": 0, "sv": 0, "hld": 0, "bs": 0})
-                    box_map[int(save_id)] = {**prev, "sv": prev["sv"] + 1}
+                    prev = box_map.get(int(save_id), dict(EMPTY))
+                    prev["sv"] = prev.get("sv", 0) + 1
+                    box_map[int(save_id)] = prev
                     print(f"      Save: {save_info.get('fullName','?')} (id={save_id})")
             except Exception as e:
                 print(f"      Decisions fetch warning for {gpk}: {e}")
 
         total = len(box_map)
-        print(f"    Pitcher box data: {total} pitcher(s) with W/SV/HLD/BS")
+        with_counting = sum(1 for v in box_map.values() if v.get("outs") is not None)
+        print(f"    Pitcher box data: {total} pitcher(s) with W/SV/HLD/BS "
+              f"({with_counting} with counting stats)")
         return box_map
     except Exception as e:
         print(f"  MLB Stats API pitcher box warning: {e}")
@@ -297,14 +351,25 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
         k  = int((evts == "strikeout").sum())
         bb = int(evts.isin(["walk", "intent_walk"]).sum())
 
-        # Get W, SV, HLD, BS from box score data (keyed by player_id only)
+        # Get W, SV, HLD, BS — and the official counting stats — from the
+        # MLB Stats API boxscore. The counting stats (outs/hits/r/bb/k)
+        # override the Statcast-derived values below because they're the
+        # canonical source: they handle caught-stealing/pickoff outs and
+        # inherited-runner runs that pitch-by-pitch derivation can't see.
         w, sv, hld, bs = 0, 0, 0, 0
+        box_outs = box_hits = box_r = box_bb = box_k = box_bf = None
         if box_data:
             pdata = box_data.get(int(pid), {})
             w  = pdata.get("w", 0)
             sv = pdata.get("sv", 0)
             hld = pdata.get("hld", 0)
             bs  = pdata.get("bs", 0)
+            box_outs = pdata.get("outs")
+            box_hits = pdata.get("hits")
+            box_r    = pdata.get("r")
+            box_bb   = pdata.get("bb")
+            box_k    = pdata.get("k")
+            box_bf   = pdata.get("bf")
 
         total_p = len(gdf)
         ptypes  = []
@@ -347,7 +412,25 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
                   f"stuff_plus_stuff_avg: present={sp_present}, all-null={sp_nulls} | "
                   f"stuff_plus_loc_avg: present={lp_present}")
 
-        ip_str = outs_to_ip(outs)
+        # Counting stats: prefer official MLB boxscore values (handles
+        # CS/pickoff outs + inherited-runner runs); fall back to the
+        # Statcast-derived numbers when the box hasn't reported yet
+        # (e.g., during in-progress games before status='Final').
+        sc_outs  = outs
+        sc_hits  = int(evts.isin(HIT_EVENTS).sum())
+        sc_r     = calc_runs_allowed(gdf)
+        sc_bb    = bb
+        sc_k     = k
+        sc_bf    = bf
+
+        final_outs = box_outs if box_outs is not None else sc_outs
+        final_hits = box_hits if box_hits is not None else sc_hits
+        final_r    = box_r    if box_r    is not None else sc_r
+        final_bb   = box_bb   if box_bb   is not None else sc_bb
+        final_k    = box_k    if box_k    is not None else sc_k
+        final_bf   = box_bf   if box_bf   is not None else sc_bf
+
+        ip_str = outs_to_ip(final_outs)
         rows.append({
             "id":            int(pid),
             "game_pk":       int(gpk),
@@ -355,14 +438,14 @@ def build_pitcher_stats(df: pd.DataFrame, starters: set, box_data: dict = None) 
             "opp":           opp_t,
             "ip":            ip_str,
             "ip_float":      round(ip_to_float(ip_str), 3),
-            "hits":          int(evts.isin(HIT_EVENTS).sum()),
-            "r":             calc_runs_allowed(gdf),
-            "bb":            bb,
-            "k":             k,
+            "hits":          int(final_hits),
+            "r":             int(final_r),
+            "bb":            int(final_bb),
+            "k":             int(final_k),
             "whiffs":        int(gdf["description"].isin(WHIFF_DESC).sum()),
             "hard_hits":     int((bev["launch_speed"] >= 95).sum()) if len(bev) else 0,
             "barrels":       safe_barrels(batted),
-            "k_bb_pct":      round((k - bb) / bf * 100, 1) if bf else 0.0,
+            "k_bb_pct":      round((final_k - final_bb) / final_bf * 100, 1) if final_bf else 0.0,
             "w":             w,
             "sv":            sv,
             "hld":           hld,

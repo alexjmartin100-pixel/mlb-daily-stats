@@ -66,6 +66,23 @@ OUT_WEIGHTS = {
     "sac_fly": 1,                    "sac_bunt": 1,
     "other_out": 1,                  "triple_play": 3,
     "sac_fly_double_play": 2,
+    # Baserunning outs that close the AB (and the inning when they're the
+    # 3rd out). Without these, calc_outs() undercounts IP when a pitcher
+    # ends an inning on a CS/pickoff. Boxscore override (build_pitcher_stats)
+    # handles this too, but keep these as defense-in-depth for any path
+    # that bypasses the boxscore.
+    "caught_stealing_2b":              1,
+    "caught_stealing_3b":              1,
+    "caught_stealing_home":            1,
+    "pickoff_1b":                      1,
+    "pickoff_2b":                      1,
+    "pickoff_3b":                      1,
+    "pickoff_caught_stealing_2b":      1,
+    "pickoff_caught_stealing_3b":      1,
+    "pickoff_caught_stealing_home":    1,
+    "runner_double_play":              2,
+    "batter_interference":             1,
+    "sac_bunt_double_play":            2,
 }
 WHIFF_DESC     = frozenset({"swinging_strike", "swinging_strike_blocked", "foul_tip"})
 HIT_EVENTS     = frozenset({"single", "double", "triple", "home_run"})
