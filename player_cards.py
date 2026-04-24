@@ -26,7 +26,7 @@ _TEAM_ID_MAP = {
     "STL":138,   "TB":139,  "TEX":140, "TOR":141, "WSH":120,
     "AZ":109,    "KC ":118,
 }
-# Correct ARI
+# Correct ARI mapping
 _TEAM_ID_MAP["ARI"] = 109
 
 
@@ -239,6 +239,32 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             if pid in yr_d:
                 yrs.append(int(yr_str))
         avail_years[pid] = sorted(yrs)
+
+    # ── Add historical-only players (played a prior year but not 2026) ──
+    # So they can be searched and their card falls back to the most recent
+    # year we have data for (e.g. injured players, prospects yet to debut).
+    _hist_only_seen = set()
+    _hist_years_desc = sorted(hist_data.keys(), key=lambda y: -int(y))
+    for yr_str in _hist_years_desc:
+        for pid, p_compact in hist_data[yr_str].items():
+            if pid in player_data or pid in _hist_only_seen:
+                continue
+            _hist_only_seen.add(pid)
+            try:
+                _pid_int = int(pid)
+            except (TypeError, ValueError):
+                continue
+            # Use the most-recent-year snapshot for the search index
+            # (name/team may have changed year-to-year).
+            player_index.append({
+                "id": _pid_int,
+                "n":  p_compact.get("name", ""),
+                "t":  p_compact.get("team", ""),
+                "k":  p_compact.get("type", "h"),
+            })
+            avail_years[pid] = sorted(
+                int(y) for y in hist_data.keys() if pid in hist_data[y]
+            )
 
     hist_json = json.dumps(hist_data, separators=(',', ':'))
     avail_json = json.dumps(avail_years, separators=(',', ':'))
@@ -478,12 +504,25 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
   window._pcShow = function(id, year) {{
     document.getElementById('pc-dropdown').style.display='none';
-    year = year || 2026;
+    // Pick a sensible default year for this player: the most recent year
+    // we actually have data for. Historical-only players (injured, not yet
+    // debuted, etc.) won't have 2026, so we fall back to their latest.
+    var availYrs = _pcAvailYears[String(id)] || [2026];
+    if (!year) year = availYrs[availYrs.length - 1];
     _pcCurrentId = id;
     _pcCurrentYear = year;
     var d = (year === 2026)
       ? _pcData[String(id)]
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
+    // Secondary fallback: if the requested year somehow has no data for
+    // this player, retry with their most recent available year.
+    if (!d) {{
+      year = availYrs[availYrs.length - 1];
+      _pcCurrentYear = year;
+      d = (year === 2026)
+        ? _pcData[String(id)]
+        : ((_pcHist[String(year)] || {{}})[String(id)] || null);
+    }}
     if (!d) return;
     var teamId = _TEAM_IDS[d.team] || '';
     // Prefer the server-side pre-fetched data URL (baked into HTML at
@@ -519,7 +558,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // up in the saved image. The interactive dropdown lives OUTSIDE the
     // card (#pc-year-wrap) so year switching still works after the card
     // is rasterized to a static <img>.
-    var availYrs = _pcAvailYears[String(id)] || [2026];
+    // availYrs already resolved above (used for default-year fallback)
     var yearDropdown =
       '<span style="background:#1a1a1a;color:#ddd;border:1px solid #444;'
       + 'border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;'
