@@ -524,6 +524,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     }}
     if (!d) return;
+
+    // Prior-year data for side-by-side comparison under each slider value.
+    // viewing 2026 → look up 2025; viewing 2025 → 2024; etc. null if missing.
+    var _priorYear = year - 1;
+    var priorD = (_priorYear === 2026)
+      ? _pcData[String(id)]
+      : ((_pcHist[String(_priorYear)] || {{}})[String(id)] || null);
+
     var teamId = _TEAM_IDS[d.team] || '';
     // Prefer the server-side pre-fetched data URL (baked into HTML at
     // build time). It's a same-origin string that html-to-image can
@@ -676,39 +684,41 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var fMph= function(v){{return v!=null?v.toFixed(1)+' mph':null;}};
     var fPct= function(v){{return v!=null?v.toFixed(1)+'%':null;}};
     var statRows;
+    // Helper: safely pull a field off priorD (null when no prior-year data).
+    var _pv = function(k){{ return (priorD && priorD[k] != null) ? priorD[k] : null; }};
     if (d.type === 'p') {{
       statRows = [
-        ['xERA',      d.xera,  d.pct.xera,   function(v){{return v!=null?v.toFixed(2):null;}},'xera'],
-        ['xBA',       d.xba,   d.pct.xba,    f3,'xba'],
-        ['FB Velo',   d.fbv,   d.pct.fb_velo,fMph,'fb_velo'],
-        ['Avg Exit Velo', d.aev, d.pct.avg_ev, fMph,'avg_ev'],
-        ['wOBA',      d.woba,  d.pct.woba,   f3,'woba'],
-        ['xwOBA',     d.xwoba, d.pct.xwoba,  f3,'xwoba'],
-        ['Chase%',    d.ch,    d.pct.chase_pct, fPct,'chase_pct'],
-        ['Whiff%',    d.wh,    d.pct.whiff_pct, fPct,'whiff_pct'],
-        ['K%',        d.kp,    d.pct.k_pct,     fPct,'k_pct'],
-        ['BB%',       d.bbp,   d.pct.bb_pct,    fPct,'bb_pct'],
-        ['Barrel%',   d.brl,   d.pct.barrel_pct,fPct,'barrel_pct'],
-        ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,fPct,'hard_hit_pct'],
-        ['GB%',       d.gb,    d.pct.gb_pct,    fPct,'gb_pct'],
+        ['xERA',      d.xera,  d.pct.xera,   function(v){{return v!=null?v.toFixed(2):null;}},'xera', _pv('xera')],
+        ['xBA',       d.xba,   d.pct.xba,    f3,'xba', _pv('xba')],
+        ['FB Velo',   d.fbv,   d.pct.fb_velo,fMph,'fb_velo', _pv('fbv')],
+        ['Avg Exit Velo', d.aev, d.pct.avg_ev, fMph,'avg_ev', _pv('aev')],
+        ['wOBA',      d.woba,  d.pct.woba,   f3,'woba', _pv('woba')],
+        ['xwOBA',     d.xwoba, d.pct.xwoba,  f3,'xwoba', _pv('xwoba')],
+        ['Chase%',    d.ch,    d.pct.chase_pct, fPct,'chase_pct', _pv('ch')],
+        ['Whiff%',    d.wh,    d.pct.whiff_pct, fPct,'whiff_pct', _pv('wh')],
+        ['K%',        d.kp,    d.pct.k_pct,     fPct,'k_pct', _pv('kp')],
+        ['BB%',       d.bbp,   d.pct.bb_pct,    fPct,'bb_pct', _pv('bbp')],
+        ['Barrel%',   d.brl,   d.pct.barrel_pct,fPct,'barrel_pct', _pv('brl')],
+        ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,fPct,'hard_hit_pct', _pv('hh')],
+        ['GB%',       d.gb,    d.pct.gb_pct,    fPct,'gb_pct', _pv('gb')],
       ];
     }} else {{
     statRows = [
-      ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}},'xwoba'],
-      ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}},'xba'],
-      ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}},'xslg'],
-      ['Avg EV',    d.avg_ev,d.pct.avg_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'avg_ev'],
-      ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'max_ev'],
-      ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}},'barrel_pct'],
-      ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'hard_hit_pct'],
-      ['LA Sweet-Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'sweet_spot_pct'],
-      ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'bat_speed'],
-      ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'squared_up_pct'],
-      ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'chase_pct'],
-      ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'whiff_pct'],
-      ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}},'k_pct'],
-      ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}},'bb_pct'],
-      ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}},'sprint_speed'],
+      ['xWOBA',     d.xwoba, d.pct.xwoba,   function(v){{return v!=null?v.toFixed(3):null;}},'xwoba', _pv('xwoba')],
+      ['xBA',       d.xba,   d.pct.xba,     function(v){{return v!=null?v.toFixed(3):null;}},'xba', _pv('xba')],
+      ['xSLG',      d.xslg,  d.pct.xslg,    function(v){{return v!=null?v.toFixed(3):null;}},'xslg', _pv('xslg')],
+      ['Avg EV',    d.avg_ev,d.pct.avg_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'avg_ev', _pv('avg_ev')],
+      ['Max EV',    d.max_ev,d.pct.max_ev,  function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'max_ev', _pv('max_ev')],
+      ['Barrel%',   d.brl,   d.pct.barrel_pct, function(v){{return v!=null?v.toFixed(1)+'%':null;}},'barrel_pct', _pv('brl')],
+      ['Hard Hit%', d.hh,    d.pct.hard_hit_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'hard_hit_pct', _pv('hh')],
+      ['LA Sweet-Spot%',d.ss,   d.pct.sweet_spot_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'sweet_spot_pct', _pv('ss')],
+      ['Bat Speed', d.bs,    d.pct.bat_speed,function(v){{return v!=null?v.toFixed(1)+' mph':null;}},'bat_speed', _pv('bs')],
+      ['Squared Up%',d.sq,   d.pct.squared_up_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'squared_up_pct', _pv('sq')],
+      ['Chase%',    d.ch,    d.pct.chase_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'chase_pct', _pv('ch')],
+      ['Whiff%',    d.wh,    d.pct.whiff_pct,function(v){{return v!=null?v.toFixed(1)+'%':null;}},'whiff_pct', _pv('wh')],
+      ['K%',        d.kp,    d.pct.k_pct,   function(v){{return v!=null?v.toFixed(1)+'%':null;}},'k_pct', _pv('kp')],
+      ['BB%',       d.bbp,   d.pct.bb_pct,  function(v){{return v!=null?v.toFixed(1)+'%':null;}},'bb_pct', _pv('bbp')],
+      ['Sprint Speed',d.spd,   d.pct.sprint_speed,function(v){{return v!=null?v.toFixed(1)+' ft/s':null;}},'sprint_speed', _pv('spd')],
     ];
     }}
 
@@ -722,18 +732,39 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         return 'rgb(' + Math.round(30 + 106*t) + ',' + Math.round(63 + 73*t) + ',' + Math.round(186 - 50*t) + ')';
       }}
     }}
-    function pctBar(label, rawVal, pct, fmtFn, leaderKey) {{
+    function pctBar(label, rawVal, pct, fmtFn, leaderKey, priorVal) {{
       var valStr = fmtFn(rawVal);
       if (valStr == null) valStr = '–';
       var pctDisp = (pct != null) ? Math.round(pct) : null;
       var isGold = d.qual && !!leaderMap[leaderKey];
       // Leader among qualified hitters = 100th percentile
       if (isGold && pctDisp != null) pctDisp = 100;
+
+      // Prior-year compact label, e.g. "'25 .312". Only rendered if we
+      // actually have a prior-year value for this stat.
+      var priorStr = (priorVal != null) ? fmtFn(priorVal) : null;
+      var priorYY  = "'" + String(_priorYear).slice(-2);
+      var priorCell = priorStr
+        ? ('<div style="font-size:.55rem;font-weight:500;color:#888;'
+            + 'margin-top:1px;line-height:1">'
+            + '<span style="color:#666">' + priorYY + '</span> ' + priorStr
+            + '</div>')
+        : '';
+      var valCol = (pctDisp == null) ? '#555' : (isGold ? '#f0c040' : '#ccc');
+      var valFontSz = (pctDisp == null) ? '.68rem' : '.7rem';
+      var valWeight = (pctDisp == null) ? '400' : '700';
+      var valCell =
+        '<div style="min-width:62px;text-align:right;line-height:1">'
+        + '<div style="font-size:' + valFontSz + ';font-weight:' + valWeight
+        + ';color:' + valCol + '">' + valStr + '</div>'
+        + priorCell
+        + '</div>';
+
       var barHtml;
       if (pctDisp == null) {{
         barHtml = '<div style="display:flex;align-items:center;gap:6px">'
                 + '<div style="flex:1;height:8px;border-radius:4px;background:#2a2a2a"></div>'
-                + '<span style="font-size:.68rem;color:#555;min-width:62px;text-align:right">–</span>'
+                + valCell
                 + '</div>';
       }} else {{
         var col = pctColor(pctDisp);
@@ -751,7 +782,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           + 'font-size:.9rem;font-weight:800;color:#fff;line-height:1">'
           + pctDisp + '</div>'
           + '</div>'
-          + '<span style="font-size:.7rem;font-weight:700;color:' + (isGold?'#f0c040':'#ccc') + ';min-width:62px;text-align:right">' + valStr + '</span>'
+          + valCell
           + '</div>';
       }}
       var labelCol = isGold ? '#f0c040' : '#aaa';
@@ -775,7 +806,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       + '<div style="font-size:.6rem;font-weight:700;color:#666;letter-spacing:.06em;'
       + 'margin-bottom:8px">' + _profHdr
       + '<span style="float:right;font-weight:400;color:#555">' + _pctHdr + '</span></div>'
-      + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3],r[4]);}}).join('')
+      + statRows.map(function(r){{return pctBar(r[0],r[1],r[2],r[3],r[4],r[5]);}}).join('')
       + '</div>';
 
     // ── Bottom section: batted ball (hitters) OR pitch arsenal (pitchers) ─
