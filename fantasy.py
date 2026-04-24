@@ -3416,6 +3416,22 @@ window._phase3OppPitcherPicker  = false;
 window._phase3DropPicker        = false;   /* user drop picker visible */
 window._phase3OppDropPicker     = false;   /* opponent drop picker visible */
 
+/* Manual lineup overrides — lets the user override the dollar-optimized
+   post-trade lineup on either side of the trade. Structure:
+     _phase3CustomLineup[team_id] = {{slot_id: espn_id, ...}}
+   A missing or empty entry for a team_id means "use the optimizer".
+   Each slot is treated as a *pin*: the named player is locked into that
+   slot, and the remaining slots fill via the LAP over the leftover roster.
+   An explicit null value pins the slot to "empty". */
+window._phase3CustomLineup = {{}};
+
+/* Active roster-slot picker (click an After cell to open). When set,
+   _phase3RenderLineups inserts a sub-row listing every eligible hitter
+   on that side's post-trade roster. Cleared on pick / close / trade
+   composition change. */
+window._phase3RosterSlotUser = null;   /* {{slot_id, slot_label}} or null */
+window._phase3RosterSlotOpp  = null;
+
 function tradeSearch(side, q) {{
   var dd = document.getElementById('trade-' + side + '-dd');
   q = (q || '').toLowerCase().trim();
@@ -3854,6 +3870,136 @@ function _phase3OptimizeHittersFull(hitters) {{
 /* Backwards-compatible wrapper used by the simulation pipeline. */
 function _phase3OptimizeHitters(hitters) {{
   return _phase3OptimizeHittersFull(hitters).starters;
+}}
+
+/* Variant of _phase3OptimizeHittersFull that marks specified slot indexes
+   as ineligible for every hitter. Used by _phase3ResolveLineup to fill the
+   remaining (unpinned) slots around manually-pinned ones. */
+function _phase3OptimizeHittersRestricted(hitters, excludedSlotIdxs) {{
+  var SLOTS = PHASE3_LEAGUE.slots;
+  var nSlots = SLOTS.length;
+  var emptyAssigns = [];
+  for (var k = 0; k < nSlots; k++) {{
+    emptyAssigns.push({{slot_id: SLOTS[k][0], slot_label: SLOTS[k][1], player: null}});
+  }}
+  if (!hitters || !hitters.length) return {{starters: [], assigns: emptyAssigns}};
+  var nPlayers = hitters.length;
+  var n = Math.max(nPlayers, nSlots);
+  var INELIG = 1e9;
+  var cost = [];
+  for (var i = 0; i < n; i++) {{
+    var row = new Array(n).fill(INELIG);
+    if (i < nPlayers) {{
+      var rec = hitters[i];
+      var elig = rec.elig || [];
+      var dollar = rec.dollars || 0;
+      for (var j = 0; j < nSlots; j++) {{
+        if (excludedSlotIdxs && excludedSlotIdxs[j]) continue;
+        var slotId = SLOTS[j][0];
+        if (elig.indexOf(slotId) !== -1) {{
+          row[j] = -(dollar + 1.0);
+        }}
+      }}
+    }}
+    cost.push(row);
+  }}
+  var assign = _phase3Hungarian(cost);
+  var starters = [];
+  var slotPlayer = {{}};
+  for (var r = 0; r < n; r++) {{
+    var c = assign[r];
+    if (c < 0 || c >= nSlots) continue;
+    if (r >= nPlayers) continue;
+    if (cost[r][c] >= INELIG / 2) continue;
+    starters.push(hitters[r]);
+    slotPlayer[c] = hitters[r];
+  }}
+  var assigns = [];
+  for (var jj = 0; jj < nSlots; jj++) {{
+    assigns.push({{
+      slot_id:    SLOTS[jj][0],
+      slot_label: SLOTS[jj][1],
+      player:     slotPlayer[jj] || null
+    }});
+  }}
+  return {{starters: starters, assigns: assigns}};
+}}
+
+/* Drop any custom-lineup pins whose named player is no longer on the team's
+   roster (e.g. the user traded them away or changed the trade composition).
+   Keeps still-valid pins intact. Returns true if any entry was pruned. */
+function _phase3PruneCustomLineup(teamId, team) {{
+  var custom = window._phase3CustomLineup[teamId];
+  if (!custom) return false;
+  var byId = {{}};
+  (team.hitters || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
+  var pruned = false;
+  Object.keys(custom).forEach(function(slotId) {{
+    var eid = custom[slotId];
+    if (eid == null) return;     // explicit "empty" pin — keep
+    if (!byId[eid]) {{ delete custom[slotId]; pruned = true; }}
+  }});
+  if (!Object.keys(custom).length) delete window._phase3CustomLineup[teamId];
+  return pruned;
+}}
+
+/* Return {{starters, assigns}} for `team`, honoring any manual pins in
+   _phase3CustomLineup[team.team_id]. Pinned slots get their named player;
+   remaining slots run through the LAP over the leftover (unpinned) roster
+   so the "auto-fill the rest" behavior still holds. */
+function _phase3ResolveLineup(team) {{
+  if (!team) return {{starters: [], assigns: []}};
+  var custom = window._phase3CustomLineup[team.team_id];
+  if (!custom || !Object.keys(custom).length) {{
+    return _phase3OptimizeHittersFull(team.hitters || []);
+  }}
+
+  var SLOTS = PHASE3_LEAGUE.slots;
+  var byId = {{}};
+  (team.hitters || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
+
+  // Resolve valid pins. Invalid pins (player not on roster, or not
+  // eligible for the slot) are dropped silently.
+  var pinnedSlotIdx = {{}};   // slot_index → player
+  var pinnedIds = {{}};
+  var explicitEmpty = {{}};   // slot_index → true (pinned to empty)
+  for (var i = 0; i < SLOTS.length; i++) {{
+    var slotId = SLOTS[i][0];
+    if (!(slotId in custom)) continue;
+    var eid = custom[slotId];
+    if (eid == null) {{ explicitEmpty[i] = true; continue; }}
+    var p = byId[eid];
+    if (p && _canFillSlot(p, slotId)) {{
+      pinnedSlotIdx[i] = p;
+      pinnedIds[eid] = true;
+    }}
+  }}
+
+  var hasAnyPin = Object.keys(pinnedSlotIdx).length > 0
+               || Object.keys(explicitEmpty).length > 0;
+  if (!hasAnyPin) return _phase3OptimizeHittersFull(team.hitters || []);
+
+  // Slot indexes the LAP must not use (pinned OR pinned-to-empty)
+  var excluded = {{}};
+  Object.keys(pinnedSlotIdx).forEach(function(k) {{ excluded[k] = true; }});
+  Object.keys(explicitEmpty).forEach(function(k) {{ excluded[k] = true; }});
+
+  var remaining = (team.hitters || []).filter(function(p) {{ return !pinnedIds[p.espn_id]; }});
+  var partial = _phase3OptimizeHittersRestricted(remaining, excluded);
+
+  var assigns = [];
+  for (var j = 0; j < SLOTS.length; j++) {{
+    if (j in pinnedSlotIdx) {{
+      assigns.push({{slot_id: SLOTS[j][0], slot_label: SLOTS[j][1], player: pinnedSlotIdx[j]}});
+    }} else if (j in explicitEmpty) {{
+      assigns.push({{slot_id: SLOTS[j][0], slot_label: SLOTS[j][1], player: null}});
+    }} else {{
+      var a = partial.assigns[j];
+      assigns.push({{slot_id: SLOTS[j][0], slot_label: SLOTS[j][1], player: (a && a.player) || null}});
+    }}
+  }}
+  var starters = assigns.map(function(a) {{ return a.player; }}).filter(Boolean);
+  return {{starters: starters, assigns: assigns}};
 }}
 
 /* Sum counting stats + PA-weighted OBP across the optimized lineup */
@@ -4709,8 +4855,12 @@ function _phase3SimulateTrade() {{
       ? (_tradeRoster.pitcherPickups || [])
       : (_tradeRoster.oppPitcherPickups || []);
     pitPickups.forEach(function(pk) {{ team.pitchers.push(pk); }});
-    // Re-optimize hitter lineup
-    var starters = _phase3OptimizeHitters(team.hitters);
+    // Drop any custom-lineup pins for players the user traded away /
+    // dropped before resolving — keeps the manual override valid.
+    _phase3PruneCustomLineup(team.team_id, team);
+    // Re-optimize hitter lineup (honors manual pins in _phase3CustomLineup)
+    var resolved = _phase3ResolveLineup(team);
+    var starters = resolved.starters;
     var hAgg = _phase3AggHit(starters);
     team.stats.R    = Math.round(hAgg.R    * 10) / 10;
     team.stats.HR   = Math.round(hAgg.HR   * 10) / 10;
@@ -4817,8 +4967,12 @@ function _posLabel(player) {{
 /* Compute the LAP-optimized lineup dollar value + slot assignments for one team.
    Also returns the pitcher staff sorted by dollar value (no slot constraints).
    Used for the diagnostic display so the user can SEE why z changed. */
-function _phase3LineupSummary(team) {{
-  var full = _phase3OptimizeHittersFull(team.hitters || []);
+function _phase3LineupSummary(team, applyCustom) {{
+  // applyCustom defaults to true — only the pre-trade "Before" snapshots
+  // pass `false` so the baseline stays the pure dollar-optimized lineup.
+  var full = (applyCustom === false)
+    ? _phase3OptimizeHittersFull(team.hitters || [])
+    : _phase3ResolveLineup(team);
   var hDollar = 0;
   full.starters.forEach(function(s) {{ hDollar += (s.dollars || 0); }});
   var pitchers = (team.pitchers || []).slice().sort(function(a, b) {{
@@ -4854,9 +5008,9 @@ function _phase3RenderImpact() {{
   }}
 
   // Compute lineup-$ before/after for both teams (diagnostic)
-  var sumOldUser = _phase3LineupSummary(oldUser);
+  var sumOldUser = _phase3LineupSummary(oldUser, false);
   var sumNewUser = _phase3LineupSummary(newUser);
-  var sumOldOpp  = _phase3LineupSummary(oldOpp);
+  var sumOldOpp  = _phase3LineupSummary(oldOpp, false);
   var sumNewOpp  = _phase3LineupSummary(newOpp);
 
   function fmtDelta(before, after, decimals) {{
@@ -5058,6 +5212,95 @@ function phase3RemoveOppPickup(name) {{
   _tradeRoster.oppPickups = (_tradeRoster.oppPickups || []).filter(function(pk) {{
     return pk.name !== name;
   }});
+  _tradeCalc();
+}}
+
+/* ── Manual-lineup roster-slot picker handlers ─────────────────────────
+   Let the user override the dollar-optimized After lineup by pinning a
+   specific player to a specific slot. All handlers pair with a mirror
+   variant for the counterparty side. _tradeCalc() re-runs simulation so
+   stats, z-scores, and the lineup table all reflect the change. */
+function _phase3EnsureCustom(teamId) {{
+  if (!window._phase3CustomLineup[teamId]) window._phase3CustomLineup[teamId] = {{}};
+  return window._phase3CustomLineup[teamId];
+}}
+function phase3OpenUserRosterPicker(slotId, slotLabel) {{
+  window._phase3RosterSlotUser = {{slot_id: slotId, slot_label: slotLabel}};
+  window._phase3RosterSlotOpp  = null;
+  window._phase3PickerSlot     = null;
+  window._phase3OppPickerSlot  = null;
+  _phase3RenderLineups();
+}}
+function phase3CloseUserRosterPicker() {{
+  window._phase3RosterSlotUser = null;
+  _phase3RenderLineups();
+}}
+function phase3OpenOppRosterPicker(slotId, slotLabel) {{
+  window._phase3RosterSlotOpp  = {{slot_id: slotId, slot_label: slotLabel}};
+  window._phase3RosterSlotUser = null;
+  window._phase3PickerSlot     = null;
+  window._phase3OppPickerSlot  = null;
+  _phase3RenderLineups();
+}}
+function phase3CloseOppRosterPicker() {{
+  window._phase3RosterSlotOpp = null;
+  _phase3RenderLineups();
+}}
+/* Pin a rostered player (by espn_id) to a slot. If that player was pinned
+   elsewhere we clear the old pin so they only occupy one slot. */
+function _phase3ApplyRosterPick(teamId, slotId, espnIdStr) {{
+  var custom = _phase3EnsureCustom(teamId);
+  // Clear any other slot pinning this same player
+  Object.keys(custom).forEach(function(sid) {{
+    if (String(custom[sid]) === String(espnIdStr)) delete custom[sid];
+  }});
+  // ESPN IDs may be strings (FA synthetic ids start "fa_"); coerce to number
+  // where possible to match the hitter records.
+  var eid = isNaN(Number(espnIdStr)) ? espnIdStr : Number(espnIdStr);
+  custom[slotId] = eid;
+}}
+function phase3PickUserRosterPlayer(slotId, espnIdStr) {{
+  var tid = _tradeRoster.sendTeamId;
+  if (tid == null) return;
+  _phase3ApplyRosterPick(tid, slotId, espnIdStr);
+  window._phase3RosterSlotUser = null;
+  _tradeCalc();
+}}
+function phase3PickOppRosterPlayer(slotId, espnIdStr) {{
+  var tid = _tradeRoster.recvTeamId;
+  if (tid == null) return;
+  _phase3ApplyRosterPick(tid, slotId, espnIdStr);
+  window._phase3RosterSlotOpp = null;
+  _tradeCalc();
+}}
+/* Pin a slot to empty (overrides the optimizer for that slot only). */
+function phase3ClearUserRosterSlot(slotId) {{
+  var tid = _tradeRoster.sendTeamId;
+  if (tid == null) return;
+  var custom = _phase3EnsureCustom(tid);
+  custom[slotId] = null;
+  window._phase3RosterSlotUser = null;
+  _tradeCalc();
+}}
+function phase3ClearOppRosterSlot(slotId) {{
+  var tid = _tradeRoster.recvTeamId;
+  if (tid == null) return;
+  var custom = _phase3EnsureCustom(tid);
+  custom[slotId] = null;
+  window._phase3RosterSlotOpp = null;
+  _tradeCalc();
+}}
+/* Wipe all manual pins for a team → falls back to the dollar-optimized lineup. */
+function phase3ResetUserLineup() {{
+  var tid = _tradeRoster.sendTeamId;
+  if (tid != null) delete window._phase3CustomLineup[tid];
+  window._phase3RosterSlotUser = null;
+  _tradeCalc();
+}}
+function phase3ResetOppLineup() {{
+  var tid = _tradeRoster.recvTeamId;
+  if (tid != null) delete window._phase3CustomLineup[tid];
+  window._phase3RosterSlotOpp = null;
   _tradeCalc();
 }}
 
@@ -5344,14 +5587,100 @@ function _phase3RenderLineups() {{
     return html;
   }}
 
-  function hitterTable(label, oldSum, newSum, accent, side) {{
+  // Roster picker — lists eligible hitters from the team's post-trade roster
+  // so the user can override the dollar-optimized lineup for a given slot.
+  function renderRosterPicker(side, slotLabel, slotId, newTeam) {{
+    var closeFn = (side === 'user') ? 'phase3CloseUserRosterPicker'
+                                    : 'phase3CloseOppRosterPicker';
+    var pickFn  = (side === 'user') ? 'phase3PickUserRosterPlayer'
+                                    : 'phase3PickOppRosterPlayer';
+    var clearFn = (side === 'user') ? 'phase3ClearUserRosterSlot'
+                                    : 'phase3ClearOppRosterSlot';
+    var hitters = (newTeam && newTeam.hitters) ? newTeam.hitters.slice() : [];
+    hitters = hitters.filter(function(p) {{ return _canFillSlot(p, slotId); }});
+    // Sort by $ desc so best options surface first
+    hitters.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
+    // Which player (espn_id) is in this slot RIGHT NOW in the after view?
+    var curAssigns = (newTeam && newTeam.__assigns) ? newTeam.__assigns : null;
+    var inThisSlot = null;
+    if (curAssigns) {{
+      for (var q = 0; q < curAssigns.length; q++) {{
+        if (curAssigns[q].slot_id === slotId) {{
+          inThisSlot = curAssigns[q].player ? curAssigns[q].player.espn_id : null;
+          break;
+        }}
+      }}
+    }}
+    // Build slot_id lookup for "currently in slot X" hint
+    var espnToSlot = {{}};
+    if (curAssigns) {{
+      curAssigns.forEach(function(a) {{
+        if (a.player) espnToSlot[a.player.espn_id] = a.slot_label;
+      }});
+    }}
+
+    var html = '<div style="background:#0f0f0f;border:1px solid #333;border-radius:6px;'
+             + 'padding:7px 9px;margin:4px 0">'
+             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+             + '<span style="font-size:.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">'
+             + 'Set ' + slotLabel + ' from roster</span>'
+             + '<button onmousedown="' + closeFn + '()" '
+             + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.9rem;padding:0 4px">&#x2715;</button>'
+             + '</div>';
+    // "Leave empty" chip
+    html += '<div style="display:flex;flex-wrap:wrap;gap:3px">'
+          + '<button onmousedown="' + clearFn + '(' + slotId + ')" '
+          + 'style="background:#2a1a1a;border:1px solid #6b2e2e;color:#e0a0a0;'
+          + 'padding:4px 9px;border-radius:4px;cursor:pointer;font-size:.73rem;font-weight:700">'
+          + '(empty)</button>';
+    if (!hitters.length) {{
+      html += '<span style="color:var(--muted);font-size:.75rem;padding:4px">'
+            + 'No eligible hitters on this roster.</span>';
+    }} else {{
+      hitters.forEach(function(p) {{
+        var dCol = p.dollars >= 10 ? '#f0c040' : p.dollars >= 0 ? '#7ec87e' : '#888';
+        var isCurrent = (p.espn_id === inThisSlot);
+        var currentSlot = espnToSlot[p.espn_id];  // where player is right now
+        var elsewhereTag = (currentSlot && !isCurrent)
+          ? '<span style="color:#f0c040;font-size:.55rem;font-weight:700;margin-left:3px">in ' + currentSlot + '</span>'
+          : '';
+        var pl = _posLabel(p);
+        var posLbl = pl ? '<span style="color:#777;font-size:.56rem;font-weight:700">' + pl + '</span>' : '';
+        var bg = isCurrent ? '#2a2a1a' : '#1a1a1a';
+        var border = isCurrent ? '1px solid #6b6b2e' : '1px solid #2a2a2a';
+        html += '<button onmousedown="' + pickFn + '(' + slotId + ',this.dataset.eid)" '
+             +  'data-eid="' + p.espn_id + '" '
+             +  'style="background:' + bg + ';border:' + border + ';color:#ddd;'
+             +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
+             +  'display:inline-flex;align-items:center;gap:4px">'
+             +  '<span style="font-weight:600">' + p.name + '</span>' + posLbl
+             +  elsewhereTag
+             +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
+             +  '</button>';
+      }});
+    }}
+    html += '</div></div>';
+    return html;
+  }}
+
+  function hitterTable(label, oldSum, newSum, accent, side, newTeam) {{
     // side: 'user' | 'opp' | null — non-null sides get "+ FA" buttons on empty slots
+    // newTeam: the post-trade team object (hitters+team_id) used to power the
+    //   manual roster-swap picker. null for the non-interactive case.
     var rows = '';
     var oldA = oldSum.assigns || [];
     var newA = newSum.assigns || [];
+    // Stash assigns on newTeam so renderRosterPicker can surface "currently
+    // in slot X" hints without another lookup pass.
+    if (newTeam) newTeam.__assigns = newA;
     var n = Math.max(oldA.length, newA.length);
     var picker = (side === 'user') ? userPicker : (side === 'opp') ? oppPicker : null;
+    var rosterPicker = (side === 'user') ? window._phase3RosterSlotUser
+                      : (side === 'opp')  ? window._phase3RosterSlotOpp
+                      : null;
     var openFn = (side === 'user') ? 'phase3OpenPickupMenu' : 'phase3OpenOppPickupMenu';
+    var editFn = (side === 'user') ? 'phase3OpenUserRosterPicker'
+                                    : 'phase3OpenOppRosterPicker';
     for (var i = 0; i < n; i++) {{
       var oa = oldA[i] || {{slot_label: '?', player: null}};
       var na = newA[i] || {{slot_label: '?', player: null}};
@@ -5360,10 +5689,23 @@ function _phase3RenderLineups() {{
       var changed = (oid !== nid);
       var bg = changed ? '#241a1a' : 'transparent';
       var slotCol = changed ? '#f0c040' : 'var(--muted)';
-      var afterCell = fmtCell(na.player);
-      // "+" button on empty AFTER slots — for both user and opponent sides.
-      if (side && !na.player) {{
-        var slotLbl = (na.slot_label || '').replace(/"/g, '&quot;');
+      var afterCell;
+      var slotLbl = (na.slot_label || '').replace(/"/g, '&quot;');
+      if (na.player) {{
+        // Filled slot — click the player name to swap via the roster picker
+        if (side) {{
+          afterCell = '<span data-slot-id="' + na.slot_id + '" '
+                    + 'data-slot-label="' + slotLbl + '" '
+                    + 'onmousedown="' + editFn + '(Number(this.dataset.slotId),this.dataset.slotLabel)" '
+                    + 'style="cursor:pointer;border-bottom:1px dotted #555" '
+                    + 'title="Click to swap in a different player">'
+                    + fmtCell(na.player) + '</span>';
+        }} else {{
+          afterCell = fmtCell(na.player);
+        }}
+      }} else if (side) {{
+        // Empty AFTER slot — both "+ FA" (pick up a free agent) and
+        // "From roster" (move an existing rostered hitter into this slot).
         afterCell = '<span style="color:#e05555;font-weight:700">(empty)</span>'
                   + '&nbsp;&nbsp;<button '
                   + 'data-slot-id="' + na.slot_id + '" '
@@ -5371,7 +5713,16 @@ function _phase3RenderLineups() {{
                   + 'onmousedown="' + openFn + '(Number(this.dataset.slotId),this.dataset.slotLabel)" '
                   + 'style="background:#1e3a1e;border:1px solid #2e6b2e;color:#9cd39c;'
                   + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700">'
-                  + '+ FA</button>';
+                  + '+ FA</button>'
+                  + '&nbsp;<button '
+                  + 'data-slot-id="' + na.slot_id + '" '
+                  + 'data-slot-label="' + slotLbl + '" '
+                  + 'onmousedown="' + editFn + '(Number(this.dataset.slotId),this.dataset.slotLabel)" '
+                  + 'style="background:#1a2a3a;border:1px solid #2e4a6b;color:#9cb8d9;'
+                  + 'cursor:pointer;font-size:.7rem;padding:1px 7px;border-radius:4px;font-weight:700">'
+                  + 'From roster</button>';
+      }} else {{
+        afterCell = fmtCell(na.player);
       }}
       rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
             +   '<td style="padding:4px 8px;color:' + slotCol + ';font-weight:700;width:46px">'
@@ -5380,11 +5731,17 @@ function _phase3RenderLineups() {{
             +   '<td style="padding:4px 8px;color:#666;text-align:center;width:18px">\u2192</td>'
             +   '<td style="padding:4px 8px">' + afterCell + '</td>'
             + '</tr>';
-      // If the picker is open on this side and this is the target slot,
-      // render the inline FA list as a full-width sub-row below.
+      // If the FA picker is open on this side/slot, render the inline FA list.
       if (side && picker && picker.slot_id === na.slot_id && !na.player) {{
         rows += '<tr><td colspan="4" style="padding:0 8px 6px">'
               + renderPicker(side, picker.slot_label, picker.slot_id)
+              + '</td></tr>';
+      }}
+      // If the roster picker is open on this side/slot, render the inline
+      // roster list underneath the row (works for filled OR empty slots).
+      if (side && rosterPicker && rosterPicker.slot_id === na.slot_id) {{
+        rows += '<tr><td colspan="4" style="padding:0 8px 6px">'
+              + renderRosterPicker(side, rosterPicker.slot_label, rosterPicker.slot_id, newTeam)
               + '</td></tr>';
       }}
     }}
@@ -5393,9 +5750,28 @@ function _phase3RenderLineups() {{
     var dDelta = (newSum.hDollar || 0) - (oldSum.hDollar || 0);
     var dCol = dDelta > 0.05 ? '#4caf50' : (dDelta < -0.05 ? '#e05555' : '#888');
     var dSign = dDelta > 0 ? '+' : (dDelta < 0 ? '\u2212' : '');
+
+    // Header: "optimized hitter lineup" + (Reset) button when the team has
+    // a manual override active.
+    var hasCustom = !!(newTeam && window._phase3CustomLineup[newTeam.team_id]
+                                && Object.keys(window._phase3CustomLineup[newTeam.team_id]).length);
+    var resetBtn = '';
+    if (hasCustom && side) {{
+      var resetFn = (side === 'user') ? 'phase3ResetUserLineup' : 'phase3ResetOppLineup';
+      resetBtn = '&nbsp;<button onmousedown="' + resetFn + '()" '
+               + 'style="background:#2a1a1a;border:1px solid #6b2e2e;color:#e0a0a0;'
+               + 'cursor:pointer;font-size:.6rem;padding:1px 6px;border-radius:4px;'
+               + 'font-weight:700;letter-spacing:.04em">&#x21BA; RESET</button>';
+    }}
+    var customNote = hasCustom
+      ? '<span style="color:#f0c040;font-size:.6rem;font-weight:700;'
+        + 'letter-spacing:.04em;margin-left:6px">&#x270E; MANUAL</span>'
+      : '';
+
     return '<div style="font-size:.7rem;color:var(--muted);font-weight:700;'
          +   'text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px">'
-         +   label + ' &nbsp;\u2014&nbsp; optimized hitter lineup</div>'
+         +   label + ' &nbsp;\u2014&nbsp; hitter lineup'
+         +   customNote + resetBtn + '</div>'
          + '<table style="width:100%;border-collapse:collapse;font-size:.78rem">'
          +   '<thead><tr style="border-bottom:1px solid #333">'
          +     '<th style="text-align:left;padding:4px 8px;color:var(--muted)">Slot</th>'
@@ -5551,10 +5927,10 @@ function _phase3RenderLineups() {{
          + '</tbody></table>';
   }}
 
-  function teamLineupCard(label, oldSum, newSum, accent, side) {{
+  function teamLineupCard(label, oldSum, newSum, accent, side, newTeam) {{
     return '<div style="flex:1;min-width:340px;background:#141414;border-radius:8px;'
          + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
-         +   hitterTable(label, oldSum, newSum, accent, side)
+         +   hitterTable(label, oldSum, newSum, accent, side, newTeam)
          +   pitcherTable(oldSum, newSum, side)
          + '</div>';
   }}
@@ -5739,8 +6115,8 @@ function _phase3RenderLineups() {{
 
   lw.innerHTML = bannerHtml
                + '<div style="display:flex;gap:12px;flex-wrap:wrap">'
-               + teamLineupCard('You',          L.sumOldUser, L.sumNewUser, '#4caf50', 'user')
-               + teamLineupCard('Counterparty', L.sumOldOpp,  L.sumNewOpp,  '#e05555', 'opp')
+               + teamLineupCard('You',          L.sumOldUser, L.sumNewUser, '#4caf50', 'user', L.newUser)
+               + teamLineupCard('Counterparty', L.sumOldOpp,  L.sumNewOpp,  '#e05555', 'opp',  L.newOpp)
                + '</div>';
 }}
 
