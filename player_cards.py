@@ -472,6 +472,18 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     KN:'#9b59b6',EP:'#8e44ad',SC:'#95a5a6'
   }};
 
+  // Stat direction for prior-year delta arrows. Keys are the leaderKey
+  // strings used on each slider row. Any key NOT in these maps is treated
+  // as higher-is-better. Note some stats flip between hitters and pitchers
+  // (K%, Whiff%, Chase%, BB% all behave differently by player type).
+  var _LOWER_BETTER_H = {{
+    chase_pct:1, whiff_pct:1, k_pct:1
+  }};
+  var _LOWER_BETTER_P = {{
+    xera:1, xba:1, woba:1, xwoba:1, avg_ev:1,
+    bb_pct:1, barrel_pct:1, hard_hit_pct:1
+  }};
+
   // ── Search ────────────────────────────────────────────────────────────────────
   window._pcSearch = function(q) {{
     var dd = document.getElementById('pc-dropdown');
@@ -744,6 +756,29 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       // actually have a prior-year value for this stat.
       var priorStr = (priorVal != null) ? fmtFn(priorVal) : null;
       var priorYY  = "'" + String(_priorYear).slice(-2);
+
+      // Delta arrow: show ▲ or ▼ next to the current value if we have a
+      // prior-year number to compare against. Color reflects *improvement*,
+      // which depends on whether the stat is higher-better or lower-better
+      // (and that can differ between hitters and pitchers — e.g. K% is
+      // lower-better for hitters, higher-better for pitchers).
+      var arrowHtml = '';
+      if (rawVal != null && priorVal != null) {{
+        var isP = d.type === 'p';
+        var isLowerBetter = isP
+          ? !!_LOWER_BETTER_P[leaderKey]
+          : !!_LOWER_BETTER_H[leaderKey];
+        var diff = rawVal - priorVal;
+        if (diff !== 0) {{
+          var up = diff > 0;
+          var improved = isLowerBetter ? !up : up;
+          var arrowCol = improved ? '#2ecc71' : '#e74c3c';
+          var arrowCh  = up ? '\u25B2' : '\u25BC';  // ▲ / ▼
+          arrowHtml = '<span style="color:' + arrowCol + ';font-size:.62rem;'
+                    + 'margin-right:3px;vertical-align:middle">'
+                    + arrowCh + '</span>';
+        }}
+      }}
       var priorCell = priorStr
         ? ('<div style="font-size:.55rem;font-weight:500;color:#888;'
             + 'margin-top:1px;line-height:1">'
@@ -754,9 +789,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       var valFontSz = (pctDisp == null) ? '.68rem' : '.7rem';
       var valWeight = (pctDisp == null) ? '400' : '700';
       var valCell =
-        '<div style="min-width:62px;text-align:right;line-height:1">'
+        '<div style="min-width:72px;text-align:right;line-height:1">'
         + '<div style="font-size:' + valFontSz + ';font-weight:' + valWeight
-        + ';color:' + valCol + '">' + valStr + '</div>'
+        + ';color:' + valCol + '">' + arrowHtml + valStr + '</div>'
         + priorCell
         + '</div>';
 
