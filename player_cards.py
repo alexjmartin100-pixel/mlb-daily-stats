@@ -800,16 +800,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }}
       }}
       var priorCell = priorStr
-        ? ('<div style="font-size:.55rem;font-weight:500;color:#888;'
-            + 'margin-top:1px;line-height:1">'
-            + '<span style="color:#666">' + priorYY + '</span> ' + priorStr
+        ? ('<div style="font-size:.68rem;font-weight:600;color:#999;'
+            + 'margin-top:2px;line-height:1">'
+            + '<span style="color:#777">' + priorYY + '</span> ' + priorStr
             + '</div>')
         : '';
-      var valCol = (pctDisp == null) ? '#555' : (isGold ? '#f0c040' : '#ccc');
-      var valFontSz = (pctDisp == null) ? '.68rem' : '.7rem';
-      var valWeight = (pctDisp == null) ? '400' : '700';
+      var valCol = (pctDisp == null) ? '#555' : (isGold ? '#f0c040' : '#eee');
+      var valFontSz = (pctDisp == null) ? '.82rem' : '.9rem';
+      var valWeight = (pctDisp == null) ? '500' : '800';
       var valCell =
-        '<div style="min-width:72px;text-align:right;line-height:1">'
+        '<div style="min-width:78px;text-align:right;line-height:1">'
         + '<div style="font-size:' + valFontSz + ';font-weight:' + valWeight
         + ';color:' + valCol + '">' + arrowHtml + valStr + '</div>'
         + priorCell
@@ -840,7 +840,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
           + valCell
           + '</div>';
       }}
-      var labelCol = isGold ? '#f0c040' : '#aaa';
+      var labelCol = isGold ? '#f0c040' : '#fff';
 
       return '<div style="margin-bottom:8px">'
         + '<div style="margin-bottom:2px">'

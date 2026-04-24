@@ -3472,13 +3472,17 @@ window._phase3OppDropPicker     = false;   /* opponent drop picker visible */
    An explicit null value pins the slot to "empty". */
 window._phase3CustomLineup = {{}};
 
-/* IL pitcher activations — pitchers have no slot system, so we track
-   activations as a flat set per team. Structure:
-     _phase3IlPitcherActivations[team_id] = {{espn_id: true, ...}}
-   At sim time, _phase3InjectActivatedIlPitchers adds each activated
-   pitcher's record into team.pitchers so they contribute to the W/SO/etc.
-   totals. Lets the user project "what if this injured SP comes back?". */
+/* IL pitcher activations — pitchers have no slot system, so activation is
+   a swap PAIR: "bring IL pitcher IN, take starter X OUT". Structure:
+     _phase3IlPitcherActivations[team_id] = {{in_espn_id: out_espn_id, ...}}
+   At sim time, _phase3InjectActivatedIlPitchers removes each "out" starter
+   from team.pitchers and pushes the corresponding IL record. Deactivating
+   an entry restores the starter, mirroring the hitter IL-pin flow. */
 window._phase3IlPitcherActivations = {{}};
+/* Mid-activation state: the user clicked Activate on an IL pitcher and
+   now needs to pick a current starter to swap out. null when not active.
+   {{side, in_espn_id}} */
+window._phase3IlPitcherSwapPicker = null;
 
 /* Active roster-slot picker (click an After cell to open). When set,
    _phase3RenderLineups inserts a sub-row listing every eligible hitter
@@ -4046,30 +4050,44 @@ function _phase3IlPitchersFor(teamId) {{
   return out;
 }}
 
-/* For every espn_id the user has activated, inject that pitcher into
-   team.pitchers so the aggregator counts them. Activations that turn out
-   to be stale (the named pitcher isn't in TRADE_PITCHERS anymore, or is
-   already on team.pitchers) are simply skipped. */
+/* Apply every activation swap pair. For each (in_eid → out_eid) entry we
+   remove the "out" starter from team.pitchers (so their W/ERA/etc. don't
+   count) and inject the "in" IL pitcher's projection-synthesized record.
+   Stale entries (either side missing) are skipped silently. */
 function _phase3InjectActivatedIlPitchers(team) {{
   var act = window._phase3IlPitcherActivations[team.team_id];
   if (!act) return;
-  var byId = {{}};
-  (team.pitchers || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
   var ilPool = _phase3IlPitchersFor(team.team_id);
   var ilById = {{}};
   ilPool.forEach(function(p) {{ ilById[p.espn_id] = p; }});
-  Object.keys(act).forEach(function(eidStr) {{
-    if (!act[eidStr]) return;              // false/zero means de-activated
-    var eid = isNaN(Number(eidStr)) ? eidStr : Number(eidStr);
-    if (byId[eid]) return;                  // already on active roster
-    var rec = ilById[eid];
+
+  // Collect swap-out ids first so we can filter them out in one pass.
+  var swapOutIds = {{}};
+  var swapIns = [];   // pitcher records to push after the filter
+  Object.keys(act).forEach(function(inEidStr) {{
+    var outEid = act[inEidStr];
+    if (outEid == null) return;
+    var inEid = isNaN(Number(inEidStr)) ? inEidStr : Number(inEidStr);
+    var rec = ilById[inEid];
     if (!rec) {{
       for (var i = 0; i < ilPool.length; i++) {{
-        if (String(ilPool[i].espn_id) === String(eid)) {{ rec = ilPool[i]; break; }}
+        if (String(ilPool[i].espn_id) === String(inEid)) {{ rec = ilPool[i]; break; }}
       }}
     }}
-    if (rec) team.pitchers.push(_phase3MakePitcherFromTrade(rec));
+    if (!rec) return;                     // IL record gone — skip
+    var outKey = isNaN(Number(outEid)) ? outEid : Number(outEid);
+    swapOutIds[outKey] = true;
+    swapOutIds[String(outKey)] = true;   // handle string-vs-number id mismatch
+    swapIns.push(_phase3MakePitcherFromTrade(rec));
   }});
+
+  // Remove swapped-out starters, then add the IL pitchers in their place.
+  if (Object.keys(swapOutIds).length) {{
+    team.pitchers = (team.pitchers || []).filter(function(p) {{
+      return !swapOutIds[p.espn_id] && !swapOutIds[String(p.espn_id)];
+    }});
+  }}
+  swapIns.forEach(function(pk) {{ team.pitchers.push(pk); }});
 }}
 
 /* Return the list of team-owned IL/inactive hitters for `teamId`. "IL" is
@@ -5536,35 +5554,60 @@ function phase3ResetOppLineup() {{
   _tradeCalc();
 }}
 
-/* IL-pitcher activation handlers. Pitchers don't have slots so activation
-   is a flat per-team set instead of per-slot pins. Toggling triggers a
-   full sim re-run so standings reflect the activation. */
-function _phase3ToggleIlPitcher(teamId, espnIdStr, on) {{
+/* IL-pitcher activation handlers. Activation is a PAIR (in→out): the
+   swapped-out starter is removed from the pitching aggregate and the
+   activated IL pitcher replaces them. Clicking Activate opens a picker
+   showing current starters to swap out; confirming records the pair and
+   re-runs the sim. Deactivating restores the swapped-out starter. */
+function phase3StartActivateUserIlPitcher(espnIdStr) {{
+  window._phase3IlPitcherSwapPicker = {{side: 'user', in_espn_id: espnIdStr}};
+  _phase3RenderLineups();
+}}
+function phase3StartActivateOppIlPitcher(espnIdStr) {{
+  window._phase3IlPitcherSwapPicker = {{side: 'opp', in_espn_id: espnIdStr}};
+  _phase3RenderLineups();
+}}
+function phase3CancelActivateIlPitcher() {{
+  window._phase3IlPitcherSwapPicker = null;
+  _phase3RenderLineups();
+}}
+function _phase3SetIlPitcherPair(teamId, inEidStr, outEidStr) {{
   if (teamId == null) return;
   if (!window._phase3IlPitcherActivations[teamId]) {{
     window._phase3IlPitcherActivations[teamId] = {{}};
   }}
-  var eid = isNaN(Number(espnIdStr)) ? espnIdStr : Number(espnIdStr);
-  if (on) window._phase3IlPitcherActivations[teamId][eid] = true;
-  else     delete window._phase3IlPitcherActivations[teamId][eid];
-  if (!Object.keys(window._phase3IlPitcherActivations[teamId]).length) {{
-    delete window._phase3IlPitcherActivations[teamId];
-  }}
+  var inEid  = isNaN(Number(inEidStr))  ? inEidStr  : Number(inEidStr);
+  var outEid = isNaN(Number(outEidStr)) ? outEidStr : Number(outEidStr);
+  window._phase3IlPitcherActivations[teamId][inEid] = outEid;
 }}
-function phase3ActivateUserIlPitcher(espnIdStr) {{
-  _phase3ToggleIlPitcher(_tradeRoster.sendTeamId, espnIdStr, true);
+function _phase3RemoveIlPitcherPair(teamId, inEidStr) {{
+  if (teamId == null) return;
+  var map = window._phase3IlPitcherActivations[teamId];
+  if (!map) return;
+  var inEid = isNaN(Number(inEidStr)) ? inEidStr : Number(inEidStr);
+  delete map[inEid];
+  if (!Object.keys(map).length) delete window._phase3IlPitcherActivations[teamId];
+}}
+function phase3ConfirmActivateUserIlPitcher(outEidStr) {{
+  var pick = window._phase3IlPitcherSwapPicker;
+  if (!pick || pick.side !== 'user') return;
+  _phase3SetIlPitcherPair(_tradeRoster.sendTeamId, pick.in_espn_id, outEidStr);
+  window._phase3IlPitcherSwapPicker = null;
+  _tradeCalc();
+}}
+function phase3ConfirmActivateOppIlPitcher(outEidStr) {{
+  var pick = window._phase3IlPitcherSwapPicker;
+  if (!pick || pick.side !== 'opp') return;
+  _phase3SetIlPitcherPair(_tradeRoster.recvTeamId, pick.in_espn_id, outEidStr);
+  window._phase3IlPitcherSwapPicker = null;
   _tradeCalc();
 }}
 function phase3DeactivateUserIlPitcher(espnIdStr) {{
-  _phase3ToggleIlPitcher(_tradeRoster.sendTeamId, espnIdStr, false);
-  _tradeCalc();
-}}
-function phase3ActivateOppIlPitcher(espnIdStr) {{
-  _phase3ToggleIlPitcher(_tradeRoster.recvTeamId, espnIdStr, true);
+  _phase3RemoveIlPitcherPair(_tradeRoster.sendTeamId, espnIdStr);
   _tradeCalc();
 }}
 function phase3DeactivateOppIlPitcher(espnIdStr) {{
-  _phase3ToggleIlPitcher(_tradeRoster.recvTeamId, espnIdStr, false);
+  _phase3RemoveIlPitcherPair(_tradeRoster.recvTeamId, espnIdStr);
   _tradeCalc();
 }}
 
@@ -6230,10 +6273,14 @@ function _phase3RenderLineups() {{
                       : (side === 'opp')  ? !!window._phase3OppPitcherPicker
                       : false;
     var openFn = (side === 'user') ? 'phase3OpenPitcherPicker' : 'phase3OpenOppPitcherPicker';
-    var deactFn = (side === 'user') ? 'phase3DeactivateUserIlPitcher'
-                 : (side === 'opp')  ? 'phase3DeactivateOppIlPitcher' : null;
-    var actFn   = (side === 'user') ? 'phase3ActivateUserIlPitcher'
-                 : (side === 'opp')  ? 'phase3ActivateOppIlPitcher'   : null;
+    var deactFn  = (side === 'user') ? 'phase3DeactivateUserIlPitcher'
+                  : (side === 'opp')  ? 'phase3DeactivateOppIlPitcher' : null;
+    var startFn  = (side === 'user') ? 'phase3StartActivateUserIlPitcher'
+                  : (side === 'opp')  ? 'phase3StartActivateOppIlPitcher'  : null;
+    var confirmFn = (side === 'user') ? 'phase3ConfirmActivateUserIlPitcher'
+                  : (side === 'opp')  ? 'phase3ConfirmActivateOppIlPitcher' : null;
+    var swapPick = window._phase3IlPitcherSwapPicker;
+    var swapActive = (swapPick && swapPick.side === side);
     var rows = '';
     union.forEach(function(p) {{
       var inNew = !!newIds[p.espn_id];
@@ -6294,22 +6341,24 @@ function _phase3RenderLineups() {{
     }}
 
     // ── IL / Inactive Pitchers section ─────────────────────────────────
-    // Let the user activate injured pitchers to project "what if this SP
-    // comes back from the IL?". Team-owned IL pitchers not currently
-    // activated show up with an Activate button; already-activated ones
-    // are in the main union above with a Deactivate button inline.
+    // Activation is a swap: user clicks Activate, then picks which current
+    // starter to take out. Team-owned IL pitchers whose espn_id isn't
+    // already acting as the "in" side of an active pair are listed here.
     var ilRows = '';
-    if (side && actFn && newTeam && newTeam.team_id != null) {{
-      var activeIds = {{}};
-      (newTeam.pitchers || []).forEach(function(p) {{ activeIds[p.espn_id] = true; }});
+    if (side && startFn && newTeam && newTeam.team_id != null) {{
+      var activePairs = window._phase3IlPitcherActivations[newTeam.team_id] || {{}};
+      var pairedInIds = {{}};
+      Object.keys(activePairs).forEach(function(k) {{ pairedInIds[k] = true; pairedInIds[String(k)] = true; }});
       var ilPitchers = _phase3IlPitchersFor(newTeam.team_id)
-        .filter(function(p) {{ return !activeIds[p.espn_id]; }});
+        .filter(function(p) {{
+          return !pairedInIds[p.espn_id] && !pairedInIds[String(p.espn_id)];
+        }});
       ilPitchers.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
       if (ilPitchers.length) {{
         var chips = ilPitchers.map(function(p) {{
           var rl = (p.role && String(p.role).toLowerCase() === 'sp') ? 'SP' : 'RP';
           return '<button data-eid="' + p.espn_id + '" '
-               + 'onclick="' + actFn + '(this.dataset.eid)" '
+               + 'onclick="' + startFn + '(this.dataset.eid)" '
                + 'style="background:#152334;border:1px solid #2e4a6b;color:#cde1f4;'
                + 'padding:5px 9px;margin:2px 3px 2px 0;border-radius:4px;cursor:pointer;'
                + 'font-size:.74rem;display:inline-flex;align-items:center;gap:5px">'
@@ -6325,9 +6374,60 @@ function _phase3RenderLineups() {{
                + 'text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">'
                + 'IL / Inactive Pitchers '
                + '<span style="color:#555;font-weight:500;text-transform:none;letter-spacing:0;'
-               + 'margin-left:4px">(activate to project if healthy)</span></div>'
+               + 'margin-left:4px">(activate to swap in for a current starter)</span></div>'
                + '<div>' + chips + '</div>'
                + '</td></tr>';
+      }}
+
+      // If the user just clicked Activate on an IL pitcher, show a sub-row
+      // where they pick which current starter to swap OUT. The incoming IL
+      // pitcher is named in the header; each current (non-activated) roster
+      // pitcher becomes a clickable chip that finalizes the pair.
+      if (swapActive && confirmFn) {{
+        var inEid = swapPick.in_espn_id;
+        var ilLookup = _phase3IlPitchersFor(newTeam.team_id);
+        var inRec = null;
+        for (var ii = 0; ii < ilLookup.length; ii++) {{
+          if (String(ilLookup[ii].espn_id) === String(inEid)) {{ inRec = ilLookup[ii]; break; }}
+        }}
+        var inName = inRec ? inRec.name : '(IL pitcher)';
+        // Current roster pitchers minus any that are already "in" via swaps.
+        var alreadyIn = {{}};
+        Object.keys(activePairs).forEach(function(k) {{ alreadyIn[k] = true; alreadyIn[String(k)] = true; }});
+        var candidates = (newTeam.pitchers || []).filter(function(p) {{
+          return !p.is_il_activation
+              && !alreadyIn[p.espn_id] && !alreadyIn[String(p.espn_id)];
+        }});
+        candidates.sort(function(a,b) {{ return (a.dollars||0) - (b.dollars||0); }});
+        var swapChips = candidates.map(function(p) {{
+          var rl = (p.role && String(p.role).toLowerCase() === 'sp') ? 'SP'
+                  : ((p.IP || 0) >= 100 ? 'SP' : 'RP');
+          return '<button data-eid="' + p.espn_id + '" '
+               + 'onclick="' + confirmFn + '(this.dataset.eid)" '
+               + 'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
+               + 'padding:5px 9px;margin:2px 3px 2px 0;border-radius:4px;cursor:pointer;'
+               + 'font-size:.74rem;display:inline-flex;align-items:center;gap:5px">'
+               + '<span style="font-weight:600">' + p.name + '</span>'
+               + '<span style="color:#888;font-size:.58rem;font-weight:700">' + rl + '</span>'
+               + '<span style="color:#aaa;font-weight:700;font-variant-numeric:tabular-nums">$'
+               + (p.dollars || 0).toFixed(1) + '</span></button>';
+        }}).join('');
+        var swapHtml = '<div style="background:#0f0f0f;border:1px solid #6ab4ff;border-radius:6px;'
+                     + 'padding:9px 11px;margin:4px 0">'
+                     + '<div style="display:flex;justify-content:space-between;'
+                     + 'align-items:center;margin-bottom:6px">'
+                     + '<span style="font-size:.72rem;color:#cde1f4;font-weight:700;'
+                     + 'letter-spacing:.05em;text-transform:uppercase">'
+                     + 'Activate ' + inName + ' &mdash; who do they replace?</span>'
+                     + '<button onclick="phase3CancelActivateIlPitcher()" '
+                     + 'style="background:none;border:none;color:#888;cursor:pointer;'
+                     + 'font-size:.95rem;padding:0 4px">&#x2715;</button></div>'
+                     + (swapChips.length
+                        ? '<div>' + swapChips + '</div>'
+                        : '<div style="color:var(--muted);font-size:.76rem">'
+                          + 'No pitchers available to swap out.</div>')
+                     + '</div>';
+        ilRows += '<tr><td colspan="4" style="padding:0 8px 6px">' + swapHtml + '</td></tr>';
       }}
     }}
     rows += ilRows;
