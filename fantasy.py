@@ -2678,6 +2678,11 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             style="padding:6px 14px;font-size:.82rem">
       &#x1F525; Stream Pitchers
     </button>
+    <button id="ww-topfa-btn" class="tab-btn"
+            onclick="wwSwitch('topfa')"
+            style="padding:6px 14px;font-size:.82rem">
+      &#x2B50; Top FA
+    </button>
   </div>
 
   <!-- ── ADD/DROP MODE ── -->
@@ -2817,6 +2822,48 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         </div>
         <div id="ww-stream-table-wrap" style="display:none;margin-top:10px"></div>
         <div id="ww-stream-mc-wrap" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOP FA MODE ── -->
+  <div id="ww-topfa-wrap" style="display:none">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Compare against
+      </label>
+      <select id="ww-topfa-team-sel" onchange="wwTopFaSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <div id="ww-topfa-body" style="display:none">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px 14px;
+                  margin-bottom:14px;font-size:.78rem;color:#bbb;line-height:1.5">
+        Top 30 unrostered <strong>hitters</strong> and <strong>SPs</strong> by avg RoS dollar
+        projection. A player's name is highlighted <span style="color:#7ec87e;font-weight:700">green</span>
+        if they'd improve the selected team — for hitters, that means they'd claim a starting
+        slot under the lineup optimizer; for SPs, that they'd outearn the team's lowest-$ rostered SP.
+      </div>
+
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:320px">
+          <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+            &#x26BE; Hitters
+          </div>
+          <div id="ww-topfa-h-list"></div>
+        </div>
+        <div style="flex:1;min-width:320px">
+          <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+            &#x1F3AF; Starting Pitchers
+          </div>
+          <div id="ww-topfa-p-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -6295,7 +6342,9 @@ var _wwStreamState = {{
 function wwSwitch(which) {{
   document.getElementById('ww-adddrop-wrap').style.display = which==='adddrop' ? '' : 'none';
   document.getElementById('ww-stream-wrap').style.display  = which==='stream'  ? '' : 'none';
-  ['adddrop','stream'].forEach(function(w) {{
+  var topFaWrap = document.getElementById('ww-topfa-wrap');
+  if (topFaWrap) topFaWrap.style.display = which==='topfa' ? '' : 'none';
+  ['adddrop','stream','topfa'].forEach(function(w) {{
     var btn = document.getElementById('ww-' + w + '-btn');
     if (!btn) return;
     var on = (w === which);
@@ -6320,10 +6369,13 @@ function wwInit() {{
   if (s1) {{ s1.innerHTML = optHtml; }}
   var s2 = document.getElementById('ww-stream-team-sel');
   if (s2) {{ s2.innerHTML = optHtml; }}
+  var s3 = document.getElementById('ww-topfa-team-sel');
+  if (s3) {{ s3.innerHTML = optHtml; }}
   // Auto-select user team if available
   if (PHASE3_LEAGUE.user_team_id != null) {{
     wwSetTeam(PHASE3_LEAGUE.user_team_id);
     wwStreamSetTeam(PHASE3_LEAGUE.user_team_id);
+    wwTopFaSetTeam(PHASE3_LEAGUE.user_team_id);
   }}
 }}
 // Run init after page load
@@ -7244,6 +7296,138 @@ function wwStreamToggleMc() {{
     mw.style.display = '';
     btn.innerHTML = '\u25B2 Hide finish-probability sim';
   }}
+}}
+
+/* ════════════════════════════════════════════════════════════════════
+   ── TOP FA MODE ──────────────────────────────────────────────────
+   Shows top 30 unrostered hitters + SPs by RoS dollar value. When a
+   team is selected, highlights any FA who would improve that team:
+   — Hitters: runs the LAP with the FA added; if they claim a starting
+     slot they're highlighted green.
+   — SPs: compares the FA's $ to the team's lowest-$ rostered SP
+     (role='sp' / IP >= 100); green if the FA outearns them.
+   ════════════════════════════════════════════════════════════════════ */
+var _wwTopFaState = {{ teamId: null }};
+
+function wwTopFaSetTeam(val) {{
+  var tid = val === '' ? null : parseInt(val, 10);
+  _wwTopFaState.teamId = tid;
+  var body = document.getElementById('ww-topfa-body');
+  if (!body) return;
+  body.style.display = '';   // always show the lists, even w/o team
+  _wwRenderTopFa();
+}}
+
+/* Grab the currently selected team from PHASE3_LEAGUE (or null). */
+function _wwTopFaGetTeam() {{
+  if (!PHASE3_LEAGUE || _wwTopFaState.teamId == null) return null;
+  return PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === _wwTopFaState.teamId; }});
+}}
+
+/* Would adding this FA hitter to the team displace someone in the LAP
+   starting lineup? Works by cloning the roster, injecting the FA with a
+   synthetic espn_id, and checking whether the FA ends up in an assigned
+   slot. */
+function _wwTopFaHitterHelps(team, fa) {{
+  if (!team || !fa) return false;
+  var faClone = {{
+    espn_id: '__topfa_' + (fa.name || '').replace(/[^A-Za-z0-9]+/g, '_'),
+    name:    fa.name,
+    team:    fa.team,
+    dollars: fa.dollars || 0,
+    elig:    (fa.elig && fa.elig.length) ? fa.elig.slice() : _fgPosToSlots(fa.fg_pos || '')
+  }};
+  if (!faClone.elig || !faClone.elig.length) return false;
+  var hitters = (team.hitters || []).concat([faClone]);
+  var full = _phase3OptimizeHittersFull(hitters);
+  for (var i = 0; i < full.assigns.length; i++) {{
+    var p = full.assigns[i].player;
+    if (p && p.espn_id === faClone.espn_id) return true;
+  }}
+  return false;
+}}
+
+/* Would this FA SP outearn the team's lowest-$ rostered SP? "SP" here is
+   inferred the same way the rest of the dashboard infers role: IP >= 100
+   projects as a starter. If the team has no rostered SP, any FA qualifies. */
+function _wwTopFaSpHelps(team, fa) {{
+  if (!team || !fa) return false;
+  var spList = (team.pitchers || []).filter(function(p) {{
+    // explicit role tag when present, else IP threshold
+    if (p.role) return String(p.role).toLowerCase() === 'sp';
+    return (p.IP || 0) >= 100;
+  }});
+  if (!spList.length) return true;
+  var lowest = spList[0];
+  for (var i = 1; i < spList.length; i++) {{
+    if ((spList[i].dollars || 0) < (lowest.dollars || 0)) lowest = spList[i];
+  }}
+  return (fa.dollars || 0) > (lowest.dollars || 0);
+}}
+
+function _wwFmtTopFaRow(p, helps, isPitcher) {{
+  var nameCol = helps ? '#7ec87e' : '#ddd';
+  var nameBg  = helps ? 'background:#1a2a1a;' : '';
+  var dCol    = (p.dollars || 0) >= 10 ? '#f0c040'
+              : (p.dollars || 0) >= 0  ? '#bbb' : '#888';
+  var posStr = '';
+  if (isPitcher) {{
+    posStr = 'SP';
+  }} else {{
+    // Prefer elig-derived label (handles rostered-but-then-cut FAs that may
+    // carry elig); else fall back to fg_pos.
+    if (p.elig && p.elig.length) posStr = _eligLabel(p.elig);
+    if (!posStr && p.fg_pos) posStr = p.fg_pos;
+  }}
+  var helpsTag = helps
+    ? '<span style="color:#7ec87e;font-size:.55rem;font-weight:700;'
+      + 'margin-left:5px;letter-spacing:.04em">UPGRADE</span>'
+    : '';
+  var teamStr = p.team ? '<span style="color:#777;font-size:.68rem;margin-left:6px">' + p.team + '</span>' : '';
+  var posTag = posStr ? '<span style="color:#888;font-size:.58rem;font-weight:700;margin-left:6px">' + posStr + '</span>' : '';
+  return '<div style="display:flex;align-items:center;justify-content:space-between;'
+       + 'padding:5px 10px;border-bottom:1px solid #1f1f1f;' + nameBg + '">'
+       + '<div style="display:flex;align-items:center;min-width:0;flex:1">'
+       +   '<span style="color:' + nameCol + ';font-weight:600;white-space:nowrap">'
+       +     (p.name || '?') + '</span>' + helpsTag + teamStr + posTag
+       + '</div>'
+       + '<span style="color:' + dCol + ';font-weight:700;margin-left:10px;'
+       + 'font-variant-numeric:tabular-nums">$' + (p.dollars || 0).toFixed(1) + '</span>'
+       + '</div>';
+}}
+
+function _wwRenderTopFa() {{
+  var hEl = document.getElementById('ww-topfa-h-list');
+  var pEl = document.getElementById('ww-topfa-p-list');
+  if (!hEl || !pEl) return;
+  var team = _wwTopFaGetTeam();
+
+  // Top 30 FA hitters — unrostered, sorted by $ desc
+  var fas_h = TRADE_HITTERS.filter(function(p) {{ return p.team_id == null; }});
+  fas_h.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+  fas_h = fas_h.slice(0, 30);
+
+  // Top 30 FA SPs — unrostered, role == sp (fall back to top-30 if role missing)
+  var fas_p = TRADE_PITCHERS.filter(function(p) {{
+    if (p.team_id != null) return false;
+    if (p.role) return String(p.role).toLowerCase() === 'sp';
+    return true;   // no role tag → include
+  }});
+  fas_p.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+  fas_p = fas_p.slice(0, 30);
+
+  var hHtml = fas_h.map(function(p) {{
+    var helps = team ? _wwTopFaHitterHelps(team, p) : false;
+    return _wwFmtTopFaRow(p, helps, false);
+  }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent hitters.</div>';
+
+  var pHtml = fas_p.map(function(p) {{
+    var helps = team ? _wwTopFaSpHelps(team, p) : false;
+    return _wwFmtTopFaRow(p, helps, true);
+  }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent SPs.</div>';
+
+  hEl.innerHTML = hHtml;
+  pEl.innerHTML = pHtml;
 }}
 </script>
 """
