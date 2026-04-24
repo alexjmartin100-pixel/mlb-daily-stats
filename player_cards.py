@@ -392,13 +392,21 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 <div style="max-width:680px;margin:0 auto">
 
   <!-- Search -->
-  <!-- Search -->
-  <input id="pc-search" type="text" placeholder="Search hitter or pitcher by name or team…"
-    autocomplete="off"
+  <!-- iOS Safari quirks:
+       — font-size < 16px triggers focus-zoom (which can hide the dropdown
+         behind the keyboard), so we use 16px exactly.
+       — autocorrect/autocapitalize on mobile can insert characters that the
+         handler sees as spaces/capitals, throwing off the 2-char threshold.
+       — oninput is the primary event but we also wire onkeyup as a fallback
+         for older iOS versions that batch input events around autocorrect. -->
+  <input id="pc-search" type="search" placeholder="Search hitter or pitcher by name or team…"
+    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+    inputmode="search"
     oninput="_pcSearch(this.value)"
+    onkeyup="_pcSearch(this.value)"
     style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
            background:#1a1a1a;border:1px solid #333;border-radius:8px;
-           color:#eee;font-size:.95rem;outline:none"/>
+           color:#eee;font-size:16px;outline:none"/>
   <div id="pc-dropdown"
     style="display:none;background:#1e1e1e;border:1px solid #333;border-radius:8px;
            max-height:260px;overflow-y:auto;margin-bottom:12px;
@@ -485,23 +493,35 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   }};
 
   // ── Search ────────────────────────────────────────────────────────────────────
+  // Defensive: the function is called from both oninput and onkeyup so it can
+  // be invoked rapidly. Guard every step so no stray input state wrecks it.
   window._pcSearch = function(q) {{
-    var dd = document.getElementById('pc-dropdown');
-    if (!dd) return;
-    q = (q||'').trim().toLowerCase();
-    if (q.length < 2) {{ dd.style.display='none'; return; }}
-    var matches = _pcIdx.filter(function(p) {{
-      return p.n.toLowerCase().indexOf(q) !== -1
-          || (p.t||'').toLowerCase().indexOf(q) !== -1;
-    }}).slice(0,12);
-    if (!matches.length) {{ dd.style.display='none'; return; }}
-    dd.innerHTML = matches.map(function(p) {{
-      return '<div class="pc-dd-item" onmousedown="_pcShow(' + p.id + ')">'
-        + '<span style="font-weight:700">' + p.n + '</span>'
-        + '<span style="color:#888;font-size:.78rem;margin-left:8px">' + (p.t||'') + '</span>'
-        + '</div>';
-    }}).join('');
-    dd.style.display = 'block';
+    try {{
+      var dd = document.getElementById('pc-dropdown');
+      if (!dd) return;
+      q = (q||'').trim().toLowerCase();
+      if (q.length < 2) {{ dd.style.display='none'; return; }}
+      var matches = _pcIdx.filter(function(p) {{
+        return p.n.toLowerCase().indexOf(q) !== -1
+            || (p.t||'').toLowerCase().indexOf(q) !== -1;
+      }}).slice(0,12);
+      if (!matches.length) {{ dd.style.display='none'; return; }}
+      // Use onclick (which iOS synthesizes reliably) + ontouchend with an
+      // explicit preventDefault fallback so the dropdown item fires even
+      // when Safari's fastclick heuristics get weird.
+      dd.innerHTML = matches.map(function(p) {{
+        return '<div class="pc-dd-item" data-pid="' + p.id + '" '
+          + 'onclick="_pcShow(Number(this.dataset.pid))" '
+          + 'ontouchend="event.preventDefault();_pcShow(Number(this.dataset.pid))" '
+          + 'style="-webkit-tap-highlight-color:rgba(255,255,255,.1)">'
+          + '<span style="font-weight:700">' + p.n + '</span>'
+          + '<span style="color:#888;font-size:.78rem;margin-left:8px">' + (p.t||'') + '</span>'
+          + '</div>';
+      }}).join('');
+      dd.style.display = 'block';
+    }} catch (e) {{
+      console.error('[pc-search] error:', e);
+    }}
   }};
 
   // Clear dropdown when typing clears the box
@@ -824,7 +844,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
       return '<div style="margin-bottom:8px">'
         + '<div style="margin-bottom:2px">'
-        +   '<span style="font-size:.78rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
+        +   '<span style="font-size:.88rem;color:' + labelCol + ';font-weight:800">' + label + '</span>'
         + '</div>'
         + barHtml
         + '</div>';

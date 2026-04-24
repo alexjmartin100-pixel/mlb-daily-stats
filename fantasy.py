@@ -3472,6 +3472,14 @@ window._phase3OppDropPicker     = false;   /* opponent drop picker visible */
    An explicit null value pins the slot to "empty". */
 window._phase3CustomLineup = {{}};
 
+/* IL pitcher activations — pitchers have no slot system, so we track
+   activations as a flat set per team. Structure:
+     _phase3IlPitcherActivations[team_id] = {{espn_id: true, ...}}
+   At sim time, _phase3InjectActivatedIlPitchers adds each activated
+   pitcher's record into team.pitchers so they contribute to the W/SO/etc.
+   totals. Lets the user project "what if this injured SP comes back?". */
+window._phase3IlPitcherActivations = {{}};
+
 /* Active roster-slot picker (click an After cell to open). When set,
    _phase3RenderLineups inserts a sub-row listing every eligible hitter
    on that side's post-trade roster. Cleared on pick / close / trade
@@ -3992,6 +4000,76 @@ function _phase3MakeHitterFromTrade(p) {{
     PA:      (p.proj && p.proj.PA)   || 600,
     is_il_activation: true
   }};
+}}
+
+/* Same idea as _phase3MakeHitterFromTrade but for a pitcher record pulled
+   from TRADE_PITCHERS. Synthesizes the counting-stat fields the aggregator
+   (IP-weighted ERA/WHIP, sum W/SO_p/SV/HLD) needs. */
+function _phase3MakePitcherFromTrade(p) {{
+  return {{
+    espn_id: p.espn_id,
+    name:    p.name,
+    team:    p.team,
+    role:    p.role,
+    dollars: p.dollars || 0,
+    W:       (p.proj && p.proj.W)    || 0,
+    SO_p:    (p.proj && p.proj.K_p)  || 0,
+    SV:      (p.proj && p.proj.SV)   || 0,
+    HLD:     (p.proj && p.proj.HLD)  || 0,
+    ERA:     (p.proj && p.proj.ERA)  || 0,
+    WHIP:    (p.proj && p.proj.WHIP) || 0,
+    IP:      (p.proj && p.proj.IP)   || 0,
+    is_il_activation: true
+  }};
+}}
+
+/* Team-owned IL/inactive pitchers — same logic as _phase3IlHittersFor but
+   over the pitcher pool and against pre-trade team.pitchers (which phase3
+   already filters to actives). */
+function _phase3IlPitchersFor(teamId) {{
+  if (teamId == null) return [];
+  var origTeam = PHASE3_LEAGUE && PHASE3_LEAGUE.teams
+    ? PHASE3_LEAGUE.teams.find(function(t) {{ return t.team_id === teamId; }})
+    : null;
+  var origActiveIds = {{}};
+  if (origTeam) {{
+    (origTeam.pitchers || []).forEach(function(p) {{ origActiveIds[p.espn_id] = true; }});
+  }}
+  var pool = (typeof TRADE_PITCHERS !== 'undefined' ? TRADE_PITCHERS : []);
+  var out = [];
+  pool.forEach(function(p) {{
+    if (p.team_id !== teamId) return;
+    if (p.espn_id == null) return;
+    if (origActiveIds[p.espn_id]) return;
+    out.push(p);
+  }});
+  return out;
+}}
+
+/* For every espn_id the user has activated, inject that pitcher into
+   team.pitchers so the aggregator counts them. Activations that turn out
+   to be stale (the named pitcher isn't in TRADE_PITCHERS anymore, or is
+   already on team.pitchers) are simply skipped. */
+function _phase3InjectActivatedIlPitchers(team) {{
+  var act = window._phase3IlPitcherActivations[team.team_id];
+  if (!act) return;
+  var byId = {{}};
+  (team.pitchers || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
+  var ilPool = _phase3IlPitchersFor(team.team_id);
+  var ilById = {{}};
+  ilPool.forEach(function(p) {{ ilById[p.espn_id] = p; }});
+  Object.keys(act).forEach(function(eidStr) {{
+    if (!act[eidStr]) return;              // false/zero means de-activated
+    var eid = isNaN(Number(eidStr)) ? eidStr : Number(eidStr);
+    if (byId[eid]) return;                  // already on active roster
+    var rec = ilById[eid];
+    if (!rec) {{
+      for (var i = 0; i < ilPool.length; i++) {{
+        if (String(ilPool[i].espn_id) === String(eid)) {{ rec = ilPool[i]; break; }}
+      }}
+    }}
+    if (rec) team.pitchers.push(_phase3MakePitcherFromTrade(rec));
+  }});
 }}
 
 /* Return the list of team-owned IL/inactive hitters for `teamId`. "IL" is
@@ -5004,6 +5082,9 @@ function _phase3SimulateTrade() {{
     // excludes inactives), so if a custom pin references an IL player we
     // pull them from TRADE_HITTERS into the hitter pool here.
     _phase3InjectActivatedIl(team);
+    // Same for pitchers — activated IL pitchers get pushed into
+    // team.pitchers so the W/SO/ERA aggregate reflects them.
+    _phase3InjectActivatedIlPitchers(team);
     // Re-optimize hitter lineup (honors manual pins in _phase3CustomLineup)
     var resolved = _phase3ResolveLineup(team);
     var starters = resolved.starters;
@@ -5452,6 +5533,38 @@ function phase3ResetOppLineup() {{
   var tid = _tradeRoster.recvTeamId;
   if (tid != null) delete window._phase3CustomLineup[tid];
   window._phase3RosterSlotOpp = null;
+  _tradeCalc();
+}}
+
+/* IL-pitcher activation handlers. Pitchers don't have slots so activation
+   is a flat per-team set instead of per-slot pins. Toggling triggers a
+   full sim re-run so standings reflect the activation. */
+function _phase3ToggleIlPitcher(teamId, espnIdStr, on) {{
+  if (teamId == null) return;
+  if (!window._phase3IlPitcherActivations[teamId]) {{
+    window._phase3IlPitcherActivations[teamId] = {{}};
+  }}
+  var eid = isNaN(Number(espnIdStr)) ? espnIdStr : Number(espnIdStr);
+  if (on) window._phase3IlPitcherActivations[teamId][eid] = true;
+  else     delete window._phase3IlPitcherActivations[teamId][eid];
+  if (!Object.keys(window._phase3IlPitcherActivations[teamId]).length) {{
+    delete window._phase3IlPitcherActivations[teamId];
+  }}
+}}
+function phase3ActivateUserIlPitcher(espnIdStr) {{
+  _phase3ToggleIlPitcher(_tradeRoster.sendTeamId, espnIdStr, true);
+  _tradeCalc();
+}}
+function phase3DeactivateUserIlPitcher(espnIdStr) {{
+  _phase3ToggleIlPitcher(_tradeRoster.sendTeamId, espnIdStr, false);
+  _tradeCalc();
+}}
+function phase3ActivateOppIlPitcher(espnIdStr) {{
+  _phase3ToggleIlPitcher(_tradeRoster.recvTeamId, espnIdStr, true);
+  _tradeCalc();
+}}
+function phase3DeactivateOppIlPitcher(espnIdStr) {{
+  _phase3ToggleIlPitcher(_tradeRoster.recvTeamId, espnIdStr, false);
   _tradeCalc();
 }}
 
@@ -6097,9 +6210,10 @@ function _phase3RenderLineups() {{
 
   // Pitcher staff: no slots, so show a union of before/after sorted by $.
   // Added pitchers tinted green, removed tinted red, kept neutral.
+  // Activated IL pitchers get a blue tint + inline Deactivate button.
   // `side` ('user'|'opp'|null): non-null sides render "+ FA" buttons on any
   // open pitcher spots created by the trade.
-  function pitcherTable(oldSum, newSum, side) {{
+  function pitcherTable(oldSum, newSum, side, newTeam) {{
     var oldP = oldSum.pitchers || [];
     var newP = newSum.pitchers || [];
     var oldIds = {{}}; oldP.forEach(function(p) {{ oldIds[p.espn_id] = p; }});
@@ -6112,29 +6226,44 @@ function _phase3RenderLineups() {{
     // trade than after (post-pickup). newSum already includes active pitcher
     // pickups from _phase3SimulateTrade, so this auto-calibrates.
     var openSlots = side ? Math.max(0, oldP.length - newP.length) : 0;
-    if (!union.length && !openSlots) {{
-      return '<div style="color:var(--muted);font-size:.75rem;padding:4px">No pitchers.</div>';
-    }}
     var pickerActive = (side === 'user') ? !!window._phase3PitcherPicker
                       : (side === 'opp')  ? !!window._phase3OppPitcherPicker
                       : false;
     var openFn = (side === 'user') ? 'phase3OpenPitcherPicker' : 'phase3OpenOppPitcherPicker';
+    var deactFn = (side === 'user') ? 'phase3DeactivateUserIlPitcher'
+                 : (side === 'opp')  ? 'phase3DeactivateOppIlPitcher' : null;
+    var actFn   = (side === 'user') ? 'phase3ActivateUserIlPitcher'
+                 : (side === 'opp')  ? 'phase3ActivateOppIlPitcher'   : null;
     var rows = '';
     union.forEach(function(p) {{
       var inNew = !!newIds[p.espn_id];
       var inOld = !!oldIds[p.espn_id];
-      var status, bg, beforeStr, afterStr;
-      if (inNew && inOld) {{
-        status = ''; bg = 'transparent';
+      var isIl  = !!p.is_il_activation;
+      var bg, beforeStr, afterStr;
+      if (isIl && inNew) {{
+        // Activated IL pitcher — wasn't in the baseline, surfaced now.
+        bg = '#152334';
+        beforeStr = '<span style="color:#666">IL</span>';
+        afterStr  = fmtCell(p);
+        if (deactFn) {{
+          afterStr += '&nbsp;<button data-eid="' + p.espn_id + '" '
+                   + 'onclick="' + deactFn + '(this.dataset.eid)" '
+                   + 'style="background:#2a1a1a;border:1px solid #6b2e2e;color:#e0a0a0;'
+                   + 'cursor:pointer;font-size:.62rem;padding:1px 7px;border-radius:4px;'
+                   + 'font-weight:700;letter-spacing:.04em">&#x2715; DEACTIVATE</button>';
+        }}
+      }} else if (inNew && inOld) {{
+        bg = 'transparent';
         beforeStr = fmtCell(p); afterStr = fmtCell(p);
       }} else if (inNew && !inOld) {{
-        status = 'ADDED'; bg = '#1a2a1a';
+        bg = '#1a2a1a';
         beforeStr = '<span style="color:#666">\u2014</span>'; afterStr = fmtCell(p);
       }} else {{
-        status = 'REMOVED'; bg = '#2a1a1a';
+        bg = '#2a1a1a';
         beforeStr = fmtCell(p); afterStr = '<span style="color:#666">\u2014</span>';
       }}
-      var role = (p.IP || 0) >= 100 ? 'SP' : 'RP';
+      var role = (p.role ? (String(p.role).toLowerCase() === 'sp' ? 'SP' : 'RP')
+                          : ((p.IP || 0) >= 100 ? 'SP' : 'RP'));
       rows += '<tr style="background:' + bg + ';border-bottom:1px solid #1d1d1d">'
             +   '<td style="padding:4px 8px;color:var(--muted);font-weight:700;width:46px">'
             +     role + '</td>'
@@ -6162,6 +6291,48 @@ function _phase3RenderLineups() {{
               + renderPitcherPicker(side)
               + '</td></tr>';
       }}
+    }}
+
+    // ── IL / Inactive Pitchers section ─────────────────────────────────
+    // Let the user activate injured pitchers to project "what if this SP
+    // comes back from the IL?". Team-owned IL pitchers not currently
+    // activated show up with an Activate button; already-activated ones
+    // are in the main union above with a Deactivate button inline.
+    var ilRows = '';
+    if (side && actFn && newTeam && newTeam.team_id != null) {{
+      var activeIds = {{}};
+      (newTeam.pitchers || []).forEach(function(p) {{ activeIds[p.espn_id] = true; }});
+      var ilPitchers = _phase3IlPitchersFor(newTeam.team_id)
+        .filter(function(p) {{ return !activeIds[p.espn_id]; }});
+      ilPitchers.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
+      if (ilPitchers.length) {{
+        var chips = ilPitchers.map(function(p) {{
+          var rl = (p.role && String(p.role).toLowerCase() === 'sp') ? 'SP' : 'RP';
+          return '<button data-eid="' + p.espn_id + '" '
+               + 'onclick="' + actFn + '(this.dataset.eid)" '
+               + 'style="background:#152334;border:1px solid #2e4a6b;color:#cde1f4;'
+               + 'padding:5px 9px;margin:2px 3px 2px 0;border-radius:4px;cursor:pointer;'
+               + 'font-size:.74rem;display:inline-flex;align-items:center;gap:5px">'
+               + '<span style="font-weight:600">' + p.name + '</span>'
+               + '<span style="color:#888;font-size:.58rem;font-weight:700">' + rl + '</span>'
+               + '<span style="color:#aaa;font-weight:700;font-variant-numeric:tabular-nums">$'
+               + (p.dollars || 0).toFixed(1) + '</span>'
+               + '<span style="color:#7ec87e;font-size:.6rem;font-weight:700;'
+               + 'letter-spacing:.04em">+ ACTIVATE</span></button>';
+        }}).join('');
+        ilRows = '<tr><td colspan="4" style="padding:8px 8px 4px;border-top:1px solid #262626">'
+               + '<div style="font-size:.62rem;color:#6ab4ff;font-weight:700;'
+               + 'text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">'
+               + 'IL / Inactive Pitchers '
+               + '<span style="color:#555;font-weight:500;text-transform:none;letter-spacing:0;'
+               + 'margin-left:4px">(activate to project if healthy)</span></div>'
+               + '<div>' + chips + '</div>'
+               + '</td></tr>';
+      }}
+    }}
+    rows += ilRows;
+    if (!union.length && !openSlots && !ilRows) {{
+      return '<div style="color:var(--muted);font-size:.75rem;padding:4px">No pitchers.</div>';
     }}
     var oldD = (oldSum.pDollar || 0).toFixed(1);
     var newD = (newSum.pDollar || 0).toFixed(1);
@@ -6194,7 +6365,7 @@ function _phase3RenderLineups() {{
     return '<div style="flex:1;min-width:340px;background:#141414;border-radius:8px;'
          + 'padding:10px 12px;border-left:3px solid ' + accent + '">'
          +   hitterTable(label, oldSum, newSum, accent, side, newTeam)
-         +   pitcherTable(oldSum, newSum, side)
+         +   pitcherTable(oldSum, newSum, side, newTeam)
          + '</div>';
   }}
 
