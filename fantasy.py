@@ -2840,7 +2840,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
       </select>
     </div>
 
-    <div id="ww-topfa-body" style="display:none">
+    <div id="ww-topfa-body">
       <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px 14px;
                   margin-bottom:14px;font-size:.78rem;color:#bbb;line-height:1.5">
         Top 30 unrostered <strong>hitters</strong> and <strong>SPs</strong> by avg RoS dollar
@@ -3972,19 +3972,103 @@ function _phase3OptimizeHittersRestricted(hitters, excludedSlotIdxs) {{
   return {{starters: starters, assigns: assigns}};
 }}
 
+/* Convert a TRADE_HITTERS record into a team.hitters-shaped record with the
+   direct counting fields the LAP + aggregator use. Reused for both IL
+   activations and any other "pull a hitter from the flat trade pool into
+   a team's roster" flow. */
+function _phase3MakeHitterFromTrade(p) {{
+  return {{
+    espn_id: p.espn_id,
+    name:    p.name,
+    team:    p.team,
+    dollars: p.dollars || 0,
+    elig:    (p.elig && p.elig.length) ? p.elig.slice() : _fgPosToSlots(p.fg_pos || ''),
+    R:       (p.proj && p.proj.R)    || 0,
+    HR:      (p.proj && p.proj.HR)   || 0,
+    RBI:     (p.proj && p.proj.RBI)  || 0,
+    SO_h:    (p.proj && p.proj.K_h)  || 0,
+    SB:      (p.proj && p.proj.SB)   || 0,
+    OBP:     (p.proj && p.proj.OBP)  || 0,
+    PA:      (p.proj && p.proj.PA)   || 600,
+    is_il_activation: true
+  }};
+}}
+
+/* Return the list of team-owned IL/inactive hitters for `teamId` — ESPN
+   rostered hitters that weren't in team.hitters (which excludes inactives).
+   Used by the roster picker's IL section and the activation-injection
+   step in _phase3SimulateTrade. */
+function _phase3IlHittersFor(teamId, team) {{
+  if (teamId == null) return [];
+  var activeIds = {{}};
+  (team && team.hitters || []).forEach(function(p) {{ activeIds[p.espn_id] = true; }});
+  var pool = (typeof TRADE_HITTERS !== 'undefined' ? TRADE_HITTERS : []);
+  var out = [];
+  pool.forEach(function(p) {{
+    if (p.team_id !== teamId) return;
+    if (p.espn_id == null) return;
+    if (activeIds[p.espn_id]) return;
+    out.push(p);
+  }});
+  return out;
+}}
+
+/* After _phase3PruneCustomLineup runs, any surviving pins that reference an
+   espn_id not on `team.hitters` must be an IL activation. Inject those
+   players into `team.hitters` so the resolver/LAP can actually place them. */
+function _phase3InjectActivatedIl(team) {{
+  var custom = window._phase3CustomLineup[team.team_id];
+  if (!custom) return;
+  var byId = {{}};
+  (team.hitters || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
+  var ilPool = _phase3IlHittersFor(team.team_id, team);
+  var ilById = {{}};
+  ilPool.forEach(function(p) {{ ilById[p.espn_id] = p; }});
+  var seen = {{}};
+  Object.keys(custom).forEach(function(slotId) {{
+    var eid = custom[slotId];
+    if (eid == null) return;
+    if (byId[eid]) return;             // already on active roster
+    if (seen[eid]) return;
+    seen[eid] = true;
+    var rec = ilById[eid];
+    // Loose-equality fallback (espn_ids may be numeric vs string)
+    if (!rec) {{
+      for (var i = 0; i < ilPool.length; i++) {{
+        if (String(ilPool[i].espn_id) === String(eid)) {{ rec = ilPool[i]; break; }}
+      }}
+    }}
+    if (rec) team.hitters.push(_phase3MakeHitterFromTrade(rec));
+  }});
+}}
+
 /* Drop any custom-lineup pins whose named player is no longer on the team's
-   roster (e.g. the user traded them away or changed the trade composition).
-   Keeps still-valid pins intact. Returns true if any entry was pruned. */
+   roster OR IL pool (e.g. the user traded them away, changed the trade, or
+   the IL player got dropped). Keeps still-valid pins intact — including IL
+   pins so the user's activated injured players survive a sim refresh. */
 function _phase3PruneCustomLineup(teamId, team) {{
   var custom = window._phase3CustomLineup[teamId];
   if (!custom) return false;
   var byId = {{}};
   (team.hitters || []).forEach(function(p) {{ byId[p.espn_id] = p; }});
+  // IL pool — team-owned hitters NOT on the active roster.
+  var ilIds = {{}};
+  var pool = (typeof TRADE_HITTERS !== 'undefined' ? TRADE_HITTERS : []);
+  pool.forEach(function(p) {{
+    if (p.team_id === teamId && p.espn_id != null && !byId[p.espn_id]) {{
+      ilIds[p.espn_id] = true;
+    }}
+  }});
   var pruned = false;
   Object.keys(custom).forEach(function(slotId) {{
     var eid = custom[slotId];
-    if (eid == null) return;     // explicit "empty" pin — keep
-    if (!byId[eid]) {{ delete custom[slotId]; pruned = true; }}
+    if (eid == null) return;             // explicit "empty" pin — keep
+    if (byId[eid] || ilIds[eid]) return; // active or IL — keep
+    // Loose-equality fallback for numeric-vs-string id mismatch
+    var found = false;
+    for (var k in byId) {{ if (String(k) === String(eid)) {{ found = true; break; }} }}
+    if (!found) for (var k2 in ilIds) {{ if (String(k2) === String(eid)) {{ found = true; break; }} }}
+    if (!found) {{ delete custom[slotId]; pruned = true; }}
   }});
   if (!Object.keys(custom).length) delete window._phase3CustomLineup[teamId];
   return pruned;
@@ -4905,6 +4989,11 @@ function _phase3SimulateTrade() {{
     // Drop any custom-lineup pins for players the user traded away /
     // dropped before resolving — keeps the manual override valid.
     _phase3PruneCustomLineup(team.team_id, team);
+    // Inject any IL / inactive players the user activated via the roster
+    // picker. They're not in team.hitters by default (the phase3 payload
+    // excludes inactives), so if a custom pin references an IL player we
+    // pull them from TRADE_HITTERS into the hitter pool here.
+    _phase3InjectActivatedIl(team);
     // Re-optimize hitter lineup (honors manual pins in _phase3CustomLineup)
     var resolved = _phase3ResolveLineup(team);
     var starters = resolved.starters;
@@ -5583,6 +5672,8 @@ function _phase3RenderLineups() {{
     if (!p) return '<span style="color:#e05555;font-weight:700">(empty)</span>';
     var tag = p.is_pickup
       ? '<span style="color:#f0c040;font-size:.62rem;font-weight:700;margin-left:4px">PICKUP</span>'
+      : p.is_il_activation
+      ? '<span style="color:#6ab4ff;font-size:.62rem;font-weight:700;margin-left:4px">IL&#x2192;ACTIVE</span>'
       : '';
     var posTag = (p.elig && !p.is_pitcher) ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:3px">' + _eligLabel(p.elig) + '</span>' : '';
     return '<span style="color:#ddd">' + (p.name || '?') + '</span>' + posTag
@@ -5634,8 +5725,9 @@ function _phase3RenderLineups() {{
     return html;
   }}
 
-  // Roster picker — lists eligible hitters from the team's post-trade roster
-  // so the user can override the dollar-optimized lineup for a given slot.
+  // Roster picker — offers only the slot's current occupant plus eligible
+  // BENCH hitters (players not already starting elsewhere). Keeps the
+  // interaction focused: pick-from-bench or clear-slot, nothing else.
   function renderRosterPicker(side, slotLabel, slotId, newTeam) {{
     var closeFn = (side === 'user') ? 'phase3CloseUserRosterPicker'
                                     : 'phase3CloseOppRosterPicker';
@@ -5643,70 +5735,106 @@ function _phase3RenderLineups() {{
                                     : 'phase3PickOppRosterPlayer';
     var clearFn = (side === 'user') ? 'phase3ClearUserRosterSlot'
                                     : 'phase3ClearOppRosterSlot';
-    var hitters = (newTeam && newTeam.hitters) ? newTeam.hitters.slice() : [];
-    hitters = hitters.filter(function(p) {{ return _canFillSlot(p, slotId); }});
-    // Sort by $ desc so best options surface first
-    hitters.sort(function(a,b) {{ return (b.dollars||0) - (a.dollars||0); }});
-    // Which player (espn_id) is in this slot RIGHT NOW in the after view?
-    var curAssigns = (newTeam && newTeam.__assigns) ? newTeam.__assigns : null;
-    var inThisSlot = null;
-    if (curAssigns) {{
-      for (var q = 0; q < curAssigns.length; q++) {{
-        if (curAssigns[q].slot_id === slotId) {{
-          inThisSlot = curAssigns[q].player ? curAssigns[q].player.espn_id : null;
-          break;
-        }}
+    var allHitters = (newTeam && newTeam.hitters) ? newTeam.hitters : [];
+    var curAssigns = (newTeam && newTeam.__assigns) ? newTeam.__assigns : [];
+
+    // Map every starter's espn_id to the slot they're currently in.
+    var starterSlot = {{}};
+    curAssigns.forEach(function(a) {{
+      if (a.player) starterSlot[a.player.espn_id] = a.slot_id;
+    }});
+    // Current occupant of *this* slot (may be null)
+    var currentOccupant = null;
+    for (var q = 0; q < curAssigns.length; q++) {{
+      if (curAssigns[q].slot_id === slotId) {{
+        currentOccupant = curAssigns[q].player || null;
+        break;
       }}
     }}
-    // Build slot_id lookup for "currently in slot X" hint
-    var espnToSlot = {{}};
-    if (curAssigns) {{
-      curAssigns.forEach(function(a) {{
-        if (a.player) espnToSlot[a.player.espn_id] = a.slot_label;
-      }});
+    var currentEid = currentOccupant ? currentOccupant.espn_id : null;
+
+    // Eligible bench = hitters who can fill this slot AND aren't already
+    // starting in another slot AND aren't the current occupant (we surface
+    // the current occupant separately).
+    var bench = [];
+    allHitters.forEach(function(p) {{
+      if (!_canFillSlot(p, slotId)) return;
+      if (p.espn_id === currentEid) return;
+      if (starterSlot[p.espn_id] != null) return;
+      bench.push(p);
+    }});
+    bench.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+
+    // Shared chip styling — same muted $ color for every row so nothing
+    // visually outweighs anything else.
+    function chipBtn(p, extraStyle) {{
+      var pl = _posLabel(p);
+      var posLbl = pl ? '<span style="color:#888;font-size:.58rem;font-weight:700;margin-left:3px">' + pl + '</span>' : '';
+      return '<button onmousedown="' + pickFn + '(' + slotId + ',this.dataset.eid)" '
+           +  'data-eid="' + p.espn_id + '" '
+           +  'style="background:#1a1a1a;border:1px solid #2a2a2a;color:#ddd;'
+           +  'padding:5px 9px;border-radius:4px;cursor:pointer;font-size:.76rem;'
+           +  'display:inline-flex;align-items:center;gap:5px;' + (extraStyle || '') + '">'
+           +  '<span style="font-weight:600">' + p.name + '</span>' + posLbl
+           +  '<span style="color:#aaa;font-weight:700;font-variant-numeric:tabular-nums">$'
+           +    (p.dollars || 0).toFixed(1) + '</span>'
+           +  '</button>';
     }}
 
     var html = '<div style="background:#0f0f0f;border:1px solid #333;border-radius:6px;'
-             + 'padding:7px 9px;margin:4px 0">'
-             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
-             + '<span style="font-size:.68rem;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">'
-             + 'Set ' + slotLabel + ' from roster</span>'
+             + 'padding:9px 11px;margin:4px 0">'
+             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+             + '<span style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase">'
+             + 'Set ' + slotLabel + '</span>'
              + '<button onmousedown="' + closeFn + '()" '
-             + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.9rem;padding:0 4px">&#x2715;</button>'
+             + 'style="background:none;border:none;color:#888;cursor:pointer;font-size:.95rem;padding:0 4px">&#x2715;</button>'
              + '</div>';
-    // "Leave empty" chip
-    html += '<div style="display:flex;flex-wrap:wrap;gap:3px">'
-          + '<button onmousedown="' + clearFn + '(' + slotId + ')" '
-          + 'style="background:#2a1a1a;border:1px solid #6b2e2e;color:#e0a0a0;'
-          + 'padding:4px 9px;border-radius:4px;cursor:pointer;font-size:.73rem;font-weight:700">'
-          + '(empty)</button>';
-    if (!hitters.length) {{
-      html += '<span style="color:var(--muted);font-size:.75rem;padding:4px">'
-            + 'No eligible hitters on this roster.</span>';
-    }} else {{
-      hitters.forEach(function(p) {{
-        var dCol = p.dollars >= 10 ? '#f0c040' : p.dollars >= 0 ? '#7ec87e' : '#888';
-        var isCurrent = (p.espn_id === inThisSlot);
-        var currentSlot = espnToSlot[p.espn_id];  // where player is right now
-        var elsewhereTag = (currentSlot && !isCurrent)
-          ? '<span style="color:#f0c040;font-size:.55rem;font-weight:700;margin-left:3px">in ' + currentSlot + '</span>'
-          : '';
-        var pl = _posLabel(p);
-        var posLbl = pl ? '<span style="color:#777;font-size:.56rem;font-weight:700">' + pl + '</span>' : '';
-        var bg = isCurrent ? '#2a2a1a' : '#1a1a1a';
-        var border = isCurrent ? '1px solid #6b6b2e' : '1px solid #2a2a2a';
-        html += '<button onmousedown="' + pickFn + '(' + slotId + ',this.dataset.eid)" '
-             +  'data-eid="' + p.espn_id + '" '
-             +  'style="background:' + bg + ';border:' + border + ';color:#ddd;'
-             +  'padding:4px 7px;border-radius:4px;cursor:pointer;font-size:.73rem;'
-             +  'display:inline-flex;align-items:center;gap:4px">'
-             +  '<span style="font-weight:600">' + p.name + '</span>' + posLbl
-             +  elsewhereTag
-             +  '<span style="color:' + dCol + ';font-weight:700">$' + (p.dollars||0).toFixed(1) + '</span>'
-             +  '</button>';
-      }});
+
+    // Row 1: "Leave empty" + current occupant (keeps it as an option).
+    html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">'
+         +  '<button onmousedown="' + clearFn + '(' + slotId + ')" '
+         +  'style="background:#2a1a1a;border:1px solid #6b2e2e;color:#e0a0a0;'
+         +  'padding:5px 10px;border-radius:4px;cursor:pointer;font-size:.76rem;font-weight:700">'
+         +  '(empty)</button>';
+    if (currentOccupant) {{
+      html += chipBtn(currentOccupant, 'background:#1d2a1d;border-color:#3e6b3e;');
+      html += '<span style="color:#888;font-size:.66rem;font-weight:600;align-self:center">'
+            + '&nbsp;current</span>';
     }}
-    html += '</div></div>';
+    html += '</div>';
+
+    // Row 2: eligible bench players.
+    if (!bench.length) {{
+      html += '<div style="color:var(--muted);font-size:.76rem;padding:3px 0">'
+            + 'No eligible bench hitters for this slot.</div>';
+    }} else {{
+      html += '<div style="font-size:.64rem;color:#888;font-weight:600;'
+            + 'text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Bench</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+      bench.forEach(function(p) {{ html += chipBtn(p); }});
+      html += '</div>';
+    }}
+
+    // Row 3: IL / inactive players on this team — lets the user pin an
+    // injured player into the slot to project standings if they return.
+    // The sim layer detects the IL pin and injects them into team.hitters.
+    var ilPool = _phase3IlHittersFor(newTeam && newTeam.team_id, newTeam);
+    var ilEligible = ilPool.filter(function(p) {{ return _canFillSlot(p, slotId); }});
+    ilEligible.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+    if (ilEligible.length) {{
+      html += '<div style="font-size:.64rem;color:#6ab4ff;font-weight:600;'
+            + 'text-transform:uppercase;letter-spacing:.04em;margin:8px 0 3px">'
+            + 'IL / Inactive '
+            + '<span style="color:#777;font-weight:500;text-transform:none;letter-spacing:0">'
+            + '(activate to project if healthy)</span></div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+      ilEligible.forEach(function(p) {{
+        html += chipBtn(p, 'border-color:#2e4a6b;color:#cde1f4;background:#152334;');
+      }});
+      html += '</div>';
+    }}
+
+    html += '</div>';
     return html;
   }}
 
@@ -5792,6 +5920,39 @@ function _phase3RenderLineups() {{
               + '</td></tr>';
       }}
     }}
+
+    // Bench row — any hitter on the post-trade roster who isn't in a
+    // starting slot. Display-only (they don't contribute to the projected
+    // stats shown above, which are summed from `starters` only). Clicking
+    // a starting slot lets the user pin one of these bench hitters into it.
+    if (newTeam && newTeam.hitters && newTeam.hitters.length) {{
+      var starterIds = {{}};
+      newA.forEach(function(a) {{ if (a.player) starterIds[a.player.espn_id] = true; }});
+      var benchList = newTeam.hitters.filter(function(p) {{ return !starterIds[p.espn_id]; }});
+      benchList.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+      if (benchList.length) {{
+        var benchHtml = benchList.map(function(p) {{
+          var pl = _posLabel(p);
+          var posLbl = pl ? '<span style="color:#777;font-size:.56rem;font-weight:700;margin-left:3px">'
+                          + pl + '</span>' : '';
+          return '<span style="display:inline-flex;align-items:center;gap:4px;'
+               + 'background:#181818;border:1px solid #262626;border-radius:4px;'
+               + 'padding:2px 7px;margin:2px 3px 2px 0;font-size:.74rem">'
+               + '<span style="color:#ddd;font-weight:600">' + p.name + '</span>' + posLbl
+               + '<span style="color:#aaa;font-weight:700;font-variant-numeric:tabular-nums">$'
+               +   (p.dollars || 0).toFixed(1) + '</span>'
+               + '</span>';
+        }}).join('');
+        rows += '<tr><td colspan="4" style="padding:8px 8px 4px;border-top:1px solid #262626">'
+              + '<div style="font-size:.62rem;color:#888;font-weight:700;'
+              + 'text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">'
+              + 'Bench <span style="color:#555;font-weight:500;text-transform:none;'
+              + 'letter-spacing:0;margin-left:4px">(not counted in projections)</span></div>'
+              + '<div>' + benchHtml + '</div>'
+              + '</td></tr>';
+      }}
+    }}
+
     var oldD = (oldSum.hDollar || 0).toFixed(1);
     var newD = (newSum.hDollar || 0).toFixed(1);
     var dDelta = (newSum.hDollar || 0) - (oldSum.hDollar || 0);
@@ -6352,6 +6513,9 @@ function wwSwitch(which) {{
     btn.style.color = on ? '#fff' : '';
   }});
   _wwState.mode = which;
+  // Belt-and-suspenders: re-render Top FA on activation so it's populated
+  // even if wwInit ran before the template was hydrated.
+  if (which === 'topfa') _wwRenderTopFa();
 }}
 
 /* ── Init: populate team dropdowns when waiver tab is first shown ── */
@@ -6360,23 +6524,32 @@ function wwInit() {{
   var allTeams = PHASE3_LEAGUE.teams.slice().sort(function(a,b) {{
     return (a.name || '').localeCompare(b.name || '');
   }});
-  var optHtml = '<option value="">\u2014 pick a team \u2014</option>';
+  // Add/Drop + Stream Pitchers dropdowns DEFAULT to the user's team.
+  var optHtmlWithUserSel = '<option value="">\u2014 pick a team \u2014</option>';
   allTeams.forEach(function(t) {{
     var sel = (t.team_id === PHASE3_LEAGUE.user_team_id) ? ' selected' : '';
-    optHtml += '<option value="' + t.team_id + '"' + sel + '>' + t.name + '</option>';
+    optHtmlWithUserSel += '<option value="' + t.team_id + '"' + sel + '>' + t.name + '</option>';
+  }});
+  // Top FA dropdown stays NEUTRAL — no team pre-selected.
+  var optHtmlNeutral = '<option value="">\u2014 pick a team \u2014</option>';
+  allTeams.forEach(function(t) {{
+    optHtmlNeutral += '<option value="' + t.team_id + '">' + t.name + '</option>';
   }});
   var s1 = document.getElementById('ww-team-sel');
-  if (s1) {{ s1.innerHTML = optHtml; }}
+  if (s1) {{ s1.innerHTML = optHtmlWithUserSel; }}
   var s2 = document.getElementById('ww-stream-team-sel');
-  if (s2) {{ s2.innerHTML = optHtml; }}
+  if (s2) {{ s2.innerHTML = optHtmlWithUserSel; }}
   var s3 = document.getElementById('ww-topfa-team-sel');
-  if (s3) {{ s3.innerHTML = optHtml; }}
-  // Auto-select user team if available
+  if (s3) {{ s3.innerHTML = optHtmlNeutral; }}
+  // Auto-select user team for Add/Drop and Stream (but NOT Top FA —
+  // that one stays neutral until the user picks a team).
   if (PHASE3_LEAGUE.user_team_id != null) {{
     wwSetTeam(PHASE3_LEAGUE.user_team_id);
     wwStreamSetTeam(PHASE3_LEAGUE.user_team_id);
-    wwTopFaSetTeam(PHASE3_LEAGUE.user_team_id);
   }}
+  // Top FA lists render immediately (ungreened) so the user sees the
+  // top 30 FAs even without picking a team.
+  _wwRenderTopFa();
 }}
 // Run init after page load
 if (document.readyState === 'complete') {{ wwInit(); }}
@@ -7312,9 +7485,6 @@ var _wwTopFaState = {{ teamId: null }};
 function wwTopFaSetTeam(val) {{
   var tid = val === '' ? null : parseInt(val, 10);
   _wwTopFaState.teamId = tid;
-  var body = document.getElementById('ww-topfa-body');
-  if (!body) return;
-  body.style.display = '';   // always show the lists, even w/o team
   _wwRenderTopFa();
 }}
 
@@ -7399,35 +7569,59 @@ function _wwFmtTopFaRow(p, helps, isPitcher) {{
 function _wwRenderTopFa() {{
   var hEl = document.getElementById('ww-topfa-h-list');
   var pEl = document.getElementById('ww-topfa-p-list');
-  if (!hEl || !pEl) return;
-  var team = _wwTopFaGetTeam();
+  if (!hEl || !pEl) return;   // template not yet hydrated — wwSwitch will retry
 
-  // Top 30 FA hitters — unrostered, sorted by $ desc
-  var fas_h = TRADE_HITTERS.filter(function(p) {{ return p.team_id == null; }});
-  fas_h.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
-  fas_h = fas_h.slice(0, 30);
+  try {{
+    var team = _wwTopFaGetTeam();
 
-  // Top 30 FA SPs — unrostered, role == sp (fall back to top-30 if role missing)
-  var fas_p = TRADE_PITCHERS.filter(function(p) {{
-    if (p.team_id != null) return false;
-    if (p.role) return String(p.role).toLowerCase() === 'sp';
-    return true;   // no role tag → include
-  }});
-  fas_p.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
-  fas_p = fas_p.slice(0, 30);
+    // Top 30 FA hitters — unrostered (team_id null OR undefined when no
+    // ESPN snapshot was loaded), sorted by $ desc.
+    var fas_h = (typeof TRADE_HITTERS !== 'undefined' ? TRADE_HITTERS : [])
+      .filter(function(p) {{ return p.team_id == null; }});
+    fas_h.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+    fas_h = fas_h.slice(0, 30);
 
-  var hHtml = fas_h.map(function(p) {{
-    var helps = team ? _wwTopFaHitterHelps(team, p) : false;
-    return _wwFmtTopFaRow(p, helps, false);
-  }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent hitters.</div>';
+    // Top 30 FA SPs — unrostered, role == sp. Include when role tag is
+    // missing as a safety fallback.
+    var fas_p = (typeof TRADE_PITCHERS !== 'undefined' ? TRADE_PITCHERS : [])
+      .filter(function(p) {{
+        if (p.team_id != null) return false;
+        if (p.role) return String(p.role).toLowerCase() === 'sp';
+        return true;
+      }});
+    fas_p.sort(function(a, b) {{ return (b.dollars || 0) - (a.dollars || 0); }});
+    fas_p = fas_p.slice(0, 30);
 
-  var pHtml = fas_p.map(function(p) {{
-    var helps = team ? _wwTopFaSpHelps(team, p) : false;
-    return _wwFmtTopFaRow(p, helps, true);
-  }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent SPs.</div>';
+    // Greening is best-effort — if the LAP throws on one FA, it shouldn't
+    // nuke the whole render. Catch per-FA and treat as "doesn't help".
+    function safeHelpsHitter(p) {{
+      if (!team) return false;
+      try {{ return _wwTopFaHitterHelps(team, p); }}
+      catch (e) {{ console.warn('[TopFA] hitter-helps failed', p && p.name, e); return false; }}
+    }}
+    function safeHelpsSp(p) {{
+      if (!team) return false;
+      try {{ return _wwTopFaSpHelps(team, p); }}
+      catch (e) {{ console.warn('[TopFA] sp-helps failed', p && p.name, e); return false; }}
+    }}
 
-  hEl.innerHTML = hHtml;
-  pEl.innerHTML = pHtml;
+    var hHtml = fas_h.map(function(p) {{
+      return _wwFmtTopFaRow(p, safeHelpsHitter(p), false);
+    }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent hitters.</div>';
+
+    var pHtml = fas_p.map(function(p) {{
+      return _wwFmtTopFaRow(p, safeHelpsSp(p), true);
+    }}).join('') || '<div style="color:var(--muted);font-size:.8rem;padding:8px">No free-agent SPs.</div>';
+
+    hEl.innerHTML = hHtml;
+    pEl.innerHTML = pHtml;
+  }} catch (e) {{
+    console.error('[TopFA] render failed:', e);
+    var msg = '<div style="color:#e05555;font-size:.8rem;padding:8px">'
+            + 'Top FA render failed: ' + ((e && e.message) || e) + '</div>';
+    hEl.innerHTML = msg;
+    pEl.innerHTML = '';
+  }}
 }}
 </script>
 """

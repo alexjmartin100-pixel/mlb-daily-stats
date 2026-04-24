@@ -824,7 +824,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
       return '<div style="margin-bottom:8px">'
         + '<div style="margin-bottom:2px">'
-        +   '<span style="font-size:.68rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
+        +   '<span style="font-size:.78rem;color:' + labelCol + ';font-weight:600">' + label + '</span>'
         + '</div>'
         + barHtml
         + '</div>';
