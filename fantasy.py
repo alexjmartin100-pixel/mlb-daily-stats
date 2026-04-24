@@ -5920,8 +5920,9 @@ function _phase3RenderLineups() {{
       var slotLbl = (na.slot_label || '').replace(/"/g, '&quot;');
       // Pass BOTH the slot index (unique, used for pinning) and slot_id
       // (used for eligibility filtering) to the picker handlers.
-      var openArgs   = i + ',' + na.slot_id + ',"' + slotLbl + '"';
-      var editArgs   = i + ',' + na.slot_id + ',"' + slotLbl + '"';
+      // Wrap the string arg in HTML-entity &quot;s so the attribute stays
+      // syntactically closed; the browser unescapes them before JS parses.
+      var editArgs = i + ',' + na.slot_id + ',&quot;' + slotLbl + '&quot;';
       if (na.player) {{
         // Filled slot — click the player name to swap via the roster picker
         if (side) {{
