@@ -381,6 +381,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
     photos_json = json.dumps(_photos, separators=(',', ':'))
 
+    # ── Externalize the headshot blob ─────────────────────────────────────
+    # Previously baked into the inline JS as `var _pcPhotos = {...}`, which
+    # bloated mlb_daily_stats.html to ~22 MB and forced the browser to parse
+    # ~13 MB of base64 in a single chunk during tab hydration — multi-second
+    # freezes on phones. Now we write it to pc_photos.js and load it via
+    # <script src="pc_photos.js" defer> alongside the main HTML (see
+    # inject_player_cards_tab below), so the dashboard becomes interactive
+    # while photos load in the background. window._pcPhotos has the same
+    # shape the inline var used to.
+    _photos_js_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "pc_photos.js"
+    )
+    try:
+        with open(_photos_js_path, "w", encoding="utf-8") as _fph:
+            _fph.write("window._pcPhotos=" + photos_json + ";\n")
+        print(f"  [headshots] wrote pc_photos.js ({len(photos_json):,} chars)")
+    except Exception as _e:
+        print(f"  [headshots] failed to write pc_photos.js: {_e}")
+
     inner = f"""
 <style>
 .pc-dd-item{{padding:9px 12px;cursor:pointer;font-size:.88rem;
@@ -397,13 +417,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
          behind the keyboard), so we use 16px exactly.
        — autocorrect/autocapitalize on mobile can insert characters that the
          handler sees as spaces/capitals, throwing off the 2-char threshold.
-       — oninput is the primary event but we also wire onkeyup as a fallback
-         for older iOS versions that batch input events around autocorrect. -->
+       — oninput is the only handler — the previous duplicate onkeyup was
+         doubling work per keystroke. The `window._pcSearch &&` guard
+         protects against typing during the brief window between the panel
+         being hydrated (input becomes visible) and the IIFE finishing
+         (the function gets defined). Without the guard, those keystrokes
+         throw a silent ReferenceError and look like "search is broken." -->
   <input id="pc-search" type="search" placeholder="Search hitter or pitcher by name or team…"
     autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
     inputmode="search"
-    oninput="_pcSearch(this.value)"
-    onkeyup="_pcSearch(this.value)"
+    oninput="window._pcSearch && _pcSearch(this.value)"
     style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
            background:#1a1a1a;border:1px solid #333;border-radius:8px;
            color:#eee;font-size:16px;outline:none"/>
@@ -455,8 +478,12 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   var _pcAvailYears = {avail_json};
   // Server-side pre-fetched headshot data URLs, keyed by player id.
   // iOS Safari couldn't reliably fetch cross-origin headshots at save
-  // time, so we bake them into the HTML at build time instead.
-  var _pcPhotos = {photos_json};
+  // time, so we bake them in at build time. As of the perf fix, the
+  // ~13 MB photo blob lives in pc_photos.js (loaded with <script defer>
+  // from inject_player_cards_tab) instead of inline here, so the HTML
+  // stays small. We read window._pcPhotos lazily at card-render time;
+  // if the deferred script hasn't loaded yet, the MLB CDN URL fallback
+  // (a few lines below in _pcShow) keeps the card looking right.
   var _pcCurrentYear = 2026;
   var _pcCurrentId = null;
 
@@ -573,7 +600,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var _mlbPhotoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
       + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
       + id + '/headshot/67/current';
-    var photoUrl = (_pcPhotos && _pcPhotos[String(id)]) || _mlbPhotoUrl;
+    var photoUrl = (window._pcPhotos && window._pcPhotos[String(id)]) || _mlbPhotoUrl;
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
@@ -1148,8 +1175,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }}
       }});
       var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
-      // Headshot is already a data URL baked into _pcPhotos at build time.
-      // html-to-image can embed it natively. No runtime network work needed.
+      // Headshot is already a data URL on window._pcPhotos (loaded via the
+      // deferred pc_photos.js). html-to-image embeds it natively, no
+      // runtime network work needed. If the deferred script somehow hasn't
+      // loaded by capture time, the MLB CDN URL fallback kicks in upstream.
       window.htmlToImage.toPng(card, {{
         backgroundColor: '#0a0a0a',
         pixelRatio: 2,
@@ -1286,8 +1315,14 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
     # content inside a <template> so the browser doesn't parse/layout it
     # until the user actually clicks the Player Cards tab. hydrateTab() in
     # html_template.py clones the template and executes any inline scripts.
+    #
+    # The <script src="pc_photos.js" defer> sits OUTSIDE the template so it
+    # downloads with the rest of the page, not when the tab is clicked.
+    # `defer` makes it run after HTML parsing without blocking page paint.
+    # By the time the user opens a card, window._pcPhotos is populated.
     lazy_html = (
-        '\n<div id="playercards-panel" class="tab-panel" data-lazy="1"></div>\n'
+        '\n<script src="pc_photos.js" defer></script>\n'
+        '<div id="playercards-panel" class="tab-panel" data-lazy="1"></div>\n'
         '<template id="playercards-panel-template">\n' + panel_html + '\n</template>\n'
     )
     html       = html.replace("</body>", lazy_html + "\n</body>")
