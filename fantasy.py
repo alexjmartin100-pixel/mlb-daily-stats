@@ -568,6 +568,137 @@ def _merge_players(ytd_list: list, fut_list: list, is_pitcher: bool) -> list:
 # Season Projections sub-tab. Returns a placeholder block if the snapshot is
 # missing or the parser/optimizer can't be imported.
 ESPN_ROSTER_FILES = ["espn_rosters.json"]   # search order
+
+
+# ── ESPN proTeamId → MLB abbreviation (mirror of parse_espn_rosters) ─────
+# Used by _inject_espn_only_players() so synthesized placeholder rows show
+# the right team badge in the Fantasy $ tables / trade pool.
+_ESPN_PRO_TEAM_ABBREV = {
+     1: "BAL",  2: "BOS",  3: "LAA",  4: "CHW",  5: "CLE",
+     6: "DET",  7: "KC",   8: "MIL",  9: "MIN", 10: "NYY",
+    11: "OAK", 12: "SEA", 13: "TEX", 14: "TOR", 15: "ATL",
+    16: "CHC", 17: "CIN", 18: "HOU", 19: "LAD", 20: "WSH",
+    21: "NYM", 22: "PHI", 23: "PIT", 24: "STL", 25: "SD",
+    26: "SF",  27: "COL", 28: "MIA", 29: "ARI", 30: "TB",
+}
+
+
+def _inject_espn_only_players(fdata: dict, snap_path: str | None) -> int:
+    """
+    Add zero-stat placeholder entries to fdata.fut_h / fdata.fut_p for every
+    ESPN-rostered player who isn't already in the FG auction-calc data.
+
+    Why: parse_espn_rosters.parse_league() drops any ESPN player whose name
+    can't be joined to fdata. Low-tier RPs (e.g. Jack Perkins, ~10% owned)
+    aren't in FG's auction calculator, so they silently disappear from the
+    team's roster — invisible in the trade machine, and missing from the
+    waiver-wire add/drop view (so the user can't drop them). Synthesizing a
+    $0 / 0-stat placeholder keeps them on their team's roster without
+    perturbing aggregates: pitcher rate stats (ERA/WHIP) are IP-weighted,
+    so an IP_p=0 placeholder contributes nothing to the team total.
+
+    Mutates fdata in place. Returns the number of placeholders added.
+    """
+    if not snap_path or not os.path.exists(snap_path):
+        return 0
+    try:
+        with open(snap_path, "r", encoding="utf-8") as _f:
+            snap = json.load(_f)
+    except Exception as e:
+        print(f"  [ESPN-inject] snapshot load failed: {e}")
+        return 0
+
+    raw = snap.get("raw", snap)
+
+    try:
+        from utils import norm_name as _nn
+    except Exception:
+        def _nn(s: str) -> str:
+            return (s or "").strip().lower().replace(".", "").replace("-", " ")
+
+    # Build a name index over the existing fdata so we don't double-add.
+    fdata_names: set = set()
+    for entry in (fdata.get("fut_h") or []) + (fdata.get("fut_p") or []):
+        nm = (entry.get("player", {}) or {}).get("name", "") or ""
+        if nm:
+            fdata_names.add(_nn(nm))
+
+    _PITCHER_SLOTS = {13, 14, 15}
+    _INACTIVE_SLOTS = {17, 19}
+
+    added_h = 0
+    added_p = 0
+    for t in raw.get("teams", []):
+        for ent in t.get("roster", {}).get("entries", []):
+            slot = ent.get("lineupSlotId")
+            if slot in _INACTIVE_SLOTS:
+                # IL/NA players don't need a roster slot in the trade pool —
+                # they're not active and can't be moved into a starting spot.
+                continue
+            ppe = ent.get("playerPoolEntry", {}) or {}
+            p   = ppe.get("player", {}) or {}
+            nm  = (p.get("fullName") or "").strip()
+            if not nm:
+                continue
+            if _nn(nm) in fdata_names:
+                continue   # already joined to FG row
+            elig = p.get("eligibleSlots", []) or []
+            tm = _ESPN_PRO_TEAM_ABBREV.get(p.get("proTeamId", 0), "")
+            is_pit = bool(set(elig) & _PITCHER_SLOTS)
+
+            if is_pit:
+                placeholder = {
+                    "player": {
+                        "name":   nm,
+                        "team":   tm,
+                        "fg_id":  None,
+                        "mlbam":  p.get("id"),
+                        # All marginal $ contributions = 0 (no FG data).
+                        "W": 0.0, "ERA": 0.0, "WHIP": 0.0,
+                        "SO": 0.0, "SV": 0.0, "HLD": 0.0,
+                        # Projected raw stats: leave None so the tables show '—'
+                        # rather than misleading 0s. Aggregates (which use 0/None
+                        # safely) and the JS trade machine both tolerate None.
+                        "W_p": None, "ERA_p": None, "WHIP_p": None,
+                        "SO_p": None, "SV_p": None, "HLD_p": None,
+                        "IP_p": 0.0,    # 0 IP → no impact on rate-stat aggregates
+                        "_ip":  0.0,    # SP/RP classification → defaults to RP
+                    },
+                    "dollar": 0.0,
+                    "z": 0.0,
+                    "zc": {},
+                }
+                fdata.setdefault("fut_p", []).append(placeholder)
+                fdata_names.add(_nn(nm))
+                added_p += 1
+            else:
+                placeholder = {
+                    "player": {
+                        "name":   nm,
+                        "team":   tm,
+                        "fg_id":  None,
+                        "mlbam":  p.get("id"),
+                        "fg_pos": "",
+                        "R": 0.0, "HR": 0.0, "RBI": 0.0,
+                        "SB": 0.0, "SO": 0.0, "OBP": 0.0,
+                        "R_p": None, "HR_p": None, "RBI_p": None,
+                        "SB_p": None, "SO_p": None, "OBP_p": None,
+                        "PA_p": 0.0,
+                    },
+                    "dollar": 0.0,
+                    "z": 0.0,
+                    "zc": {},
+                }
+                fdata.setdefault("fut_h", []).append(placeholder)
+                fdata_names.add(_nn(nm))
+                added_h += 1
+
+    if added_h or added_p:
+        print(f"  [ESPN-inject] +{added_h} hitters, +{added_p} pitchers as $0 placeholders "
+              f"(rostered players not in FG auction-calc data)")
+    return added_h + added_p
+
+
 PROJ_TEAM_CAT_ORDER = ["R", "HR", "RBI", "SO_h", "SB", "OBP",
                        "W", "SO_p", "SV", "HLD", "ERA", "WHIP"]
 PROJ_CAT_LABELS = {
@@ -2042,6 +2173,25 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
     if not fdata:
         return '<div id="fantasy-panel" class="tab-panel"></div>'
 
+    # Add zero-stat placeholders for ESPN-rostered players who aren't in FG's
+    # auction-calc data. Without this, low-tier RPs (Perkins, etc.) silently
+    # disappear from the team roster everywhere downstream — invisible to the
+    # trade machine and absent from the waiver-wire add/drop view. Must run
+    # BEFORE _trade_h / _trade_p / _build_phase3_payload so all three
+    # consumers see the synthesized rows. See _inject_espn_only_players().
+    _inject_snap = None
+    _base = os.path.dirname(os.path.abspath(__file__))
+    for _fn in ESPN_ROSTER_FILES:
+        _cand = os.path.join(_base, _fn)
+        if os.path.exists(_cand):
+            _inject_snap = _cand
+            break
+    if _inject_snap:
+        try:
+            _inject_espn_only_players(fdata, _inject_snap)
+        except Exception as _e:
+            print(f"  [ESPN-inject] failed (non-fatal): {_e}")
+
     cfg    = _FANT
     h_cats = cfg["h_cats"]
     p_cats = cfg["p_cats"]
@@ -2175,8 +2325,19 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                     _pos_str = (f'<span style="color:#777;font-size:.58rem;'
                                 f'font-weight:700;margin-left:4px">{_pos_raw}</span>')
 
+            # data-search: pre-lowercased name+team string so the search input
+            # can match without re-reading textContent on every keystroke
+            # (textContent on thousands of rows + style.display toggles +
+            # applyFantColors recompute used to freeze the page for 20–30s
+            # per keystroke). Escape "&<> so a stray punctuation char in a
+            # name (none today, but cheap insurance) can't break the HTML.
+            _search_blob = (
+                f'{nm} {tm}'.lower()
+                .replace('&', '&amp;').replace('"', '&quot;')
+                .replace('<', '&lt;').replace('>', '&gt;')
+            )
             rows_html.append(
-                f'<tr data-role="{role}" data-pos="{_pos_raw}">'
+                f'<tr data-role="{role}" data-pos="{_pos_raw}" data-search="{_search_blob}">'
                 f'<td class="rank-col" data-val="{rank}">{rank}</td>'
                 f'<td class="name-col">{nm}{_pos_str}</td>'
                 f'<td style="white-space:nowrap">{team_cell}</td>'
@@ -2198,8 +2359,19 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         ip = float(ip_v) if ip_v is not None else 0.0
         entry["role"] = "sp" if ip >= 100 else "rp"
 
-    tbl_h = _build_table(fdata["fut_h"], h_cats, "fant-h-tbl", info_cats=["PA"], show_pos=True)
-    tbl_p = _build_table(fdata["fut_p"], p_cats, "fant-p-tbl", info_cats=["IP"], show_pos=True)
+    # Filter out the $0 ESPN-only placeholders from the Fantasy $ tables —
+    # they'd just be a wall of "—" rows at the bottom. The placeholders still
+    # live in fdata so the trade machine + waiver wire (which need them for
+    # roster-completeness) can pick them up.
+    def _is_real(_e):
+        try:
+            return float(_e.get("dollar") or 0) != 0.0 or (_e.get("player") or {}).get("fg_id") is not None
+        except (TypeError, ValueError):
+            return True
+    tbl_h = _build_table([_e for _e in fdata["fut_h"] if _is_real(_e)],
+                         h_cats, "fant-h-tbl", info_cats=["PA"], show_pos=True)
+    tbl_p = _build_table([_e for _e in fdata["fut_p"] if _is_real(_e)],
+                         p_cats, "fant-p-tbl", info_cats=["IP"], show_pos=True)
 
     # ── trade tab: embed player pool as JSON for client-side search ─────────
     import json as _json
@@ -2958,17 +3130,53 @@ document.addEventListener('click', function(e){{
 /* ── SP / RP filter ──────────────────────────────────────────── */
 var _fpRole = 'all';
 var _fhPos = 'all';
+
+/* ── Filter/search engine (perf-tuned) ─────────────────────────────
+   Earlier version called tr.textContent.toLowerCase() on every row plus
+   applyFantColors() on every keystroke. With 600+ rows that froze the
+   page for 20–30 seconds per character. Three changes:
+     1. Match against the pre-lowercased data-search attribute we now
+        emit at render time (no textContent reads, no per-keystroke
+        re-tokenization).
+     2. Don't re-run applyFantColors during filter/search — the gold
+        leader colors are derived from data-val attributes, which don't
+        change when rows are hidden or sorted. It only needs to run once
+        on initial load.
+     3. Wrap the row pass in requestAnimationFrame and debounce search
+        input by ~80ms so a typed word collapses into one pass instead
+        of one per character. */
+function _fantApplyFilter(tblId, predicate) {{
+  var tbl = document.getElementById(tblId);
+  if (!tbl) return;
+  // Cache row list on the table the first time we touch it — tbody rows
+  // don't change, so paying for querySelectorAll once is plenty.
+  var rows = tbl._fantRowCache;
+  if (!rows) {{
+    rows = Array.from(tbl.querySelectorAll('tbody tr'));
+    tbl._fantRowCache = rows;
+  }}
+  // Defer DOM writes to the next frame to coalesce reflows.
+  if (tbl._fantRaf) cancelAnimationFrame(tbl._fantRaf);
+  tbl._fantRaf = requestAnimationFrame(function() {{
+    for (var i = 0; i < rows.length; i++) {{
+      var tr = rows[i];
+      var show = predicate(tr);
+      var hidden = (tr.style.display === 'none');
+      // Avoid touching style if it'd be a no-op — eliminates needless reflow.
+      if (show && hidden) tr.style.display = '';
+      else if (!show && !hidden) tr.style.display = 'none';
+    }}
+  }});
+}}
+
 function fantHitFilter(pos) {{
   _fhPos = pos;
-  var tbl = document.getElementById('fant-h-tbl');
-  if (!tbl) return;
-  var srch = (document.getElementById('fant-h-search') || {{}}).value || '';
-  srch = srch.toLowerCase();
-  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+  var srch = ((document.getElementById('fant-h-search') || {{}}).value || '').toLowerCase();
+  _fantApplyFilter('fant-h-tbl', function(tr) {{
     var pv = (tr.dataset.pos || '').split('/');
     var matchPos = (pos === 'all') || pv.indexOf(pos) >= 0;
-    var matchSearch = !srch || tr.textContent.toLowerCase().includes(srch);
-    tr.style.display = (matchPos && matchSearch) ? '' : 'none';
+    var matchSearch = !srch || (tr.dataset.search || '').indexOf(srch) >= 0;
+    return matchPos && matchSearch;
   }});
   ['all','C','1B','2B','3B','SS','OF','DH'].forEach(function(p) {{
     var btn = document.getElementById('fh-'+p+'-btn');
@@ -2977,31 +3185,31 @@ function fantHitFilter(pos) {{
       btn.style.color = (p === pos) ? '#fff' : '';
     }}
   }});
-  applyFantColors('fant-h-tbl');
 }}
+
+/* Debounced text-search dispatchers — coalesce keystrokes within 80ms so
+   typing "Perkins" runs one filter pass instead of seven. */
+var _fhSearchTimer = null, _fpSearchTimer = null;
 function fantSearchHit(q) {{
-  var tbl = document.getElementById('fant-h-tbl');
-  if (!tbl) return;
-  q = q.toLowerCase();
-  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
-    var pv = (tr.dataset.pos || '').split('/');
-    var matchPos = (_fhPos === 'all') || pv.indexOf(_fhPos) >= 0;
-    var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
-    tr.style.display = (matchPos && matchSearch) ? '' : 'none';
-  }});
-  applyFantColors('fant-h-tbl');
+  if (_fhSearchTimer) clearTimeout(_fhSearchTimer);
+  _fhSearchTimer = setTimeout(function() {{
+    var ql = (q || '').toLowerCase();
+    _fantApplyFilter('fant-h-tbl', function(tr) {{
+      var pv = (tr.dataset.pos || '').split('/');
+      var matchPos = (_fhPos === 'all') || pv.indexOf(_fhPos) >= 0;
+      var matchSearch = !ql || (tr.dataset.search || '').indexOf(ql) >= 0;
+      return matchPos && matchSearch;
+    }});
+  }}, 80);
 }}
 
 function fantPitchFilter(role) {{
   _fpRole = role;
-  var tbl = document.getElementById('fant-p-tbl');
-  if (!tbl) return;
-  var srch = (document.getElementById('fant-p-search') || {{}}).value || '';
-  srch = srch.toLowerCase();
-  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
+  var srch = ((document.getElementById('fant-p-search') || {{}}).value || '').toLowerCase();
+  _fantApplyFilter('fant-p-tbl', function(tr) {{
     var matchRole = (role === 'all') || (tr.dataset.role === role);
-    var matchSearch = !srch || tr.textContent.toLowerCase().includes(srch);
-    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
+    var matchSearch = !srch || (tr.dataset.search || '').indexOf(srch) >= 0;
+    return matchRole && matchSearch;
   }});
   ['all','sp','rp'].forEach(function(r) {{
     var btn = document.getElementById('fp-'+r+'-btn');
@@ -3010,29 +3218,26 @@ function fantPitchFilter(role) {{
       btn.style.color = (r === role) ? '#fff' : '';
     }}
   }});
-  applyFantColors('fant-p-tbl');
 }}
 
-/* ── Text search ─────────────────────────────────────────────── */
+/* Generic single-table search (no role/pos filter coupling). */
 function fantSearch(tblId, q) {{
-  var tbl = document.getElementById(tblId);
-  if (!tbl) return;
-  q = q.toLowerCase();
-  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
-    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  var ql = (q || '').toLowerCase();
+  _fantApplyFilter(tblId, function(tr) {{
+    return !ql || (tr.dataset.search || '').indexOf(ql) >= 0;
   }});
-  applyFantColors(tblId);
 }}
+
 function fantSearchPit(q) {{
-  var tbl = document.getElementById('fant-p-tbl');
-  if (!tbl) return;
-  q = q.toLowerCase();
-  Array.from(tbl.querySelectorAll('tbody tr')).forEach(function(tr) {{
-    var matchRole = (_fpRole === 'all') || (tr.dataset.role === _fpRole);
-    var matchSearch = !q || tr.textContent.toLowerCase().includes(q);
-    tr.style.display = (matchRole && matchSearch) ? '' : 'none';
-  }});
-  applyFantColors('fant-p-tbl');
+  if (_fpSearchTimer) clearTimeout(_fpSearchTimer);
+  _fpSearchTimer = setTimeout(function() {{
+    var ql = (q || '').toLowerCase();
+    _fantApplyFilter('fant-p-tbl', function(tr) {{
+      var matchRole = (_fpRole === 'all') || (tr.dataset.role === _fpRole);
+      var matchSearch = !ql || (tr.dataset.search || '').indexOf(ql) >= 0;
+      return matchRole && matchSearch;
+    }});
+  }}, 80);
 }}
 
 /* ── Column sort ─────────────────────────────────────────────── */
