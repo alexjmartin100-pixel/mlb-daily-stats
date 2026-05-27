@@ -345,9 +345,14 @@ def fetch_season_batting_leaderboard(year: int) -> list:
     # Try bat-tracking leaderboard first, then fall back to custom leaderboard
     print("  [LB] Savant bat speed…")
     bat_speed_ok = False
+    # NOTE: bat-tracking endpoint IGNORES `year`; use seasonStart/seasonEnd
+    # instead (Savant's URL builder uses those). Without these, every year
+    # returned identical (current-season) data, making historical bat-speed
+    # caches wrong (every player showed the same value across 2024/2025).
     for bs_url, bs_params in [
         ("https://baseballsavant.mlb.com/leaderboard/bat-tracking",
-         {"year": year, "type": "batter", "min": "1", "csv": "true"}),
+         {"seasonStart": year, "seasonEnd": year, "team": "",
+          "type": "batter", "min": "1", "csv": "true"}),
         ("https://baseballsavant.mlb.com/leaderboard/custom",
          {"year": year, "type": "batter", "filter": "", "sort": "4",
           "sortDir": "desc", "min": "1",

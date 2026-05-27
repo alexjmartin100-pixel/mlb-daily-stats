@@ -21,11 +21,15 @@ git checkout HEAD -- mlb_daily_stats.html 2>nul
 
 REM Stage only code files — NOT mlb_daily_stats.html. GHA regenerates that.
 echo [1/3] Staging code changes...
+REM NOTE: .github\workflows\daily.yml deliberately NOT staged here.
+REM Daily run scheduling lives in cron-job.org (external cron via PAT),
+REM not in the workflow file. If you ever do edit daily.yml, stage it
+REM manually with `git add .github\workflows\daily.yml`.
 git add fetch_mlb_stats.py fantasy.py parse_espn_rosters.py lineup_optimizer.py ^
         player_cards.py html_template.py data_fetch.py config.py utils.py ^
         pitching_leaderboard.py batting_leaderboard.py requirements.txt ^
         push_update.bat espn_rosters.json ^
-        .github\workflows\daily.yml 2>nul
+        lb_cache_2024.json lb_cache_2025.json 2>nul
 
 REM Pick up Standings-tab image assets (mickey.*) if present.
 REM Guarded with `if exist` so missing files don't error out the script.
