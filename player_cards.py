@@ -473,10 +473,24 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             style="background:#1a1a1a;color:#eee;border:1px solid #444;
                    border-radius:6px;padding:3px 8px;font-size:.78rem;
                    font-weight:700;cursor:pointer;outline:none"></select>
+    <!-- Dual-role toggle (Ohtani's hitter ↔ pitcher). Lives outside
+         #pc-card for the same reason as the year selector — the
+         auto-capture step that rasterizes #pc-card would kill any
+         click handler attached inside the card. Hidden by default. -->
+    <button id="pc-view-toggle" type="button" style="display:none;
+            background:#1a2a3a;color:#8ab4f8;border:1px solid #4a7bb8;
+            border-radius:6px;padding:3px 10px;font-size:.78rem;
+            font-weight:700;cursor:pointer;outline:none;margin-left:8px;
+            line-height:1.4;vertical-align:middle"></button>
   </div>
 
-  <!-- Card area -->
-  <div id="pc-card"></div>
+  <!-- Card area. The flip wrapper sets up 3D perspective; #pc-card itself
+       is what rotates on view toggles and stays the rasterization target. -->
+  <div id="pc-card-flip" style="perspective:1400px">
+    <div id="pc-card"
+         style="transition:transform .55s cubic-bezier(.4,0,.2,1);
+                transform-style:preserve-3d;backface-visibility:hidden"></div>
+  </div>
 
   <!-- Hint + status area. The card itself becomes a long-pressable <img>
        automatically a moment after a player is selected. No save button
@@ -592,6 +606,37 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
   // view, currently only Ohtani's pitcher card).
   var _pcCurrentView = 'base';
 
+  // Flip the card on view-toggle clicks. We rotate #pc-card to 90°
+  // (edge-on), swap the rendered content at that mid-point (invisible),
+  // snap to -90° with the new content in place, then ease back to 0°.
+  // That avoids any mirrored back-face frame. Auto-capture is skipped
+  // while _pcFlipping is true and re-fired at the end.
+  var _pcFlipping = false;
+  window._pcFlipTo = function(id, year, view) {{
+    var card = document.getElementById('pc-card');
+    if (!card) {{ _pcShow(id, year, view); return; }}
+    _pcFlipping = true;
+    card.style.transition = 'transform .28s cubic-bezier(.4,0,.2,1)';
+    card.style.transform = 'rotateY(90deg)';
+    setTimeout(function(){{
+      _pcShow(id, year, view);
+      card.style.transition = 'none';
+      card.style.transform = 'rotateY(-90deg)';
+      // eslint-disable-next-line no-unused-expressions
+      card.offsetWidth;  // force reflow so the no-transition snap applies
+      card.style.transition = 'transform .28s cubic-bezier(.4,0,.2,1)';
+      card.style.transform = 'rotateY(0deg)';
+      setTimeout(function(){{
+        _pcFlipping = false;
+        var d = (year === 2026)
+          ? _pcData[String(id)]
+          : ((_pcHist[String(year)] || {{}})[String(id)] || null);
+        if (d && view === 'alt' && d.pitcher_alt) d = d.pitcher_alt;
+        _pcAutoCaptureCard((d && d.name) || 'player-card', id);
+      }}, 290);
+    }}, 290);
+  }};
+
   window._pcShow = function(id, year, view) {{
     document.getElementById('pc-dropdown').style.display='none';
     var availYrs = _pcAvailYears[String(id)] || [2026];
@@ -690,24 +735,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var _baseRec = (year === 2026)
       ? _pcData[String(id)]
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
+    // Update the EXTERNAL toggle button (outside #pc-card so its click
+    // handler survives the auto-capture rasterization step that turns
+    // the card into an <img>).
+    (function updateViewToggle(){{
+      var btn = document.getElementById('pc-view-toggle');
+      if (!btn) return;
+      if (!_baseRec || !_baseRec.pitcher_alt) {{
+        btn.style.display = 'none';
+        btn.onclick = null;
+        return;
+      }}
+      var showingAlt = (_pcCurrentView === 'alt');
+      var targetView = showingAlt ? 'base' : 'alt';
+      btn.style.display = '';
+      btn.innerHTML = '&#8646; ' + (showingAlt ? 'Show hitting' : 'Show pitching');
+      btn.onclick = function(){{ _pcFlipTo(id, year, targetView); }};
+    }})();
+    // Header HTML still concats `+ dualToggle +`; keep this empty so
+    // nothing renders inside the rasterized card.
     var dualToggle = '';
-    if (_baseRec && _baseRec.pitcher_alt) {{
-      var _showingAlt = (_pcCurrentView === 'alt');
-      var _btnLabel = _showingAlt ? 'Show hitting' : 'Show pitching';
-      var _targetView = _showingAlt ? 'base' : 'alt';
-      // Pass the target view via data attribute instead of a quoted
-      // string in the onclick — avoids quote-escape mess when this is
-      // serialized through Python's f-string parser (which would silently
-      // collapse \\x27 into the surrounding quote delimiters).
-      dualToggle =
-        '<button data-pid="' + id + '" data-yr="' + year + '" '
-        + 'data-view="' + _targetView + '" '
-        + 'onclick="_pcShow(Number(this.dataset.pid),Number(this.dataset.yr),this.dataset.view)" '
-        + 'style="background:#1a2a3a;color:#8ab4f8;border:1px solid #4a7bb8;'
-        + 'border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;'
-        + 'margin-left:8px;cursor:pointer;line-height:1.4;'
-        + 'vertical-align:middle">&#8646; ' + _btnLabel + '</button>';
-    }}
 
     // ── Dollar value badge (right of qualified marker) — 2026 only ─────────
     var dvBadge = '';
@@ -1048,6 +1095,15 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // elements, so we rasterize the card immediately and swap it in.
     // `_pcCurrentId` tracks which player is being displayed so if the user
     // picks a different player mid-capture, we don't clobber their card.
+    // Reset the card transform on normal show calls (player/year
+    // switches). During a flip, _pcFlipTo manages the transform.
+    if (!_pcFlipping) {{
+      var _cardEl = document.getElementById('pc-card');
+      if (_cardEl) {{ _cardEl.style.transform = 'rotateY(0deg)'; }}
+    }}
+    // Defer auto-capture until any in-flight flip animation finishes —
+    // capturing a rotated card would bake the rotation into the saved <img>.
+    if (_pcFlipping) return;
     _pcAutoCaptureCard((d && d.name) || 'player-card', id);
   }};
 
