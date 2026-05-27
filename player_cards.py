@@ -110,21 +110,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }
 
     # ── Add pitchers (starters + relievers combined) ─────────────────────
-    _all_pitchers = []
-    if lb_pitch_data:
-        _all_pitchers = (list(lb_pitch_data.get("starters", [])) +
-                         list(lb_pitch_data.get("relievers", [])))
-    for p in _all_pitchers:
-        mid  = p.get("id")
-        name = p.get("name", "")
-        team = p.get("team", "")
-        if not mid or not name:
-            continue
-        player_index.append({"id": mid, "n": name, "t": team, "k": "p"})
-        player_data[str(mid)] = {
+    # Dedup rule: if a player already exists in player_data as a hitter,
+    # they're a position player who crossed the pitching leaderboard
+    # minimum by throwing mop-up innings — treat them as a hitter only.
+    # The previous behavior was to overwrite the hitter payload, which
+    # is why e.g. searching "Carlos Cortes" showed the name twice and
+    # both clicks rendered pitching stats.
+    #
+    # Exception: Shohei Ohtani (660271). He's genuinely both, so attach
+    # his pitcher payload to his hitter record as `pitcher_alt`. The
+    # card renderer surfaces a "Show pitching" toggle in that case.
+    _OHTANI_ID = 660271
+
+    def _build_pitcher_record(p, dv=None):
+        return {
             "type":    "p",
-            "name":    name,
-            "team":    team,
+            "name":    p.get("name", ""),
+            "team":    p.get("team", ""),
             "pos":     p.get("pos") or ("SP" if p.get("is_sp") else "RP"),
             "bats":    p.get("bats"),
             "throws":  p.get("throws"),
@@ -132,10 +134,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "ht":      p.get("height"),
             "wt":      p.get("weight"),
             "qual":    p.get("qualified", False),
-            "dv":      p_dollar_map.get(mid),
+            "dv":      dv,
             "war":     p.get("war"),
             "is_sp":   p.get("is_sp", False),
-            # standard stats
             "g":       p.get("g"),
             "gs":      p.get("gs"),
             "ip":      p.get("ip_f"),
@@ -148,7 +149,6 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "sv":      p.get("sv"),
             "svo":     p.get("sv_opp"),
             "hld":     p.get("hld"),
-            # percentile stats
             "xera":    p.get("xera"),
             "xba":     p.get("xba"),
             "fbv":     p.get("fb_velo"),
@@ -162,13 +162,31 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "brl":     p.get("barrel_pct"),
             "hh":      p.get("hard_hit_pct"),
             "gb":      p.get("gb_pct"),
-            # arsenal + rate plus
             "stf":     p.get("stuff_plus"),
             "loc":     p.get("loc_plus"),
             "ars":     p.get("pitch_arsenal", []),
-            # percentiles
             "pct":     p.get("pct", {}),
         }
+
+    _all_pitchers = []
+    if lb_pitch_data:
+        _all_pitchers = (list(lb_pitch_data.get("starters", [])) +
+                         list(lb_pitch_data.get("relievers", [])))
+    for p in _all_pitchers:
+        mid  = p.get("id")
+        name = p.get("name", "")
+        team = p.get("team", "")
+        if not mid or not name:
+            continue
+        pitcher_rec = _build_pitcher_record(p, dv=p_dollar_map.get(mid))
+        if str(mid) in player_data:
+            # Already a hitter. Only Ohtani retains the pitcher record
+            # (attached as `pitcher_alt`); everyone else is dropped.
+            if mid == _OHTANI_ID:
+                player_data[str(mid)]["pitcher_alt"] = pitcher_rec
+            continue
+        player_index.append({"id": mid, "n": name, "t": team, "k": "p"})
+        player_data[str(mid)] = pitcher_rec
 
     # ── Build historical year data ────────────────────────────────────────
     def _compact_hitter(p):
@@ -225,10 +243,18 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                 mid = p.get("id")
                 if mid and p.get("name"):
                     yr_data[str(mid)] = _compact_hitter(p)
+            # Same dedup rule as the current-year loop. Position players
+            # who pitched are kept as hitters only. Ohtani gets his
+            # pitcher payload attached as pitcher_alt.
             for p in payload.get("pitchers_sp", []) + payload.get("pitchers_rp", []):
                 mid = p.get("id")
-                if mid and p.get("name"):
-                    yr_data[str(mid)] = _compact_pitcher(p)
+                if not mid or not p.get("name"):
+                    continue
+                if str(mid) in yr_data:
+                    if mid == _OHTANI_ID:
+                        yr_data[str(mid)]["pitcher_alt"] = _compact_pitcher(p)
+                    continue
+                yr_data[str(mid)] = _compact_pitcher(p)
             hist_data[str(yr)] = yr_data
 
     # Build per-player available years list
@@ -561,20 +587,24 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
   }});
 
-  window._pcShow = function(id, year) {{
+  // Tracks which view a dual-role player is showing: 'base' (default
+  // — hitter for Ohtani, pitcher for everyone else) or 'alt' (secondary
+  // view, currently only Ohtani's pitcher card).
+  var _pcCurrentView = 'base';
+
+  window._pcShow = function(id, year, view) {{
     document.getElementById('pc-dropdown').style.display='none';
-    // Pick a sensible default year for this player: the most recent year
-    // we actually have data for. Historical-only players (injured, not yet
-    // debuted, etc.) won't have 2026, so we fall back to their latest.
     var availYrs = _pcAvailYears[String(id)] || [2026];
     if (!year) year = availYrs[availYrs.length - 1];
+    // Switching PLAYER resets view to base so we always start on the
+    // default card, not whatever view was last selected for someone else.
+    if (id !== _pcCurrentId) _pcCurrentView = 'base';
+    if (view) _pcCurrentView = view;
     _pcCurrentId = id;
     _pcCurrentYear = year;
     var d = (year === 2026)
       ? _pcData[String(id)]
       : ((_pcHist[String(year)] || {{}})[String(id)] || null);
-    // Secondary fallback: if the requested year somehow has no data for
-    // this player, retry with their most recent available year.
     if (!d) {{
       year = availYrs[availYrs.length - 1];
       _pcCurrentYear = year;
@@ -584,12 +614,23 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
     if (!d) return;
 
-    // Prior-year data for side-by-side comparison under each slider value.
-    // viewing 2026 → look up 2025; viewing 2025 → 2024; etc. null if missing.
+    // Dual-role swap: if alt view requested AND this year has alt data,
+    // swap to it. Base record stays in _pcData; we just render the alt.
+    var _hasAlt = !!(d && d.pitcher_alt);
+    if (_pcCurrentView === 'alt' && _hasAlt) {{
+      d = d.pitcher_alt;
+    }} else if (_pcCurrentView === 'alt' && !_hasAlt) {{
+      _pcCurrentView = 'base';
+    }}
+
+    // Prior-year data — alt-to-alt comparison when viewing alt.
     var _priorYear = year - 1;
     var priorD = (_priorYear === 2026)
       ? _pcData[String(id)]
       : ((_pcHist[String(_priorYear)] || {{}})[String(id)] || null);
+    if (_pcCurrentView === 'alt') {{
+      priorD = (priorD && priorD.pitcher_alt) ? priorD.pitcher_alt : null;
+    }}
 
     var teamId = _TEAM_IDS[d.team] || '';
     // Prefer the server-side pre-fetched data URL (baked into HTML at
@@ -641,8 +682,26 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         return '<option value="' + y + '"' + (y===year?' selected':'') + '>' + y + '</option>';
       }}).join('');
       sel.innerHTML = opts;
-      sel.onchange = function(){{ _pcShow(id, parseInt(sel.value, 10)); }};
+      // Preserve current view (hitter vs pitcher) across year changes.
+      sel.onchange = function(){{ _pcShow(id, parseInt(sel.value, 10), _pcCurrentView); }};
     }})();
+
+    // ── Dual-role toggle (Ohtani's hitter ↔ pitcher card) ───────────────
+    var _baseRec = (year === 2026)
+      ? _pcData[String(id)]
+      : ((_pcHist[String(year)] || {{}})[String(id)] || null);
+    var dualToggle = '';
+    if (_baseRec && _baseRec.pitcher_alt) {{
+      var _showingAlt = (_pcCurrentView === 'alt');
+      var _btnLabel = _showingAlt ? 'Show hitting' : 'Show pitching';
+      var _targetView = _showingAlt ? 'base' : 'alt';
+      dualToggle =
+        '<button onclick="_pcShow(' + id + ',' + year + ',\x27' + _targetView + '\x27)" '
+        + 'style="background:#1a2a3a;color:#8ab4f8;border:1px solid #4a7bb8;'
+        + 'border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;'
+        + 'margin-left:8px;cursor:pointer;line-height:1.4;'
+        + 'vertical-align:middle">&#8646; ' + _btnLabel + '</button>';
+    }}
 
     // ── Dollar value badge (right of qualified marker) — 2026 only ─────────
     var dvBadge = '';
@@ -675,6 +734,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       +     qual
       +     dvBadge
       +     yearDropdown
+      +     dualToggle
       +   warBadge
       +   '</div>'
       +   '<div style="display:flex;align-items:center;gap:5px;margin-top:3px">'
