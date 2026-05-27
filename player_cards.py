@@ -695,8 +695,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       var _showingAlt = (_pcCurrentView === 'alt');
       var _btnLabel = _showingAlt ? 'Show hitting' : 'Show pitching';
       var _targetView = _showingAlt ? 'base' : 'alt';
+      // Pass the target view via data attribute instead of a quoted
+      // string in the onclick — avoids quote-escape mess when this is
+      // serialized through Python's f-string parser (which would silently
+      // collapse \\x27 into the surrounding quote delimiters).
       dualToggle =
-        '<button onclick="_pcShow(' + id + ',' + year + ',\x27' + _targetView + '\x27)" '
+        '<button data-pid="' + id + '" data-yr="' + year + '" '
+        + 'data-view="' + _targetView + '" '
+        + 'onclick="_pcShow(Number(this.dataset.pid),Number(this.dataset.yr),this.dataset.view)" '
         + 'style="background:#1a2a3a;color:#8ab4f8;border:1px solid #4a7bb8;'
         + 'border-radius:6px;padding:2px 10px;font-size:.78rem;font-weight:700;'
         + 'margin-left:8px;cursor:pointer;line-height:1.4;'
