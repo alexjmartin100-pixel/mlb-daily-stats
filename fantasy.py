@@ -292,10 +292,15 @@ def _z_to_dollars(players: list, cats: list, neg_cats: set,
         repl_z = ranked_z[-1]
     else:
         repl_z = 0.0
+    # Scale is set by the surplus value of the rosterable pool (positive VAR),
+    # so the rostered players' dollars sum to the budget. Below that, values are
+    # NOT floored — a sub-replacement player goes under $1 and can be negative,
+    # which correctly says a freely-available replacement player is better. The
+    # replacement player himself lands at exactly $1 (the minimum bid).
     var_total = sum(max(0.0, r["z"] - repl_z) for r in out) or 1.0
+    scale = usable / var_total
     for r in out:
-        var = max(0.0, r["z"] - repl_z)
-        r["dollar"] = round(max(1.0, (var / var_total) * usable + 1.0), 1)
+        r["dollar"] = round((r["z"] - repl_z) * scale + 1.0, 1)
 
     out.sort(key=lambda x: x["dollar"], reverse=True)
     return out
@@ -2489,9 +2494,16 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             fdol_val = fdol
 
             # Earned (season-to-date) $ — None until the player has stats.
+            # Above replacement (> $1) → amber; replacement-or-below → dimmed,
+            # since those values are negative/marginal, not a real asset.
             edol = entry.get("earned")
             edol_str = _fmt_dollar(edol)            # "–" when None
-            edol_col = "#d8a13a" if edol is not None else "#666"  # amber, distinct from Proj green
+            if edol is None:
+                edol_col = "#666"
+            elif edol > 1.0:
+                edol_col = "#d8a13a"                # amber, distinct from Proj green
+            else:
+                edol_col = "#8a8a8a"                # dim: at/below replacement
             edol_val = edol if edol is not None else -999          # sort nulls to bottom
 
             team_cell = _team_badge_py(tm)

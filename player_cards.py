@@ -764,9 +764,13 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     var evBadge = '';
     if (year === 2026 && d.ev != null) {{
       var evSign = d.ev >= 0 ? '$' : '-$';
+      // Above replacement ($1) → amber asset; at/below replacement → dimmed.
+      var evHot = d.ev > 1.0;
+      var evC = evHot ? '#d8a13a' : '#8a8a8a';
+      var evBg = evHot ? '#3a2f17' : '#2a2a2a';
       evBadge = '<span title="Earned $ — value produced season-to-date" '
-        + 'style="font-size:1.15rem;font-weight:900;color:#d8a13a;'
-        + 'background:#3a2f17;border:1px solid #d8a13a;padding:1px 8px;border-radius:6px;margin-left:8px">'
+        + 'style="font-size:1.15rem;font-weight:900;color:' + evC + ';'
+        + 'background:' + evBg + ';border:1px solid ' + evC + ';padding:1px 8px;border-radius:6px;margin-left:8px">'
         + '<span style="font-size:.62rem;font-weight:700;opacity:.8;vertical-align:middle;margin-right:2px">E</span>'
         + evSign + Math.abs(d.ev).toFixed(1) + '</span>';
     }}
