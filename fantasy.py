@@ -14,7 +14,7 @@ from fangraphs import *
 
 from fetch_mlb_stats import _FANT, main
 
-__all__ = ['_avg_fg_auction', '_avg_proj_sets', '_dollar_color', '_fant_stat', '_fetch_fg_auction_full', '_fmt_dollar', '_merge_players', '_team_badge_py', '_z_color', '_z_to_dollars', 'compute_fantasy_dollar_values', 'fetch_fg_auction_dollar_values', 'fetch_fg_projections', 'render_fantasy_tab']
+__all__ = ['_avg_fg_auction', '_avg_proj_sets', '_dollar_color', '_fant_stat', '_fetch_fg_auction_full', '_fmt_dollar', '_merge_players', '_team_badge_py', '_z_color', '_z_to_dollars', 'compute_earned_dollar_values', 'compute_fantasy_dollar_values', 'fetch_fg_auction_dollar_values', 'fetch_fg_projections', 'render_fantasy_tab']
 
 
 def fetch_fg_projections(year: int, proj_type: str, stats_type: str) -> list:
@@ -248,8 +248,18 @@ def _z_to_dollars(players: list, cats: list, neg_cats: set,
     # Per-category mean / std within the pool
     cat_params: dict = {}
     for cat in cats:
-        vals = [_fant_stat(p, cat) for p in pool]
-        vals = [v for v in vals if v != 0]
+        pool_vals = [_fant_stat(p, cat) for p in pool]
+        nz = [v for v in pool_vals if v != 0]
+        # Most categories are "dense" in the playing-time pool → use the nonzero
+        # pool values. But reliever-only cats (SV / HLD) are all-zero among the
+        # innings-leaders that make up the pool, which collapses sigma to ~0 and
+        # blows z-scores up to ~1e10. Detect that case and fall back to the full
+        # player population WITH its zeros, so starters count as 0-save/0-hold
+        # and closers stand out by a sane margin.
+        if len(nz) >= max(5, int(0.10 * len(pool))):
+            vals = nz
+        else:
+            vals = [_fant_stat(p, cat) for p in players]
         mu  = float(np.mean(vals)) if vals else 0.0
         sig = float(np.std(vals))  if vals else 1e-9
         cat_params[cat] = (mu, max(sig, 1e-9))
@@ -277,7 +287,140 @@ def _z_to_dollars(players: list, cats: list, neg_cats: set,
     return out
 
 
-def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int) -> dict:
+def compute_earned_dollar_values(lb_data: list, lb_pitch_data: dict) -> dict:
+    """
+    Compute *earned* (season-to-date) fantasy dollar values from ACTUAL stats.
+
+    Unlike compute_fantasy_dollar_values (which pulls rest-of-season projected
+    auction $ from FanGraphs), this values what each player has actually been
+    worth so far this season using the same league framework (10-team, $260,
+    6x6 roto categories) via the local z-score → dollar engine (_z_to_dollars).
+
+    Rate stats (OBP / ERA / WHIP) are converted to volume-weighted *counting*
+    contributions before z-scoring, so a 5-IP reliever with a 0.00 ERA or a
+    10-PA hitter with a .600 OBP doesn't get an absurd value:
+        OBP  → (OBP − lgOBP) · PA      (times-on-base above average)
+        ERA  → (lgERA − ERA) · IP/9    (earned runs prevented)
+        WHIP → (lgWHIP − WHIP) · IP    (baserunners prevented)
+    These are pre-signed so "higher = better" and therefore are NOT placed in
+    neg_cats. Counting cats (R/HR/RBI/SB, W/SV/HLD, K) are used raw.
+
+    Side effects: writes an "earned" key onto each source lb_data hitter dict
+    and each lb_pitch_data starter/reliever dict (rounded $, or None).
+
+    Returns {"h_by_id", "h_by_name", "p_by_id", "p_by_name"} maps
+    (str(mlbam) → $  and  norm_name → $) so callers can match other datasets.
+    """
+    # ── League settings (mirror _FANT / the FG auction-calc params) ──────────
+    n_teams = _FANT.get("n_teams", 10)
+    budget  = _FANT.get("budget", 260)
+    h_slots = _FANT.get("h_slots", 15)
+    p_slots = _FANT.get("p_slots", 8)
+    h_split = _FANT.get("h_split", 0.67)
+    min_ip  = _FANT.get("min_ip", 35)
+
+    total_money   = n_teams * budget
+    n_roster_h    = n_teams * h_slots
+    n_roster_p    = n_teams * p_slots
+    usable_h      = max(1.0, total_money * h_split - n_roster_h)        # $ above the $1 mins
+    usable_p      = max(1.0, total_money * (1 - h_split) - n_roster_p)
+
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    # ── Hitters ──────────────────────────────────────────────────────────────
+    hitters_src = [h for h in (lb_data or []) if isinstance(h, dict)]
+    # League OBP baseline: PA-weighted mean over the top-N_roster regulars
+    _reg_h = sorted(hitters_src, key=lambda h: (_f(h.get("pa")) or 0), reverse=True)[:n_roster_h]
+    _ob_num = sum((_f(h.get("obp")) or 0) * (_f(h.get("pa")) or 0) for h in _reg_h)
+    _ob_den = sum((_f(h.get("pa")) or 0) for h in _reg_h) or 1.0
+    lg_obp  = _ob_num / _ob_den
+
+    h_players = []
+    for h in hitters_src:
+        pa  = _f(h.get("pa")) or 0.0
+        obp = _f(h.get("obp"))
+        obp_contrib = (obp - lg_obp) * pa if (obp is not None and pa > 0) else 0.0
+        h_players.append({
+            "_orig": h,
+            "id":   h.get("id"),
+            "name": h.get("name", ""),
+            "R":   _f(h.get("r"))   or 0.0,
+            "HR":  _f(h.get("hr"))  or 0.0,
+            "RBI": _f(h.get("rbi")) or 0.0,
+            "SB":  _f(h.get("sb"))  or 0.0,
+            "SO":  _f(h.get("so"))  or 0.0,   # hitter strikeouts (neg cat "K")
+            "OBP": obp_contrib,               # pre-signed, higher = better
+            "PA":  pa,
+        })
+    h_out = _z_to_dollars(h_players, ["R", "HR", "RBI", "SB", "K", "OBP"],
+                          {"K"}, n_roster_h, usable_h, is_pitcher=False)
+
+    # ── Pitchers (starters + relievers combined) ─────────────────────────────
+    pitchers_src = []
+    if lb_pitch_data:
+        pitchers_src = ([p for p in lb_pitch_data.get("starters", []) if isinstance(p, dict)] +
+                        [p for p in lb_pitch_data.get("relievers", []) if isinstance(p, dict)])
+    # League ERA/WHIP baselines: IP-weighted means over arms past the IP minimum
+    _reg_p = [p for p in pitchers_src if (_f(p.get("ip_f")) or 0) >= min_ip]
+    _ip_den = sum((_f(p.get("ip_f")) or 0) for p in _reg_p) or 1.0
+    lg_era  = sum((_f(p.get("era"))  or 0) * (_f(p.get("ip_f")) or 0) for p in _reg_p) / _ip_den
+    lg_whip = sum((_f(p.get("whip")) or 0) * (_f(p.get("ip_f")) or 0) for p in _reg_p) / _ip_den
+
+    p_players = []
+    for p in pitchers_src:
+        ip   = _f(p.get("ip_f")) or 0.0
+        era  = _f(p.get("era"))
+        whip = _f(p.get("whip"))
+        era_contrib  = (lg_era  - era)  * (ip / 9.0) if (era  is not None and ip > 0) else 0.0
+        whip_contrib = (lg_whip - whip) * ip         if (whip is not None and ip > 0) else 0.0
+        p_players.append({
+            "_orig": p,
+            "id":   p.get("id"),
+            "name": p.get("name", ""),
+            "W":   _f(p.get("w"))   or 0.0,
+            "SV":  _f(p.get("sv"))  or 0.0,
+            "HLD": _f(p.get("hld")) or 0.0,
+            "SO":  _f(p.get("k"))   or 0.0,   # pitcher strikeouts (cat "K")
+            "ERA":  era_contrib,              # pre-signed, higher = better
+            "WHIP": whip_contrib,             # pre-signed, higher = better
+            "IP":  ip,
+        })
+    # ERA/WHIP already pre-signed → empty neg_cats so they aren't flipped again.
+    p_out = _z_to_dollars(p_players, ["W", "ERA", "WHIP", "K", "SV", "HLD"],
+                          set(), n_roster_p, usable_p, is_pitcher=True, min_ip=min_ip)
+
+    # ── Attach onto source dicts + build lookup maps ─────────────────────────
+    def _finalize(out_list):
+        by_id, by_name = {}, {}
+        for r in out_list:
+            pl  = r["player"]
+            val = round(float(r["dollar"]), 1)
+            pl["_orig"]["earned"] = val
+            mid = pl.get("id")
+            if mid is not None:
+                try:
+                    by_id[str(int(float(mid)))] = val
+                except (TypeError, ValueError):
+                    by_id[str(mid)] = val
+            nm = norm_name(pl.get("name", ""))
+            if nm:
+                by_name[nm] = val
+        return by_id, by_name
+
+    h_by_id, h_by_name = _finalize(h_out)
+    p_by_id, p_by_name = _finalize(p_out)
+    print(f"  [FANTASY] Earned $ — {len(h_by_id)} hitters, {len(p_by_id)} pitchers "
+          f"(z-score on actual season stats; lgOBP={lg_obp:.3f} lgERA={lg_era:.2f} lgWHIP={lg_whip:.2f})")
+    return {"h_by_id": h_by_id, "h_by_name": h_by_name,
+            "p_by_id": p_by_id, "p_by_name": p_by_name}
+
+
+def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int,
+                                  earned: dict | None = None) -> dict:
     """
     Compute projected fantasy dollar values for hitters and pitchers.
 
@@ -447,6 +590,24 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int)
 
     print(f"  [FANTASY] Proj — {len(fut_h)} hitters, {len(fut_p)} pitchers "
           f"(from FG auction calc, OOPSY DC RoS + Bat X RoS + Steamer RoS avg)")
+
+    # ── Attach earned (season-to-date) $ to each entry, matched mlbam→name ───
+    if earned:
+        def _attach(entries, by_id, by_name):
+            for e in entries:
+                pl  = e["player"]
+                val = None
+                mid = pl.get("mlbam")
+                if mid is not None:
+                    try:
+                        val = by_id.get(str(int(float(mid))))
+                    except (TypeError, ValueError):
+                        val = None
+                if val is None:
+                    val = by_name.get(norm_name(pl.get("name", "")))
+                e["earned"] = val
+        _attach(fut_h, earned.get("h_by_id", {}), earned.get("h_by_name", {}))
+        _attach(fut_p, earned.get("p_by_id", {}), earned.get("p_by_name", {}))
 
     return {"fut_h": fut_h, "fut_p": fut_p}
 
@@ -2254,6 +2415,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                      _th('#', col),
                      _th('Name', (col := col + 1)),
                      _th('Team', (col := col + 1)),
+                     _th('Earned&nbsp;$', (col := col + 1)),
                      _th('Proj&nbsp;$', (col := col + 1))]
         for ic in info_cats:
             col += 1
@@ -2274,6 +2436,12 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             fdol_str = _fmt_dollar(fdol)
             fdol_col = _dollar_color(fdol)
             fdol_val = fdol
+
+            # Earned (season-to-date) $ — None until the player has stats.
+            edol = entry.get("earned")
+            edol_str = _fmt_dollar(edol)            # "–" when None
+            edol_col = "#d8a13a" if edol is not None else "#666"  # amber, distinct from Proj green
+            edol_val = edol if edol is not None else -999          # sort nulls to bottom
 
             team_cell = _team_badge_py(tm)
 
@@ -2341,6 +2509,8 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                 f'<td class="rank-col" data-val="{rank}">{rank}</td>'
                 f'<td class="name-col">{nm}{_pos_str}</td>'
                 f'<td style="white-space:nowrap">{team_cell}</td>'
+                f'<td style="color:{edol_col};font-weight:700;font-size:.95rem"'
+                f' data-val="{edol_val}">{edol_str}</td>'
                 f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
                 f' data-val="{fdol_val}">{fdol_str}</td>'
                 f'{info_cells}{stat_cells}'
@@ -3342,8 +3512,9 @@ function applyFantColors(tblId) {{
   var allRows = Array.from(tbl.querySelectorAll('tbody tr'));
   if (!allRows.length) return;
   var nCols = allRows[0].cells.length;
-  // Gold for leader in each category column (skip rank=0, name=1, team=2, dollar=3)
-  for (var c = 4; c < nCols; c++) {{
+  // Gold for leader in each category column
+  // (skip rank=0, name=1, team=2, earned$=3, proj$=4 — dollars handled below)
+  for (var c = 5; c < nCols; c++) {{
     var vals = [];
     allRows.forEach(function(tr) {{
       var v = parseFloat(tr.cells[c] && tr.cells[c].dataset.val);
@@ -3362,23 +3533,24 @@ function applyFantColors(tblId) {{
       }}
     }});
   }}
-  // Gold for top dollar value (column 3)
-  var dolVals = [];
-  allRows.forEach(function(tr) {{
-    var v = parseFloat(tr.cells[3] && tr.cells[3].dataset.val);
-    if (!isNaN(v)) dolVals.push(v);
-  }});
-  if (dolVals.length) {{
+  // Gold for top dollar value in the Earned$ (col 3) and Proj$ (col 4) columns
+  [3, 4].forEach(function(dc) {{
+    var dolVals = [];
+    allRows.forEach(function(tr) {{
+      var v = parseFloat(tr.cells[dc] && tr.cells[dc].dataset.val);
+      if (!isNaN(v)) dolVals.push(v);
+    }});
+    if (!dolVals.length) return;
     var bestDol = Math.max.apply(null, dolVals);
     allRows.forEach(function(tr) {{
-      var cell = tr.cells[3];
+      var cell = tr.cells[dc];
       if (!cell) return;
       var v = parseFloat(cell.dataset.val);
       if (!isNaN(v) && Math.abs(v - bestDol) < 0.00001) {{
         cell.style.color = '#f0c040';
       }}
     }});
-  }}
+  }});
 }}
 // Apply colors on initial load
 applyFantColors('fant-h-tbl');

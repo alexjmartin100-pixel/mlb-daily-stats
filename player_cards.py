@@ -68,6 +68,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "wt":    p.get("weight"),
             "qual":  p.get("qualified", False),
             "dv":    dollar_map.get(mid),
+            "ev":    p.get("earned"),   # earned (season-to-date) $ value
             "war":   p.get("war"),
             # standard stats
             "g":     p.get("g"),
@@ -135,6 +136,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             "wt":      p.get("weight"),
             "qual":    p.get("qualified", False),
             "dv":      dv,
+            "ev":      p.get("earned"),   # earned (season-to-date) $ value
             "war":     p.get("war"),
             "is_sp":   p.get("is_sp", False),
             "g":       p.get("g"),
@@ -756,12 +758,25 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // nothing renders inside the rasterized card.
     var dualToggle = '';
 
-    // ── Dollar value badge (right of qualified marker) — 2026 only ─────────
+    // ── Dollar value badges (right of qualified marker) — 2026 only ────────
+    // Earned $ (season-to-date, amber) sits to the LEFT of Proj $ (RoS, green).
+    // Each badge carries a small E/P label + tooltip so they're unambiguous.
+    var evBadge = '';
+    if (year === 2026 && d.ev != null) {{
+      var evSign = d.ev >= 0 ? '$' : '-$';
+      evBadge = '<span title="Earned $ — value produced season-to-date" '
+        + 'style="font-size:1.15rem;font-weight:900;color:#d8a13a;'
+        + 'background:#3a2f17;border:1px solid #d8a13a;padding:1px 8px;border-radius:6px;margin-left:8px">'
+        + '<span style="font-size:.62rem;font-weight:700;opacity:.8;vertical-align:middle;margin-right:2px">E</span>'
+        + evSign + Math.abs(d.ev).toFixed(1) + '</span>';
+    }}
     var dvBadge = '';
     if (year === 2026 && d.dv != null) {{
       var dvSign = d.dv >= 0 ? '$' : '-$';
-      dvBadge = '<span style="font-size:1.15rem;font-weight:900;color:#4caf50;'
+      dvBadge = '<span title="Projected $ — rest-of-season auction value" '
+        + 'style="font-size:1.15rem;font-weight:900;color:#4caf50;'
         + 'background:#1b3a1b;border:1px solid #4caf50;padding:1px 8px;border-radius:6px;margin-left:8px">'
+        + '<span style="font-size:.62rem;font-weight:700;opacity:.8;vertical-align:middle;margin-right:2px">P</span>'
         + dvSign + Math.abs(d.dv).toFixed(1) + '</span>';
     }}
 
@@ -785,6 +800,7 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       +   '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
       +     '<span style="font-size:1.05rem;font-weight:800;color:#eee">' + d.name + '</span>'
       +     qual
+      +     evBadge
       +     dvBadge
       +     yearDropdown
       +     dualToggle

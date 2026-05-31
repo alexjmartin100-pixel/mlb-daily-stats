@@ -119,8 +119,13 @@ def main():
     print("\n[ 6/6 ] Season leaderboards")
     lb_data       = fetch_season_batting_leaderboard(year)
     lb_pitch_data = fetch_season_pitching_leaderboard(year)
-    print("\n[ 6b/6 ] Fantasy dollar values")
-    fantasy_data = compute_fantasy_dollar_values(lb_data, lb_pitch_data, year)
+    print("\n[ 6b/6 ] Earned (season-to-date) dollar values")
+    # Computes earned $ from actual stats AND writes an "earned" key onto each
+    # lb_data / lb_pitch_data player dict (used by Season Leaders + Player Cards).
+    earned_values = compute_earned_dollar_values(lb_data, lb_pitch_data)
+    print("\n[ 6c/6 ] Fantasy (projected RoS) dollar values")
+    fantasy_data = compute_fantasy_dollar_values(lb_data, lb_pitch_data, year,
+                                                 earned=earned_values)
 
     # ── Fetch historical leaderboards (2024/2025) with disk caching ────────
     # Historical data is static, so we cache it to avoid re-fetching each run.

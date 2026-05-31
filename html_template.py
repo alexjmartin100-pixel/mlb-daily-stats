@@ -664,6 +664,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <thead><tr>
           <th class="sortable"   data-k="name"           onclick="srtLB(this,'name')">Player</th>
           <th>Team</th>
+          <th class="sortable r" data-col="earned" data-k="earned" title="Earned $ — value produced season-to-date" onclick="srtLB(this,'earned')">$</th>
           <th class="sortable r" data-col="pa" data-k="pa"             onclick="srtLB(this,'pa')">PA</th>
           <th class="sortable r" data-col="r" data-k="r"              onclick="srtLB(this,'r')">R</th>
           <th class="sortable r" data-col="hr" data-k="hr"             onclick="srtLB(this,'hr')">HR</th>
@@ -717,6 +718,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBSP(this,'name')">Pitcher</th>
           <th>Team</th>
+          <th class="sortable r" data-col="earned" data-k="earned" title="Earned $ — value produced season-to-date" onclick="srtLBSP(this,'earned')">$</th>
           <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBSP(this,'ip_f')">IP</th>
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBSP(this,'w')">W</th>
           <th class="sortable r lb-th-inv" data-col="era" data-k="era"  onclick="srtLBSP(this,'era')">ERA</th>
@@ -769,6 +771,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
         <thead><tr>
           <th class="sortable"   data-k="name"         onclick="srtLBRP(this,'name')">Pitcher</th>
           <th>Team</th>
+          <th class="sortable r" data-col="earned" data-k="earned" title="Earned $ — value produced season-to-date" onclick="srtLBRP(this,'earned')">$</th>
           <th class="sortable r" data-col="ip_f" data-k="ip_f"         onclick="srtLBRP(this,'ip_f')">IP</th>
           <th class="sortable r" data-col="w" data-k="w"            onclick="srtLBRP(this,'w')">W</th>
           <th class="sortable r" data-col="sv" data-k="sv"           onclick="srtLBRP(this,'sv')">SV/SVO</th>
@@ -1546,6 +1549,7 @@ function mkRankColor(cfg_obj, col, val){
 // ── Hitter leaderboard column config ──────────────────────────────────────
 // inv=true → lower is better (for hitters)
 const LB_COL_CFG = {
+  earned:        {inv:false},
   pa:            {inv:false}, avg:           {inv:false},
   r:             {inv:false}, hr:            {inv:false}, rbi:          {inv:false},
   sb:            {inv:false}, obp:           {inv:false}, woba:         {inv:false},
@@ -1563,6 +1567,7 @@ function lbRankColor(col, val){ return mkRankColor(LB_COL_CFG, col, val); }
 // ── Pitcher leaderboard column configs ────────────────────────────────────
 // Note: Chase% and Whiff% NOT inverted for pitchers (higher = better for pitcher)
 const PL_SP_COL_CFG = {
+  earned:{inv:false},
   ip_f:{inv:false}, w:{inv:false},
   era:{inv:true},  whip:{inv:true},  k:{inv:false}, xera:{inv:true},  siera:{inv:true},
   stuff_plus:{inv:false}, loc_plus:{inv:false},
@@ -1573,6 +1578,7 @@ const PL_SP_COL_CFG = {
   war:{inv:false},
 };
 const PL_RP_COL_CFG = {
+  earned:{inv:false},
   ip_f:{inv:false}, w:{inv:false}, sv:{inv:false}, hld:{inv:false}, gm_li:{inv:false},
   era:{inv:true},  whip:{inv:true},  k:{inv:false}, xera:{inv:true},  siera:{inv:true},
   stuff_plus:{inv:false}, loc_plus:{inv:false},
@@ -1630,6 +1636,12 @@ function fmtSB(p){
   if(p.sba>0) return `<span${style}>${p.sb}</span><span class="c-dim" style="font-size:.68rem">/${p.sba}</span>`;
   return `<span${style}>${p.sb}</span>`;
 }
+// Earned (season-to-date) $ value. cellFn = lbCell | plCellSP | plCellRP (rank-colors per table).
+function fmtDol(col,v,cellFn){
+  if(v==null) return D2();
+  const disp=(v>=0?'$':'-$')+Math.abs(v).toFixed(1);
+  return (cellFn||lbCell)(col,v,disp);
+}
 
 // ── Leaderboard type toggle ────────────────────────────────────────────────
 let lbType='h';
@@ -1660,13 +1672,14 @@ function renderLB(){
   const tb=document.getElementById('lb-body');
   const ct=document.getElementById('lb-cnt');
   if(!lbD.length){
-    tb.innerHTML='<tr><td colspan="26"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="27"><div class="empty"><div class="ico">📊</div><p>No leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbD.length} player${lbD.length===1?'':'s'}`;
   tb.innerHTML=lbD.map(p=>`<tr>
     <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
+    <td class="r" data-col="earned">${fmtDol('earned', p.earned)}</td>
     <td class="r" data-col="pa">${fmtInt('pa',  p.pa)}</td>
     <td class="r" data-col="r">${fmtInt('r',   p.r)}</td>
     <td class="r" data-col="hr">${fmtInt('hr',  p.hr)}</td>
@@ -1733,7 +1746,7 @@ function renderLBSP(){
   const tb=document.getElementById('lb-sp-body');
   const ct=document.getElementById('lb-sp-cnt');
   if(!lbSpD.length){
-    tb.innerHTML='<tr><td colspan="25"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="26"><div class="empty"><div class="ico">📊</div><p>No SP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbSpD.length} pitcher${lbSpD.length===1?'':'s'}`;
@@ -1741,6 +1754,7 @@ function renderLBSP(){
   tb.innerHTML=lbSpD.map(p=>`<tr>
     <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
+    <td class="r" data-col="earned">${fmtDol('earned', p.earned, plCellSP)}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="era">${D('era',         p.era,         p.era!=null?p.era.toFixed(2):null)}</td>
@@ -1792,7 +1806,7 @@ function renderLBRP(){
   const tb=document.getElementById('lb-rp-body');
   const ct=document.getElementById('lb-rp-cnt');
   if(!lbRpD.length){
-    tb.innerHTML='<tr><td colspan="27"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
+    tb.innerHTML='<tr><td colspan="28"><div class="empty"><div class="ico">📊</div><p>No RP leaderboard data yet.</p></div></td></tr>';
     ct.textContent='';return;
   }
   ct.textContent=`${lbRpD.length} pitcher${lbRpD.length===1?'':'s'}`;
@@ -1800,6 +1814,7 @@ function renderLBRP(){
   tb.innerHTML=lbRpD.map(p=>`<tr>
     <td class="nm">${p.name}${_posBadge(p.name)}${!p.qualified?'<span class="c-dim" style="font-size:.65rem;margin-left:4px">[NQ]</span>':''}</td>
     <td>${p.team?tm(p.team):''}</td>
+    <td class="r" data-col="earned">${fmtDol('earned', p.earned, plCellRP)}</td>
     <td class="r" data-col="ip_f">${D('ip_f',        p.ip_f,        p.ip_f!=null?p.ip_f.toFixed(1):null)}</td>
     <td class="r" data-col="w">${D('w',           p.w,           p.w)}</td>
     <td class="r" data-col="sv">${p.sv_opp>0?D('sv',p.sv,p.sv+'/'+p.sv_opp):D('sv',p.sv,p.sv)}</td>
