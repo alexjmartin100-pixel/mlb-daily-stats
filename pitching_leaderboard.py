@@ -84,7 +84,12 @@ def fetch_season_pitching_leaderboard(year: int) -> dict:
             except (ValueError, TypeError):
                 gs, g = 0, 1
 
-            is_sp = gs > 0 and (gs / max(g, 1)) >= 0.5
+            # Starter if most appearances are starts, OR the pitcher has piled
+            # up enough starts to clearly be a rotation arm even when early-season
+            # relief outings drag the GS/G ratio under 0.5 (swingmen, openers'
+            # bulk guys, rotation call-ups). A true reliever almost never reaches
+            # 7 starts, so this rarely misfires the other way.
+            is_sp = gs > 0 and ((gs / max(g, 1)) >= 0.5 or gs >= 7)
 
             # Stuff+ / Location+ from FG JSON API
             stuff_plus = None

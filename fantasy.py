@@ -279,9 +279,23 @@ def _z_to_dollars(players: list, cats: list, neg_cats: set,
             z_sum   += z
         out.append({"player": p, "z": round(z_sum, 2), "zc": zc})
 
-    pos_z_total = sum(max(0.0, r["z"]) for r in out) or 1.0
+    # Value Over Replacement, not value over the pool *mean*. Anchoring at the
+    # mean sent everyone below an average regular to the $1 floor (≈ half the
+    # pool plus everyone outside it), so sorted $ looked like it "stopped early".
+    # Instead, set the zero point at replacement level — the z of the worst
+    # rosterable player (the n_roster-th best). Every rosterable player then
+    # earns > $1 with a real spread; only sub-replacement players sit at $1.
+    ranked_z = sorted((r["z"] for r in out), reverse=True)
+    if n_roster and len(ranked_z) >= n_roster:
+        repl_z = ranked_z[n_roster - 1]
+    elif ranked_z:
+        repl_z = ranked_z[-1]
+    else:
+        repl_z = 0.0
+    var_total = sum(max(0.0, r["z"] - repl_z) for r in out) or 1.0
     for r in out:
-        r["dollar"] = round(max(1.0, (r["z"] / pos_z_total) * usable + 1.0), 1)
+        var = max(0.0, r["z"] - repl_z)
+        r["dollar"] = round(max(1.0, (var / var_total) * usable + 1.0), 1)
 
     out.sort(key=lambda x: x["dollar"], reverse=True)
     return out
@@ -529,9 +543,14 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int,
                     return None
 
             if is_pitcher:
+                # FanGraphs position designation (e.g. "SP", "RP", "SP/RP") —
+                # used as a secondary SP/RP signal in the Fantasy tab.
+                _fg_ppos = (ref.get("POS") or ref.get("minpos") or
+                            ref.get("position") or ref.get("Pos") or "")
                 player = {
                     "name": name, "team": team,
                     "fg_id": fgid, "mlbam": mlbam,
+                    "fg_pos": _fg_ppos,
                     # Marginal dollar contributions (FG auction calc) — sort/color
                     "W":    _avg_field("mW"),
                     "ERA":  _avg_field("mERA"),
@@ -608,6 +627,38 @@ def compute_fantasy_dollar_values(lb_data: list, lb_pitch_data: dict, year: int,
                 e["earned"] = val
         _attach(fut_h, earned.get("h_by_id", {}), earned.get("h_by_name", {}))
         _attach(fut_p, earned.get("p_by_id", {}), earned.get("p_by_name", {}))
+
+    # ── Attach ACTUAL season usage (GS / G / IP) to each pitcher entry ───────
+    # Used as a secondary SP/RP cross-check in the Fantasy tab so real starters
+    # whose ESPN/FG position data is missing don't get bucketed as relievers.
+    act_by_id, act_by_name = {}, {}
+    for _p in ((lb_pitch_data or {}).get("starters", []) or []) + \
+              ((lb_pitch_data or {}).get("relievers", []) or []):
+        if not isinstance(_p, dict):
+            continue
+        _rec = {"gs": _p.get("gs"), "g": _p.get("g"), "ip": _p.get("ip_f"),
+                "is_sp": _p.get("is_sp")}
+        _mid = _p.get("id")
+        if _mid is not None:
+            try:
+                act_by_id[str(int(float(_mid)))] = _rec
+            except (TypeError, ValueError):
+                pass
+        _nm = norm_name(_p.get("name", ""))
+        if _nm:
+            act_by_name[_nm] = _rec
+    for _e in fut_p:
+        _pl = _e["player"]
+        _rec = None
+        _mid = _pl.get("mlbam")
+        if _mid is not None:
+            try:
+                _rec = act_by_id.get(str(int(float(_mid))))
+            except (TypeError, ValueError):
+                _rec = None
+        if _rec is None:
+            _rec = act_by_name.get(norm_name(_pl.get("name", "")))
+        _e["_act"] = _rec or {}
 
     return {"fut_h": fut_h, "fut_p": fut_p}
 
@@ -2523,11 +2574,80 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                 f'<tbody>{"".join(rows_html)}</tbody>'
                 f'</table></div>')
 
-    # ── classify pitcher role (SP vs RP) from projected IP ────────────────
+    # ── classify pitcher role (SP vs RP) ──────────────────────────────────
+    # Layered cross-check (see _classify_role below): ESPN eligibility → FG
+    # position → actual season GS/IP usage → projection fallback. Each tier
+    # catches arms the previous one couldn't resolve so none fall through.
+    #
+    # (The original rule used projected rest-of-season IP >= 100 alone, which
+    # mislabeled real starters as relievers — a healthy starter's RoS IP often
+    # projects under 100 mid/late season, and the FG auction "IP" field is
+    # sometimes missing → 0 → "rp" for everyone.)
+    import unicodedata as _ud
+    def _ascii_nm(s):
+        s = _ud.normalize("NFKD", s or "")
+        return "".join(c for c in s if not _ud.combining(c))
+    _pl = pos_lookup or {}
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _classify_role(entry):
+        """Layered SP/RP cascade — each tier is a double-check that catches
+        pitchers the previous tier couldn't resolve, so none fall through:
+          1. ESPN position eligibility (pos_lookup) — league-authoritative.
+          2. FanGraphs position designation (fg_pos).
+          3. ACTUAL season usage — games started / appearances / innings.
+          4. Projection fallback — save projection or projected IP.
+        Returns ("sp"|"rp", tier_label) for optional debugging."""
+        _pp = entry["player"]
+        nm  = _pp.get("name", "")
+
+        # 1) ESPN eligibility
+        espn = (_pl.get(nm) or _pl.get(_ascii_nm(nm)) or "").upper()
+        if "SP" in espn:
+            return "sp", "espn"
+        if "RP" in espn:
+            return "rp", "espn"
+
+        # 2) FanGraphs position
+        fg = (_pp.get("fg_pos") or "").upper()
+        if "SP" in fg:
+            return "sp", "fg"
+        if "RP" in fg:
+            return "rp", "fg"
+
+        # 3) Actual season usage (from the season leaderboard)
+        act = entry.get("_act") or {}
+        gs  = _num(act.get("gs"))
+        g   = _num(act.get("g"))
+        if act.get("is_sp") is True:
+            return "sp", "usage"
+        if act.get("is_sp") is False and gs == 0:
+            return "rp", "usage"
+        if gs is not None and gs > 0:
+            # 7+ starts ⇒ rotation arm even if relief outings drag the ratio;
+            # otherwise majority-of-appearances-are-starts ⇒ starter.
+            if gs >= 7 or (g and gs / max(g, 1) >= 0.5):
+                return "sp", "usage"
+            if g and g > 0:
+                return "rp", "usage"
+
+        # 4) Projection fallback
+        sv = _num(_pp.get("SV_p")) or 0.0
+        ip = _num(_pp.get("_ip")) or 0.0
+        act_ip = _num(act.get("ip"))
+        if sv >= 3:
+            return "rp", "proj"
+        # use whichever IP signal we have; relievers rarely reach ~70 IP
+        ip_signal = act_ip if act_ip is not None else ip
+        return ("sp", "proj") if ip_signal >= 70 else ("rp", "proj")
+
     for entry in fdata["fut_p"]:
-        ip_v = entry["player"].get("_ip")
-        ip = float(ip_v) if ip_v is not None else 0.0
-        entry["role"] = "sp" if ip >= 100 else "rp"
+        entry["role"], entry["role_src"] = _classify_role(entry)
 
     # Filter out the $0 ESPN-only placeholders from the Fantasy $ tables —
     # they'd just be a wall of "—" rows at the bottom. The placeholders still
