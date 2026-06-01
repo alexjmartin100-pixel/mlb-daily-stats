@@ -1124,7 +1124,18 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     // Defer auto-capture until any in-flight flip animation finishes —
     // capturing a rotated card would bake the rotation into the saved <img>.
     if (_pcFlipping) return;
-    _pcAutoCaptureCard((d && d.name) || 'player-card', id);
+    // Debounce the (expensive) html-to-image rasterization. The interactive
+    // HTML card is already on screen above; rasterizing to a saveable <img>
+    // is what froze the UI on every open. Now we only do it once the user
+    // settles on a card (~450ms), and cancel it the moment they open another
+    // — so browsing card-to-card is instant.
+    if (window._pcCaptureTimer) clearTimeout(window._pcCaptureTimer);
+    (function(_capName, _capId){{
+      window._pcCaptureTimer = setTimeout(function(){{
+        if (_capId !== _pcCurrentId) return;   // moved on — skip
+        _pcAutoCaptureCard(_capName, _capId);
+      }}, 450);
+    }})((d && d.name) || 'player-card', id);
   }};
 
   // Rasterize #pc-card via html-to-image and replace its contents with a

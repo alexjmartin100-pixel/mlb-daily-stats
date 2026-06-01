@@ -109,7 +109,12 @@ main{max-width:1900px;margin:0 auto}
 .note{font-size:.7rem;color:var(--muted);padding:5px 11px;
   border-left:3px solid var(--blue);background:rgba(52,152,219,.07);
   border-radius:0 var(--radius) var(--radius) 0;margin-bottom:11px;}
-.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border);
+  /* Skip layout/paint of tables that are off-screen (e.g. the stacked
+     pitcher table below the hitter table, or tables in a hidden toggle
+     state). 'auto' remembers each table's measured height so there's no
+     scroll jump. Cuts the re-layout cost when switching tabs. */
+  content-visibility:auto;contain-intrinsic-size:auto 600px}
 table{width:100%;border-collapse:collapse;font-size:.79rem}
 thead th{background:var(--card2);color:var(--muted);text-transform:uppercase;
   font-size:.63rem;letter-spacing:.9px;font-weight:700;padding:9px 9px;
