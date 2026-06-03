@@ -114,33 +114,39 @@ def _build_fg_index(fut_h: list, fut_p: list) -> Dict:
     by_name: Dict = {}
     by_mlbam: Dict = {}
     by_last_team: Dict = {}
-    for entry in (fut_h or []) + (fut_p or []):
-        p = entry.get("player", {}) or {}
-        nm = _alias(norm_name(p.get("name", "") or ""))
-        tm = (p.get("team") or "").upper().strip()
-        if not nm:
-            continue
-        if tm:
-            by_name_team[(nm, tm)] = entry
-        by_name.setdefault(nm, []).append(entry)
-        last = _last_name(nm)
-        if last and tm:
-            by_last_team.setdefault((last, tm), []).append(entry)
-        try:
-            m = p.get("mlbam")
-            if m is not None:
-                by_mlbam[int(m)] = entry
-        except (TypeError, ValueError):
-            pass
+    by_last: Dict = {}   # last_name → [(entry, is_pitcher, first_initial), ...]
+    for src, _is_pit in ((fut_h or [], False), (fut_p or [], True)):
+        for entry in src:
+            p = entry.get("player", {}) or {}
+            nm = _alias(norm_name(p.get("name", "") or ""))
+            tm = (p.get("team") or "").upper().strip()
+            if not nm:
+                continue
+            if tm:
+                by_name_team[(nm, tm)] = entry
+            by_name.setdefault(nm, []).append(entry)
+            last = _last_name(nm)
+            if last:
+                if tm:
+                    by_last_team.setdefault((last, tm), []).append(entry)
+                by_last.setdefault(last, []).append((entry, _is_pit, nm[0]))
+            try:
+                m = p.get("mlbam")
+                if m is not None:
+                    by_mlbam[int(m)] = entry
+            except (TypeError, ValueError):
+                pass
     return {
         "by_name_team": by_name_team,
         "by_name": by_name,
         "by_mlbam": by_mlbam,
         "by_last_team": by_last_team,
+        "by_last": by_last,
     }
 
 
-def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Optional[Dict]:
+def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str,
+                   is_pitcher: bool = False) -> Optional[Dict]:
     """
     Try to find this ESPN player in the FG projection table.
 
@@ -150,7 +156,13 @@ def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Opt
       3. Last-name + MLB team, if exactly one FG entry matches
          (handles Cam/Cameron, Matt/Matthew, Nick/Nicky, etc. — any
          nickname/full-name mismatch that shares a last name and team)
-      4. None
+      4. Last-name alone, if exactly one FG entry of the SAME player type
+         (pitcher/hitter) has that surname. Catches a nickname mismatch that
+         ALSO has a team mismatch (e.g. ESPN lists NYY but FG lists a
+         different/blank team, or ESPN/FG use different abbreviations like
+         CHW vs CWS). Gated on player type + surname uniqueness so we can't
+         grab the wrong person.
+      5. None
     """
     nm = _alias(norm_name(espn_player.get("fullName", "") or ""))
     if not nm:
@@ -175,6 +187,19 @@ def _lookup_player(fg_idx: Dict, espn_player: Dict, espn_pro_abbrev: str) -> Opt
         lt_hits = fg_idx["by_last_team"].get((last, tm), [])
         if len(lt_hits) == 1:
             return lt_hits[0]
+
+    # Pass 4: last-name alone among FG players of the same type AND sharing the
+    # same first initial. This rescues owned players who otherwise leak into the
+    # free-agent list when the team abbreviation doesn't line up between ESPN and
+    # FG. The type + first-initial + surname-uniqueness gates mean a nickname
+    # (Cam/Cameron, Matt/Matthew — same initial) matches, while an unrelated
+    # same-surname player (John vs Luis Garcia) does not.
+    if last:
+        esp_init = nm[0] if nm else ""
+        type_hits = [e for (e, ip, fi) in fg_idx.get("by_last", {}).get(last, [])
+                     if ip == is_pitcher and fi == esp_init]
+        if len(type_hits) == 1:
+            return type_hits[0]
 
     return None
 
@@ -253,7 +278,7 @@ def parse_league(json_path: str, fdata: dict, *, verbose: bool = True) -> Dict[s
             pro_abbrev = ESPN_PRO_TEAM_ABBREV.get(p.get("proTeamId", 0), "")
             is_pit = _is_pitcher(elig)
 
-            fd_entry = _lookup_player(fg_idx, p, pro_abbrev)
+            fd_entry = _lookup_player(fg_idx, p, pro_abbrev, is_pit)
             if fd_entry is None:
                 # Only track unmatched for active players — inactive guys with
                 # no FG projection row can't show up in TRADE_HITTERS anyway,
