@@ -2306,6 +2306,45 @@ def _build_phase3_payload(fdata: dict) -> dict:
                 _add_key(fg_nm.lower(), ptid, eid, _elig_raw)
                 _add_key(_norm_nm(fg_nm), ptid, eid, _elig_raw)
 
+    # ── Ownership index that does NOT depend on the FG name-join ─────────────
+    # all_rostered above only covers players whose ESPN name matched a FG
+    # projection row. Anyone the join dropped (e.g. ESPN "Cam Schlittler" vs FG
+    # "Cameron Schlittler" when the team abbreviations also disagree) silently
+    # becomes a phantom "free agent". So index EVERY rostered ESPN player —
+    # straight from the raw snapshot, regardless of FG match — by
+    # (surname, first-initial, is_pitcher). The trade-pool tagger falls back to
+    # this when the name lookup misses. The key is loose enough to bridge
+    # nickname spellings, but gated on type + initial + uniqueness (collisions
+    # are marked "AMBIG") so it can't grab the wrong player.
+    all_rostered_lni: dict = {}
+    _PIT_SLOTS_LNI = {13, 14, 15}
+    try:
+        import json as _json_lni
+        with open(snap_path, "r", encoding="utf-8") as _lf:
+            _lni_raw = _json_lni.load(_lf)
+        _lni_raw = _lni_raw.get("raw", _lni_raw)
+        for _t in _lni_raw.get("teams", []):
+            _tid2 = _t.get("id")
+            for _e in _t.get("roster", {}).get("entries", []):
+                _p = (_e.get("playerPoolEntry", {}) or {}).get("player", {}) or {}
+                _full = (_p.get("fullName") or "").strip()
+                if not _full:
+                    continue
+                _nn = _norm_nm(_full)
+                _parts = _nn.split()
+                if not _parts:
+                    continue
+                _elig = _p.get("eligibleSlots", []) or []
+                _key = (_parts[-1], _nn[0], bool(set(_elig) & _PIT_SLOTS_LNI))
+                _val = (_tid2, _p.get("id"))
+                _cur = all_rostered_lni.get(_key)
+                if _cur is None:
+                    all_rostered_lni[_key] = _val
+                elif _cur != _val:
+                    all_rostered_lni[_key] = "AMBIG"   # two different owned players collide
+    except Exception:
+        all_rostered_lni = {}
+
     teams_payload = []
     user_team_id = None
     for tr in team_rows:
@@ -2373,6 +2412,7 @@ def _build_phase3_payload(fdata: dict) -> dict:
         # Internal-only: full roster name lookup including IL/NA. Caller strips
         # this before JSON-encoding for the JS payload.
         "_all_rostered": all_rostered,
+        "_all_rostered_lni": all_rostered_lni,
         "_all_elig": all_elig,
     }
 
@@ -2770,6 +2810,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         # _phase3["teams"] (which excludes them) so IL stars don't slip back
         # into the free-agent picker with a null team_id.
         _all_rostered = _phase3.get("_all_rostered") or {}
+        _all_rostered_lni = _phase3.get("_all_rostered_lni") or {}
         _all_elig_map = _phase3.get("_all_elig") or {}
         try:
             from utils import norm_name as _norm_nm_caller
@@ -2782,6 +2823,17 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             _nm_norm = _norm_nm_caller(_nm_raw)
             _tid_eid = (_all_rostered.get(_nm_low)
                         or _all_rostered.get(_nm_norm))
+            # Fallback: bridge nickname/team-abbrev mismatches by matching the
+            # FG player's (surname, first-initial, type) against the raw-ESPN
+            # ownership index. Stops owned players (e.g. Cam/Cameron Schlittler)
+            # from leaking into the free-agent lists.
+            if _tid_eid is None:
+                _parts = _nm_norm.split()
+                if _parts:
+                    _cand = _all_rostered_lni.get(
+                        (_parts[-1], _nm_norm[0], bool(_rec.get("is_pitcher"))))
+                    if _cand and _cand != "AMBIG":
+                        _tid_eid = _cand
             if _tid_eid is not None:
                 _rec["team_id"], _rec["espn_id"] = _tid_eid
             else:
@@ -2796,6 +2848,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         _trade_p_json = _json.dumps(_trade_p)
         # Strip the internal-only maps before shipping to JS.
         _phase3.pop("_all_rostered", None)
+        _phase3.pop("_all_rostered_lni", None)
         _phase3.pop("_all_elig", None)
         _phase3_json = _json.dumps(_phase3)
     else:
