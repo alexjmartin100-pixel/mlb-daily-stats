@@ -56,5 +56,15 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa.json
-          npm install -g firebase-tools@13 --silent
-          firebase deploy --only hosting --non-interactive --project mlb-stats-ae429
+          npm install -g firebase-tools@13.35.1 --silent
+          n=0
+          until [ "$n" -ge 3 ]; do
+            firebase deploy --only hosting --non-interactive --project mlb-stats-ae429 && break
+            n=$((n+1))
+            echo "Firebase deploy attempt $n failed; retrying in 15s..."
+            sleep 15
+          done
+          if [ "$n" -ge 3 ]; then
+            echo "Firebase deploy failed after 3 attempts"
+            exit 1
+          fi
