@@ -1,6 +1,10 @@
 name: MLB Stats Daily Update
 
 on:
+  # Offseason: the schedule trigger is disabled so this no longer runs automatically.
+  # To restore the daily run next season, uncomment the schedule block below.
+  # schedule:
+  #   - cron: '0 11 * * *'
   workflow_dispatch:   # triggered by external cron via PAT
 
 permissions:
