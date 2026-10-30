@@ -40,6 +40,17 @@ jobs:
       - name: Write FanGraphs cookie
         run: echo '${{ secrets.FANGRAPHS_COOKIE }}' > fg_cookie.txt
 
+      # Refreshes espn_rosters.json (rosters + team records the standings tab
+      # reads) before the dashboard build. fetch_espn_rosters.py exits 0 on
+      # failure and does not replace a good file. The `||` is a backstop if
+      # the interpreter dies before that handler runs.
+      - name: Refresh ESPN rosters and standings
+        env:
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+        run: |
+          python fetch_espn_rosters.py || echo "::warning::ESPN roster/standings refresh failed; keeping the previous espn_rosters.json so the dashboard build can continue."
+
       - name: Generate MLB stats dashboard
         env:
           SKIP_AUTO_INSTALL: "1"

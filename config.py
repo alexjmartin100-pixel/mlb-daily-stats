@@ -90,6 +90,12 @@ FASTBALL_TYPES = frozenset({"FF", "SI", "FC", "FA"})
 ALL_PT_CODES   = ["FF","FA","SI","FC","SL","ST","SV","CH","FS",
                   "CU","KC","KN","SC","FO","EP","CS"]
 
+# ── ESPN fantasy league ────────────────────────────────────────────────────
+# Honey Nut Chourios league id (from espn_rosters.json). fetch_espn_rosters.py
+# reads this assignment without importing config.py, because importing this
+# module installs packages. Override with the ESPN_LEAGUE_ID env var.
+ESPN_LEAGUE_ID = "2081322885"
+
 # ── Team Alex roster ───────────────────────────────────────────────────────
 # Starts EMPTY — the dashboard's "My Team" tab lets the user add/remove
 # players interactively (stored in Firestore when logged in, localStorage

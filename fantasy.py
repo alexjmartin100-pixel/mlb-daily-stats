@@ -1229,9 +1229,10 @@ def _render_season_projections(fdata: dict) -> str:
 # ── Standings sub-tab renderer ─────────────────────────────────────────────
 # Reads the ESPN roster snapshot (espn_rosters.json) and builds an HTML
 # standings table: W-L-T record, win %, games back, streak, and season
-# totals for each of the 12 H2H categories. This is the "live" standings
-# as of when the bookmarklet last ran — so running the bookmarklet +
-# push_update.bat + GHA refreshes the standings on the dashboard.
+# totals for each of the 12 H2H categories. Those fields live on each team
+# in espn_rosters.json (record.overall / record.division and valuesByStat),
+# which fetch_espn_rosters.py refreshes in the daily workflow. The
+# bookmarklet in espn_bookmarklet.html is the manual fallback.
 #
 # ESPN encodes category stats as statId → number in team["valuesByStat"].
 # The statIds used by this league come from settings.scoringSettings
