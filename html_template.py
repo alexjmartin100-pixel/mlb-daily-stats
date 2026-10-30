@@ -2247,6 +2247,8 @@ var _rosterFromEspn = false;
 var _espnLinkMissing = false;
 var _espnPickId = null;
 var _espnClaims = null;
+var _claimInflight = false;
+var _ESPN_CLAIM_TIMEOUT_MS = 12000;
 const ESPN_LEAGUE_TEAMS = __ESPN_TEAMS_JSON__;
 
 // ── localStorage load (runs immediately, before Firebase) ──
@@ -2501,9 +2503,15 @@ function _rebuildTA(rosterEntries){
     cntEl.textContent = rosterLabel;
   }
 
-  // Re-render all visible Team Alex tables
+  // Yesterday tables are the default view. Season tables scan the full
+  // leaderboard for cell colors; draw those only when that view is open.
   renderTAH(); renderTASP(); renderTARP();
-  renderTALB(); renderTASPLB(); renderTARPLB();
+  var seasonH = document.getElementById('ta-h-season-btn');
+  if (seasonH && seasonH.classList.contains('active')) renderTALB();
+  var seasonSP = document.getElementById('ta-sp-season-btn');
+  if (seasonSP && seasonSP.classList.contains('active')) renderTASPLB();
+  var seasonRP = document.getElementById('ta-rp-season-btn');
+  if (seasonRP && seasonRP.classList.contains('active')) renderTARPLB();
 }
 
 // ── Login overlay ──────────────────────────────────────────────────────────
@@ -2695,8 +2703,49 @@ async function openEspnTeamPicker(){
   _espnClaims = await _loadEspnClaims();
   _renderEspnTeamList(_espnClaims);
 }
+function _withTimeout(promise, ms){
+  return new Promise(function(resolve, reject){
+    var settled = false;
+    var timer = setTimeout(function(){
+      if (settled) return;
+      settled = true;
+      var err = new Error('ESPN_TIMEOUT');
+      err.code = 'timeout';
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(function(value){
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }, function(err){
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+function _claimConflict(e){
+  if (_fbPermissionDenied(e)) return true;
+  var code = (e && e.code) ? String(e.code) : '';
+  var msg = (e && e.message) ? String(e.message) : '';
+  return code === 'already-exists' || msg.indexOf('already-exists') !== -1;
+}
+function _scheduleEspnRoster(team){
+  var cnt = document.getElementById('ta-roster-count');
+  if (cnt) cnt.textContent = 'Loading ' + (team.name || 'roster') + '…';
+  setTimeout(function(){
+    try {
+      _applyEspnTeam(team);
+    } catch (e) {
+      console.error('ESPN roster render error:', e);
+      if (cnt) cnt.textContent = 'Team saved. Reload the page to draw the roster.';
+    }
+  }, 0);
+}
 async function confirmEspnTeamLink(){
-  if (!_fbUser || !_fbDb) return;
+  if (!_fbUser || !_fbDb || _claimInflight) return;
   if (_espnTeamId != null) { closeEspnTeamPicker(); return; }
   var errEl = document.getElementById('espn-team-error');
   var btn = document.getElementById('espn-team-confirm');
@@ -2717,41 +2766,42 @@ async function confirmEspnTeamLink(){
     _renderEspnTeamList(_espnClaims);
     return;
   }
+  _claimInflight = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Linking…'; }
   try {
-    var result = await _claimEspnTeam(team);
-    _applyEspnTeam(team);
+    await _claimEspnTeam(team);
     if (!_teamName || _teamName === 'My Team') {
       _teamName = team.name || _teamName;
       _applyTeamName(_teamName);
       _saveTeamNameLocal(_teamName);
-      try {
-        await _fbDb.collection('users').doc(_fbUser.uid).set({teamName: _teamName},{merge:true});
-      } catch (e) {}
+      _fbDb.collection('users').doc(_fbUser.uid).set({teamName: _teamName},{merge:true}).catch(function(){});
     }
     closeEspnTeamPicker();
-    if (result && result.enforced === false) {
-      console.warn('ESPN team saved on the user record only. Publish firestore.rules so another account cannot claim the same team.');
-    }
+    _scheduleEspnRoster(team);
   } catch (e) {
     var msg = (e && e.message) ? String(e.message) : '';
-    if (msg.indexOf('ESPN_TAKEN') !== -1) {
-      showErr('That team was just linked to another account.');
-      _espnClaims = await _loadEspnClaims();
+    if (msg.indexOf('ESPN_TIMEOUT') !== -1) {
+      showErr('Saving the team is taking too long. Check your connection and try again.');
+    } else if (msg.indexOf('ESPN_TAKEN') !== -1) {
+      showErr('That team is already linked to another account.');
+      try {
+        _espnClaims = await _withTimeout(_loadEspnClaims(), _ESPN_CLAIM_TIMEOUT_MS || 12000);
+      } catch (ignore) {}
       _espnPickId = null;
       _renderEspnTeamList(_espnClaims);
     } else if (msg.indexOf('ESPN_LOCKED') !== -1) {
       showErr('This account already has an ESPN team.');
       closeEspnTeamPicker();
       var existing = _espnTeamById(_espnTeamId);
-      if (existing) _applyEspnTeam(existing);
+      if (existing) _scheduleEspnRoster(existing);
     } else if (_fbPermissionDenied(e)) {
-      showErr('Could not lock that team. If it is still free, publish the Firestore rules in VERCEL.md and try again.');
+      showErr('Could not save that team. If it is still free, try again in a moment.');
     } else {
       console.error('ESPN team link error:', e);
       showErr('Could not save the team. Try again.');
     }
   } finally {
+    _claimInflight = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Link this team'; }
   }
 }
@@ -2760,52 +2810,36 @@ async function _claimEspnTeam(team){
   var uid = _fbUser.uid;
   var userRef = _fbDb.collection('users').doc(uid);
   var claimRef = _fbDb.collection('teamClaims').doc(String(teamId));
-  var userSnap = await userRef.get();
+  var waitMs = _ESPN_CLAIM_TIMEOUT_MS || 12000;
+  // Plain writes, not a transaction. runTransaction's commit never settled
+  // on iPhone Safari, so the Link button stayed on "Linking…" forever.
+  // teamClaims/{id} can be created once; an update is rejected by the rules.
+  var userSnap = await _withTimeout(userRef.get(), waitMs);
   var already = userSnap.exists ? userSnap.data().espnTeamId : null;
+  if (already != null && already !== '' && Number(already) === teamId) return {enforced: true};
   if (already != null && already !== '' && Number(already) !== teamId) {
     _espnTeamId = Number(already);
     throw new Error('ESPN_LOCKED');
   }
-  var canReadClaims = true;
-  var claimSnap = null;
-  try {
-    claimSnap = await claimRef.get();
-  } catch (e) {
-    if (_fbPermissionDenied(e)) canReadClaims = false;
-    else throw e;
-  }
-  if (canReadClaims && claimSnap && claimSnap.exists) {
-    var owner = (claimSnap.data() || {}).uid;
-    if (owner && owner !== uid) throw new Error('ESPN_TAKEN');
-  }
-  var payload = {
-    espnTeamId: teamId,
-    espnTeamName: team.name || ''
+  var payload = { espnTeamId: teamId, espnTeamName: team.name || '' };
+  var claimBody = {
+    uid: uid,
+    email: _fbUser.email || '',
+    teamId: teamId,
+    teamName: team.name || '',
+    claimedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
-  if (!canReadClaims) {
-    await userRef.set(payload, {merge: true});
-    return {enforced: false};
+  try {
+    await _withTimeout(claimRef.set(claimBody), waitMs);
+  } catch (e) {
+    if (e && e.message === 'ESPN_TIMEOUT') throw e;
+    if (!_claimConflict(e)) throw e;
+    var existing = await _withTimeout(claimRef.get(), waitMs);
+    var owner = existing && existing.exists ? (existing.data() || {}).uid : null;
+    if (owner && owner !== uid) throw new Error('ESPN_TAKEN');
+    if (!owner) throw e;
   }
-  await _fbDb.runTransaction(function(tx){
-    return tx.get(claimRef).then(function(cSnap){
-      return tx.get(userRef).then(function(uSnap){
-        var prev = uSnap.exists ? uSnap.data().espnTeamId : null;
-        if (prev != null && prev !== '' && Number(prev) !== teamId) throw new Error('ESPN_LOCKED');
-        var cUid = cSnap.exists ? (cSnap.data() || {}).uid : null;
-        if (cUid && cUid !== uid) throw new Error('ESPN_TAKEN');
-        if (!cSnap.exists) {
-          tx.set(claimRef, {
-            uid: uid,
-            email: _fbUser.email || '',
-            teamId: teamId,
-            teamName: team.name || '',
-            claimedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-        if (prev == null || prev === '') tx.set(userRef, payload, {merge: true});
-      });
-    });
-  });
+  await _withTimeout(userRef.set(payload, {merge: true}), waitMs);
   return {enforced: true};
 }
 

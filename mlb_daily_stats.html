@@ -269,7 +269,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
     <div class="hdr-meta">
       <strong>Saturday, October 17, 2026</strong>
       &nbsp;·&nbsp; 1 game(s)
-      &nbsp;·&nbsp; Updated Oct 30, 2026 3:39 PM
+      &nbsp;·&nbsp; Updated Oct 30, 2026 4:09 PM
       &nbsp;·&nbsp; <span id="refresh-status" style="color:var(--muted);font-size:0.85em">⟳ Auto-refresh</span>
     </div>
   </div>
@@ -898,7 +898,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 </main>
 
 <footer>
-  Generated Oct 30, 2026 3:39 PM
+  Generated Oct 30, 2026 4:09 PM
 </footer>
 
 <!-- Firebase v9 compat (Auth + Firestore for roster sync) -->
@@ -2237,6 +2237,8 @@ var _rosterFromEspn = false;
 var _espnLinkMissing = false;
 var _espnPickId = null;
 var _espnClaims = null;
+var _claimInflight = false;
+var _ESPN_CLAIM_TIMEOUT_MS = 12000;
 const ESPN_LEAGUE_TEAMS = [{"team_id":10,"name":"BlackNickKurtz","abbrev":"Deez","players":[{"espn_id":41044,"name":"Julio Rodriguez","mlbam":677594,"is_pitcher":false},{"espn_id":4917694,"name":"Elly De La Cruz","mlbam":682829,"is_pitcher":false},{"espn_id":31097,"name":"Manny Machado","mlbam":592518,"is_pitcher":false},{"espn_id":30193,"name":"Freddie Freeman","mlbam":518692,"is_pitcher":false},{"espn_id":41179,"name":"Brice Turang","mlbam":668930,"is_pitcher":false},{"espn_id":32655,"name":"Byron Buxton","mlbam":null,"is_pitcher":false},{"espn_id":33618,"name":"Raisel Iglesias","mlbam":628452,"is_pitcher":true},{"espn_id":41917,"name":"Otto Lopez","mlbam":672640,"is_pitcher":false},{"espn_id":42470,"name":"Michael Harris II","mlbam":671739,"is_pitcher":false},{"espn_id":40884,"name":"Bryan Baker","mlbam":641329,"is_pitcher":true},{"espn_id":4966637,"name":"Nick Kurtz","mlbam":701762,"is_pitcher":false},{"espn_id":4345164,"name":"Max Meyer","mlbam":676974,"is_pitcher":true},{"espn_id":33372,"name":"Nick Martinez","mlbam":607259,"is_pitcher":true},{"espn_id":4308037,"name":"Cade Cavalli","mlbam":676917,"is_pitcher":true},{"espn_id":41889,"name":"Ivan Herrera","mlbam":671056,"is_pitcher":false},{"espn_id":4345278,"name":"Tanner Bibee","mlbam":676440,"is_pitcher":true},{"espn_id":40917,"name":"Adrian Morejon","mlbam":670970,"is_pitcher":true},{"espn_id":32675,"name":"Eduardo Rodriguez","mlbam":593958,"is_pitcher":true},{"espn_id":4654024,"name":"Jake Bennett","mlbam":687562,"is_pitcher":true},{"espn_id":42239,"name":"Jacob Lopez","mlbam":682052,"is_pitcher":true},{"espn_id":42464,"name":"Gabriel Moreno","mlbam":672515,"is_pitcher":false},{"espn_id":4619649,"name":"Chase DeLauter","mlbam":800050,"is_pitcher":false},{"espn_id":4669425,"name":"Ian Seymour","mlbam":693855,"is_pitcher":true},{"espn_id":42488,"name":"Joey Cantillo","mlbam":676282,"is_pitcher":true},{"espn_id":4872685,"name":"Colson Montgomery","mlbam":695657,"is_pitcher":false},{"espn_id":4424112,"name":"Mason Montgomery","mlbam":682254,"is_pitcher":true}]},{"team_id":4,"name":"Cleveland  INDIANS","abbrev":"MART","players":[{"espn_id":32512,"name":"Ketel Marte","mlbam":606466,"is_pitcher":false},{"espn_id":33859,"name":"Rafael Devers","mlbam":646240,"is_pitcher":false},{"espn_id":33039,"name":"Mookie Betts","mlbam":605141,"is_pitcher":false},{"espn_id":36488,"name":"Randy Arozarena","mlbam":668227,"is_pitcher":false},{"espn_id":42179,"name":"Riley Greene","mlbam":682985,"is_pitcher":false},{"espn_id":42450,"name":"Joe Ryan","mlbam":657746,"is_pitcher":true},{"espn_id":33481,"name":"Yandy Diaz","mlbam":650490,"is_pitcher":false},{"espn_id":39712,"name":"Oneil Cruz","mlbam":665833,"is_pitcher":false},{"espn_id":4927516,"name":"Chase Burns","mlbam":695505,"is_pitcher":true},{"espn_id":4941056,"name":"JJ Wetherholt","mlbam":802139,"is_pitcher":false},{"espn_id":4345620,"name":"Dillon Dingler","mlbam":693307,"is_pitcher":false},{"espn_id":3210625,"name":"Jacob Latz","mlbam":656641,"is_pitcher":true},{"espn_id":4990055,"name":"Wilyer Abreu","mlbam":677800,"is_pitcher":false},{"espn_id":42604,"name":"Griffin Jax","mlbam":643377,"is_pitcher":true},{"espn_id":4917878,"name":"Logan Henderson","mlbam":701656,"is_pitcher":true},{"espn_id":33748,"name":"Blake Snell","mlbam":605483,"is_pitcher":true},{"espn_id":39706,"name":"Isaac Paredes","mlbam":670623,"is_pitcher":false},{"espn_id":32640,"name":"Michael Wacha","mlbam":608379,"is_pitcher":true},{"espn_id":32827,"name":"Clay Holmes","mlbam":605280,"is_pitcher":true},{"espn_id":36071,"name":"Nick Pivetta","mlbam":601713,"is_pitcher":true},{"espn_id":4917865,"name":"Abner Uribe","mlbam":682842,"is_pitcher":true},{"espn_id":41208,"name":"Bryan Abreu","mlbam":650556,"is_pitcher":true},{"espn_id":42415,"name":"Michael Busch","mlbam":683737,"is_pitcher":false},{"espn_id":34984,"name":"Michael Soroka","mlbam":647336,"is_pitcher":true}]},{"team_id":8,"name":"Duh Bing","abbrev":"$BNG","players":[{"espn_id":41433,"name":"Jazz Chisholm Jr.","mlbam":665862,"is_pitcher":false},{"espn_id":4717803,"name":"Hunter Brown","mlbam":686613,"is_pitcher":true},{"espn_id":4730225,"name":"Mason Miller","mlbam":695243,"is_pitcher":true},{"espn_id":4416591,"name":"Hunter Goodman","mlbam":696100,"is_pitcher":false},{"espn_id":4872587,"name":"Yoshinobu Yamamoto","mlbam":808967,"is_pitcher":true},{"espn_id":39961,"name":"Brandon Lowe","mlbam":664040,"is_pitcher":false},{"espn_id":5134630,"name":"Shota Imanaga","mlbam":684007,"is_pitcher":true},{"espn_id":42453,"name":"Miguel Vargas","mlbam":678246,"is_pitcher":false},{"espn_id":41109,"name":"Jhoan Duran","mlbam":661395,"is_pitcher":true},{"espn_id":33773,"name":"Foster Griffin","mlbam":656492,"is_pitcher":true},{"espn_id":34945,"name":"Ian Happ","mlbam":664023,"is_pitcher":false},{"espn_id":35013,"name":"Jake Bauers","mlbam":641343,"is_pitcher":false},{"espn_id":4311625,"name":"Kyle Bradish","mlbam":680694,"is_pitcher":true},{"espn_id":35241,"name":"Sandy Alcantara","mlbam":645261,"is_pitcher":true},{"espn_id":41197,"name":"Jake McCarthy","mlbam":664983,"is_pitcher":false},{"espn_id":5137200,"name":"Esmerlyn Valdez","mlbam":699013,"is_pitcher":false},{"espn_id":40459,"name":"Luis Garcia Jr.","mlbam":671277,"is_pitcher":false},{"espn_id":33190,"name":"Tyler Glasnow","mlbam":607192,"is_pitcher":true},{"espn_id":5197476,"name":"Walbert Urena","mlbam":700712,"is_pitcher":true},{"espn_id":4867424,"name":"Spencer Jones","mlbam":682987,"is_pitcher":false},{"espn_id":5198748,"name":"Kade Anderson","mlbam":807739,"is_pitcher":true},{"espn_id":4414339,"name":"Brandon Young","mlbam":687064,"is_pitcher":true},{"espn_id":42457,"name":"Ezequiel Duran","mlbam":677649,"is_pitcher":false}]},{"team_id":6,"name":"Floyd Bros. Lawn Services LLC","abbrev":"BUCK","players":[{"espn_id":32129,"name":"Francisco Lindor","mlbam":596019,"is_pitcher":false},{"espn_id":42403,"name":"Bobby Witt Jr.","mlbam":677951,"is_pitcher":false},{"espn_id":39832,"name":"Shohei Ohtani","mlbam":660271,"is_pitcher":true},{"espn_id":42359,"name":"Cristopher Sanchez","mlbam":650911,"is_pitcher":true},{"espn_id":41221,"name":"Logan Gilbert","mlbam":669302,"is_pitcher":true},{"espn_id":34886,"name":"Alex Bregman","mlbam":608324,"is_pitcher":false},{"espn_id":33912,"name":"Cody Bellinger","mlbam":641355,"is_pitcher":false},{"espn_id":31662,"name":"Jose Altuve","mlbam":514888,"is_pitcher":false},{"espn_id":32078,"name":"George Springer","mlbam":543807,"is_pitcher":false},{"espn_id":31127,"name":"Salvador Perez","mlbam":521692,"is_pitcher":false},{"espn_id":30442,"name":"Aroldis Chapman","mlbam":547973,"is_pitcher":true},{"espn_id":33709,"name":"Aaron Nola","mlbam":605400,"is_pitcher":true},{"espn_id":39910,"name":"Zac Gallen","mlbam":668678,"is_pitcher":true},{"espn_id":32760,"name":"Josh Hader","mlbam":623352,"is_pitcher":true},{"espn_id":32145,"name":"Jason Adam","mlbam":592094,"is_pitcher":true},{"espn_id":40810,"name":"Jonathan Aranda","mlbam":666018,"is_pitcher":false},{"espn_id":4142424,"name":"Seiya Suzuki","mlbam":673548,"is_pitcher":false},{"espn_id":33840,"name":"Grant Holmes","mlbam":656550,"is_pitcher":true},{"espn_id":4987382,"name":"Ceddanne Rafaela","mlbam":678882,"is_pitcher":false},{"espn_id":41287,"name":"Ernie Clement","mlbam":676391,"is_pitcher":false},{"espn_id":5116839,"name":"Brent Headrick","mlbam":687396,"is_pitcher":true},{"espn_id":4417208,"name":"Noah Cameron","mlbam":702070,"is_pitcher":true},{"espn_id":4297897,"name":"Emerson Hancock","mlbam":676106,"is_pitcher":true},{"espn_id":34873,"name":"Seth Lugo","mlbam":607625,"is_pitcher":true},{"espn_id":33148,"name":"Chris Bassitt","mlbam":605135,"is_pitcher":true}]},{"team_id":2,"name":"Honey Nut Chourios","abbrev":"Alex","players":[{"espn_id":4917869,"name":"Jackson Chourio","mlbam":694192,"is_pitcher":false},{"espn_id":42409,"name":"Tarik Skubal","mlbam":669373,"is_pitcher":true},{"espn_id":32767,"name":"Matt Olson","mlbam":621566,"is_pitcher":false},{"espn_id":4717833,"name":"Pete Crow-Armstrong","mlbam":691718,"is_pitcher":false},{"espn_id":41355,"name":"Geraldo Perdomo","mlbam":672695,"is_pitcher":false},{"espn_id":36581,"name":"Framber Valdez","mlbam":664285,"is_pitcher":true},{"espn_id":4987924,"name":"Cade Smith","mlbam":671922,"is_pitcher":true},{"espn_id":4345076,"name":"Gavin Williams","mlbam":668909,"is_pitcher":true},{"espn_id":4949041,"name":"Trey Yesavage","mlbam":702056,"is_pitcher":true},{"espn_id":5149072,"name":"Kevin McGonigle","mlbam":805808,"is_pitcher":false},{"espn_id":4725251,"name":"Liam Hicks","mlbam":689414,"is_pitcher":false},{"espn_id":4684778,"name":"Jordan Walker","mlbam":691023,"is_pitcher":false},{"espn_id":41216,"name":"Logan Webb","mlbam":657277,"is_pitcher":true},{"espn_id":4414528,"name":"Andrew Abbott","mlbam":671096,"is_pitcher":true},{"espn_id":4872595,"name":"Munetaka Murakami","mlbam":808959,"is_pitcher":false},{"espn_id":35591,"name":"Ty France","mlbam":664034,"is_pitcher":false},{"espn_id":5006093,"name":"Kyle Leahy","mlbam":681517,"is_pitcher":true},{"espn_id":39640,"name":"Trevor Rogers","mlbam":669432,"is_pitcher":true},{"espn_id":4187661,"name":"Hunter Gaddis","mlbam":683769,"is_pitcher":true},{"espn_id":42796,"name":"Kyle Stowers","mlbam":669065,"is_pitcher":false},{"espn_id":4414531,"name":"Zack Gelof","mlbam":680869,"is_pitcher":false},{"espn_id":42898,"name":"Yoendrys Gomez","mlbam":672782,"is_pitcher":true},{"espn_id":33301,"name":"Ryne Stanek","mlbam":592773,"is_pitcher":true},{"espn_id":4300668,"name":"Andrew Alvarez","mlbam":674841,"is_pitcher":true}]},{"team_id":5,"name":"Team Alex","abbrev":"MART","players":[{"espn_id":32801,"name":"Jose Ramirez","mlbam":608070,"is_pitcher":false},{"espn_id":35002,"name":"Vladimir Guerrero Jr.","mlbam":665489,"is_pitcher":false},{"espn_id":42507,"name":"Gunnar Henderson","mlbam":683002,"is_pitcher":false},{"espn_id":4719324,"name":"Wyatt Langford","mlbam":694671,"is_pitcher":false},{"espn_id":4917854,"name":"Eury Perez","mlbam":691587,"is_pitcher":true},{"espn_id":42178,"name":"Adley Rutschman","mlbam":668939,"is_pitcher":false},{"espn_id":41178,"name":"Ryan Weathers","mlbam":677960,"is_pitcher":true},{"espn_id":4326697,"name":"Reid Detmers","mlbam":672282,"is_pitcher":true},{"espn_id":41509,"name":"Riley O'Brien","mlbam":676617,"is_pitcher":true},{"espn_id":4966140,"name":"Payton Tolle","mlbam":801139,"is_pitcher":true},{"espn_id":31267,"name":"Zack Wheeler","mlbam":554430,"is_pitcher":true},{"espn_id":32532,"name":"Willson Contreras","mlbam":575929,"is_pitcher":false},{"espn_id":5080767,"name":"Roman Anthony","mlbam":701350,"is_pitcher":false},{"espn_id":40937,"name":"Dustin May","mlbam":669160,"is_pitcher":true},{"espn_id":42417,"name":"Bryson Stott","mlbam":681082,"is_pitcher":false},{"espn_id":4925604,"name":"Carson Benge","mlbam":701807,"is_pitcher":false},{"espn_id":41939,"name":"Eduard Bazardo","mlbam":660825,"is_pitcher":true},{"espn_id":33804,"name":"Gleyber Torres","mlbam":650402,"is_pitcher":false},{"espn_id":4926296,"name":"Jac Caglianone","mlbam":695506,"is_pitcher":false},{"espn_id":5291189,"name":"Didier Fuentes","mlbam":800311,"is_pitcher":true},{"espn_id":4791597,"name":"Zebby Matthews","mlbam":805673,"is_pitcher":true},{"espn_id":34401,"name":"Matthew Boyd","mlbam":571510,"is_pitcher":true},{"espn_id":42996,"name":"Hayden Wesneski","mlbam":669713,"is_pitcher":true},{"espn_id":39251,"name":"Walker Buehler","mlbam":621111,"is_pitcher":true}]},{"team_id":9,"name":"Team Floyd","abbrev":"WLM","players":[{"espn_id":36185,"name":"Ronald Acuna Jr.","mlbam":660670,"is_pitcher":false},{"espn_id":33712,"name":"Kyle Schwarber","mlbam":656941,"is_pitcher":false},{"espn_id":30951,"name":"Bryce Harper","mlbam":547180,"is_pitcher":false},{"espn_id":4109109,"name":"Vinnie Pasquantino","mlbam":686469,"is_pitcher":false},{"espn_id":32691,"name":"Corey Seager","mlbam":608369,"is_pitcher":false},{"espn_id":39895,"name":"William Contreras","mlbam":661388,"is_pitcher":false},{"espn_id":39667,"name":"Jesus Luzardo","mlbam":666200,"is_pitcher":true},{"espn_id":31174,"name":"Nathan Eovaldi","mlbam":543135,"is_pitcher":true},{"espn_id":30836,"name":"Mike Trout","mlbam":545361,"is_pitcher":false},{"espn_id":41326,"name":"Xavier Edwards","mlbam":669364,"is_pitcher":false},{"espn_id":42584,"name":"Drew Rasmussen","mlbam":656876,"is_pitcher":true},{"espn_id":42433,"name":"Nick Lodolo","mlbam":666157,"is_pitcher":true},{"espn_id":33303,"name":"Max Muncy","mlbam":571970,"is_pitcher":false},{"espn_id":4654313,"name":"Bryce Miller","mlbam":682243,"is_pitcher":true},{"espn_id":41167,"name":"Casey Mize","mlbam":663554,"is_pitcher":true},{"espn_id":42480,"name":"Taj Bradley","mlbam":671737,"is_pitcher":true},{"espn_id":4918156,"name":"Jared Jones","mlbam":683003,"is_pitcher":true},{"espn_id":39636,"name":"MacKenzie Gore","mlbam":669022,"is_pitcher":true},{"espn_id":4666100,"name":"Zach Neto","mlbam":687263,"is_pitcher":false},{"espn_id":40080,"name":"Trevor Megill","mlbam":656730,"is_pitcher":true},{"espn_id":35183,"name":"Ryan O'Hearn","mlbam":656811,"is_pitcher":false},{"espn_id":39572,"name":"Luis Arraez","mlbam":650333,"is_pitcher":false},{"espn_id":39825,"name":"Freddy Peralta","mlbam":642547,"is_pitcher":true},{"espn_id":5001153,"name":"Kevin Kelly","mlbam":687330,"is_pitcher":true},{"espn_id":41364,"name":"Hogan Harris","mlbam":663687,"is_pitcher":true}]},{"team_id":3,"name":"Team Jason","abbrev":"MART","players":[{"espn_id":34967,"name":"Kyle Tucker","mlbam":663656,"is_pitcher":false},{"espn_id":36969,"name":"Juan Soto","mlbam":665742,"is_pitcher":false},{"espn_id":35983,"name":"Fernando Tatis Jr.","mlbam":665487,"is_pitcher":false},{"espn_id":36018,"name":"Yordan Alvarez","mlbam":670541,"is_pitcher":false},{"espn_id":4629089,"name":"Bryan Woo","mlbam":693433,"is_pitcher":true},{"espn_id":4905884,"name":"Maikel Garcia","mlbam":672580,"is_pitcher":false},{"espn_id":38904,"name":"Bo Bichette","mlbam":666182,"is_pitcher":false},{"espn_id":35066,"name":"Josh Naylor","mlbam":647304,"is_pitcher":false},{"espn_id":4810190,"name":"Drake Baldwin","mlbam":686948,"is_pitcher":false},{"espn_id":32082,"name":"Sonny Gray","mlbam":543243,"is_pitcher":true},{"espn_id":40429,"name":"Michael King","mlbam":650633,"is_pitcher":true},{"espn_id":39817,"name":"Ranger Suarez","mlbam":624133,"is_pitcher":true},{"espn_id":32081,"name":"Gerrit Cole","mlbam":543037,"is_pitcher":true},{"espn_id":41282,"name":"Braxton Ashcraft","mlbam":677952,"is_pitcher":true},{"espn_id":4619898,"name":"Parker Messick","mlbam":800048,"is_pitcher":true},{"espn_id":35135,"name":"Tanner Scott","mlbam":656945,"is_pitcher":true},{"espn_id":4917888,"name":"Louis Varland","mlbam":686973,"is_pitcher":true},{"espn_id":41455,"name":"Dylan Lee","mlbam":669276,"is_pitcher":true},{"espn_id":34995,"name":"Trent Grisham","mlbam":663757,"is_pitcher":false},{"espn_id":41273,"name":"Jeremy Pena","mlbam":665161,"is_pitcher":false},{"espn_id":4867679,"name":"Sean Burke","mlbam":680732,"is_pitcher":true},{"espn_id":33696,"name":"Carlos Rodon","mlbam":607074,"is_pitcher":true},{"espn_id":40635,"name":"Royce Lewis","mlbam":668904,"is_pitcher":false},{"espn_id":32517,"name":"Josh Bell","mlbam":605137,"is_pitcher":false}]},{"team_id":7,"name":"Team Lockwood","abbrev":"LOCK","players":[{"espn_id":42404,"name":"Corbin Carroll","mlbam":682998,"is_pitcher":false},{"espn_id":37498,"name":"Pete Alonso","mlbam":624413,"is_pitcher":false},{"espn_id":4905921,"name":"Junior Caminero","mlbam":691406,"is_pitcher":false},{"espn_id":33710,"name":"Trea Turner","mlbam":607208,"is_pitcher":false},{"espn_id":30948,"name":"Chris Sale","mlbam":519242,"is_pitcher":true},{"espn_id":32796,"name":"Jacob deGrom","mlbam":594798,"is_pitcher":true},{"espn_id":42406,"name":"George Kirby","mlbam":669923,"is_pitcher":true},{"espn_id":41219,"name":"Nico Hoerner","mlbam":663538,"is_pitcher":false},{"espn_id":34943,"name":"Dylan Cease","mlbam":656302,"is_pitcher":true},{"espn_id":32159,"name":"Brandon Nimmo","mlbam":607043,"is_pitcher":false},{"espn_id":4345070,"name":"Alec Burleson","mlbam":676475,"is_pitcher":false},{"espn_id":41199,"name":"Shane McClanahan","mlbam":663556,"is_pitcher":true},{"espn_id":5080771,"name":"Sal Stewart","mlbam":701398,"is_pitcher":false},{"espn_id":4863321,"name":"Connelly Early","mlbam":813349,"is_pitcher":true},{"espn_id":4875225,"name":"Daniel Palencia","mlbam":694037,"is_pitcher":true},{"espn_id":38980,"name":"Bryan Reynolds","mlbam":668804,"is_pitcher":false},{"espn_id":33841,"name":"Jeff Hoffman","mlbam":656546,"is_pitcher":true},{"espn_id":4683375,"name":"Kyle Harrison","mlbam":690986,"is_pitcher":true},{"espn_id":41587,"name":"Ryan Jeffers","mlbam":680777,"is_pitcher":false},{"espn_id":33403,"name":"Emilio Pagan","mlbam":641941,"is_pitcher":true},{"espn_id":35304,"name":"Mauricio Dubon","mlbam":643289,"is_pitcher":false},{"espn_id":34973,"name":"Tyler Mahle","mlbam":641816,"is_pitcher":true},{"espn_id":4881980,"name":"Janson Junk","mlbam":676083,"is_pitcher":true},{"espn_id":4414525,"name":"Kumar Rocker","mlbam":677958,"is_pitcher":true}]},{"team_id":1,"name":"Yankees in 2026","abbrev":"NYY","players":[{"espn_id":33192,"name":"Aaron Judge","mlbam":592450,"is_pitcher":false},{"espn_id":4719507,"name":"Paul Skenes","mlbam":694973,"is_pitcher":true},{"espn_id":41292,"name":"Cal Raleigh","mlbam":663728,"is_pitcher":false},{"espn_id":4918256,"name":"James Wood","mlbam":695578,"is_pitcher":false},{"espn_id":5016968,"name":"Ben Rice","mlbam":700250,"is_pitcher":false},{"espn_id":5080761,"name":"Jacob Misiorowski","mlbam":694819,"is_pitcher":true},{"espn_id":4872691,"name":"Jackson Merrill","mlbam":701538,"is_pitcher":false},{"espn_id":42402,"name":"CJ Abrams","mlbam":682928,"is_pitcher":false},{"espn_id":4424286,"name":"Spencer Torkelson","mlbam":679529,"is_pitcher":false},{"espn_id":4433874,"name":"Nolan McLean","mlbam":690997,"is_pitcher":true},{"espn_id":38303,"name":"David Bednar","mlbam":670280,"is_pitcher":true},{"espn_id":33783,"name":"Ozzie Albies","mlbam":645277,"is_pitcher":false},{"espn_id":5134581,"name":"Cam Schlittler","mlbam":693645,"is_pitcher":true},{"espn_id":5218285,"name":"Konnor Griffin","mlbam":804606,"is_pitcher":false},{"espn_id":34026,"name":"Tyler Rogers","mlbam":643511,"is_pitcher":true},{"espn_id":5134636,"name":"Kazuma Okamoto","mlbam":672960,"is_pitcher":false},{"espn_id":4629081,"name":"Brooks Lee","mlbam":686797,"is_pitcher":false},{"espn_id":5149070,"name":"George Lombard Jr.","mlbam":806146,"is_pitcher":false},{"espn_id":5132011,"name":"Will Warren","mlbam":701542,"is_pitcher":true},{"espn_id":4417203,"name":"Justin Wrobleski","mlbam":680736,"is_pitcher":true},{"espn_id":32175,"name":"Robbie Ray","mlbam":592662,"is_pitcher":true},{"espn_id":4917889,"name":"Daylen Lile","mlbam":695734,"is_pitcher":false},{"espn_id":29630,"name":"Kenley Jansen","mlbam":445276,"is_pitcher":true},{"espn_id":42823,"name":"Davis Martin","mlbam":663436,"is_pitcher":true}]}];
 
 // ── localStorage load (runs immediately, before Firebase) ──
@@ -2491,9 +2493,15 @@ function _rebuildTA(rosterEntries){
     cntEl.textContent = rosterLabel;
   }
 
-  // Re-render all visible Team Alex tables
+  // Yesterday tables are the default view. Season tables scan the full
+  // leaderboard for cell colors; draw those only when that view is open.
   renderTAH(); renderTASP(); renderTARP();
-  renderTALB(); renderTASPLB(); renderTARPLB();
+  var seasonH = document.getElementById('ta-h-season-btn');
+  if (seasonH && seasonH.classList.contains('active')) renderTALB();
+  var seasonSP = document.getElementById('ta-sp-season-btn');
+  if (seasonSP && seasonSP.classList.contains('active')) renderTASPLB();
+  var seasonRP = document.getElementById('ta-rp-season-btn');
+  if (seasonRP && seasonRP.classList.contains('active')) renderTARPLB();
 }
 
 // ── Login overlay ──────────────────────────────────────────────────────────
@@ -2685,8 +2693,49 @@ async function openEspnTeamPicker(){
   _espnClaims = await _loadEspnClaims();
   _renderEspnTeamList(_espnClaims);
 }
+function _withTimeout(promise, ms){
+  return new Promise(function(resolve, reject){
+    var settled = false;
+    var timer = setTimeout(function(){
+      if (settled) return;
+      settled = true;
+      var err = new Error('ESPN_TIMEOUT');
+      err.code = 'timeout';
+      reject(err);
+    }, ms);
+    Promise.resolve(promise).then(function(value){
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    }, function(err){
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+function _claimConflict(e){
+  if (_fbPermissionDenied(e)) return true;
+  var code = (e && e.code) ? String(e.code) : '';
+  var msg = (e && e.message) ? String(e.message) : '';
+  return code === 'already-exists' || msg.indexOf('already-exists') !== -1;
+}
+function _scheduleEspnRoster(team){
+  var cnt = document.getElementById('ta-roster-count');
+  if (cnt) cnt.textContent = 'Loading ' + (team.name || 'roster') + '…';
+  setTimeout(function(){
+    try {
+      _applyEspnTeam(team);
+    } catch (e) {
+      console.error('ESPN roster render error:', e);
+      if (cnt) cnt.textContent = 'Team saved. Reload the page to draw the roster.';
+    }
+  }, 0);
+}
 async function confirmEspnTeamLink(){
-  if (!_fbUser || !_fbDb) return;
+  if (!_fbUser || !_fbDb || _claimInflight) return;
   if (_espnTeamId != null) { closeEspnTeamPicker(); return; }
   var errEl = document.getElementById('espn-team-error');
   var btn = document.getElementById('espn-team-confirm');
@@ -2707,41 +2756,42 @@ async function confirmEspnTeamLink(){
     _renderEspnTeamList(_espnClaims);
     return;
   }
+  _claimInflight = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Linking…'; }
   try {
-    var result = await _claimEspnTeam(team);
-    _applyEspnTeam(team);
+    await _claimEspnTeam(team);
     if (!_teamName || _teamName === 'My Team') {
       _teamName = team.name || _teamName;
       _applyTeamName(_teamName);
       _saveTeamNameLocal(_teamName);
-      try {
-        await _fbDb.collection('users').doc(_fbUser.uid).set({teamName: _teamName},{merge:true});
-      } catch (e) {}
+      _fbDb.collection('users').doc(_fbUser.uid).set({teamName: _teamName},{merge:true}).catch(function(){});
     }
     closeEspnTeamPicker();
-    if (result && result.enforced === false) {
-      console.warn('ESPN team saved on the user record only. Publish firestore.rules so another account cannot claim the same team.');
-    }
+    _scheduleEspnRoster(team);
   } catch (e) {
     var msg = (e && e.message) ? String(e.message) : '';
-    if (msg.indexOf('ESPN_TAKEN') !== -1) {
-      showErr('That team was just linked to another account.');
-      _espnClaims = await _loadEspnClaims();
+    if (msg.indexOf('ESPN_TIMEOUT') !== -1) {
+      showErr('Saving the team is taking too long. Check your connection and try again.');
+    } else if (msg.indexOf('ESPN_TAKEN') !== -1) {
+      showErr('That team is already linked to another account.');
+      try {
+        _espnClaims = await _withTimeout(_loadEspnClaims(), _ESPN_CLAIM_TIMEOUT_MS || 12000);
+      } catch (ignore) {}
       _espnPickId = null;
       _renderEspnTeamList(_espnClaims);
     } else if (msg.indexOf('ESPN_LOCKED') !== -1) {
       showErr('This account already has an ESPN team.');
       closeEspnTeamPicker();
       var existing = _espnTeamById(_espnTeamId);
-      if (existing) _applyEspnTeam(existing);
+      if (existing) _scheduleEspnRoster(existing);
     } else if (_fbPermissionDenied(e)) {
-      showErr('Could not lock that team. If it is still free, publish the Firestore rules in VERCEL.md and try again.');
+      showErr('Could not save that team. If it is still free, try again in a moment.');
     } else {
       console.error('ESPN team link error:', e);
       showErr('Could not save the team. Try again.');
     }
   } finally {
+    _claimInflight = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Link this team'; }
   }
 }
@@ -2750,52 +2800,36 @@ async function _claimEspnTeam(team){
   var uid = _fbUser.uid;
   var userRef = _fbDb.collection('users').doc(uid);
   var claimRef = _fbDb.collection('teamClaims').doc(String(teamId));
-  var userSnap = await userRef.get();
+  var waitMs = _ESPN_CLAIM_TIMEOUT_MS || 12000;
+  // Plain writes, not a transaction. runTransaction's commit never settled
+  // on iPhone Safari, so the Link button stayed on "Linking…" forever.
+  // teamClaims/{id} can be created once; an update is rejected by the rules.
+  var userSnap = await _withTimeout(userRef.get(), waitMs);
   var already = userSnap.exists ? userSnap.data().espnTeamId : null;
+  if (already != null && already !== '' && Number(already) === teamId) return {enforced: true};
   if (already != null && already !== '' && Number(already) !== teamId) {
     _espnTeamId = Number(already);
     throw new Error('ESPN_LOCKED');
   }
-  var canReadClaims = true;
-  var claimSnap = null;
-  try {
-    claimSnap = await claimRef.get();
-  } catch (e) {
-    if (_fbPermissionDenied(e)) canReadClaims = false;
-    else throw e;
-  }
-  if (canReadClaims && claimSnap && claimSnap.exists) {
-    var owner = (claimSnap.data() || {}).uid;
-    if (owner && owner !== uid) throw new Error('ESPN_TAKEN');
-  }
-  var payload = {
-    espnTeamId: teamId,
-    espnTeamName: team.name || ''
+  var payload = { espnTeamId: teamId, espnTeamName: team.name || '' };
+  var claimBody = {
+    uid: uid,
+    email: _fbUser.email || '',
+    teamId: teamId,
+    teamName: team.name || '',
+    claimedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
-  if (!canReadClaims) {
-    await userRef.set(payload, {merge: true});
-    return {enforced: false};
+  try {
+    await _withTimeout(claimRef.set(claimBody), waitMs);
+  } catch (e) {
+    if (e && e.message === 'ESPN_TIMEOUT') throw e;
+    if (!_claimConflict(e)) throw e;
+    var existing = await _withTimeout(claimRef.get(), waitMs);
+    var owner = existing && existing.exists ? (existing.data() || {}).uid : null;
+    if (owner && owner !== uid) throw new Error('ESPN_TAKEN');
+    if (!owner) throw e;
   }
-  await _fbDb.runTransaction(function(tx){
-    return tx.get(claimRef).then(function(cSnap){
-      return tx.get(userRef).then(function(uSnap){
-        var prev = uSnap.exists ? uSnap.data().espnTeamId : null;
-        if (prev != null && prev !== '' && Number(prev) !== teamId) throw new Error('ESPN_LOCKED');
-        var cUid = cSnap.exists ? (cSnap.data() || {}).uid : null;
-        if (cUid && cUid !== uid) throw new Error('ESPN_TAKEN');
-        if (!cSnap.exists) {
-          tx.set(claimRef, {
-            uid: uid,
-            email: _fbUser.email || '',
-            teamId: teamId,
-            teamName: team.name || '',
-            claimedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-        if (prev == null || prev === '') tx.set(userRef, payload, {merge: true});
-      });
-    });
-  });
+  await _withTimeout(userRef.set(payload, {merge: true}), waitMs);
   return {enforced: true};
 }
 
