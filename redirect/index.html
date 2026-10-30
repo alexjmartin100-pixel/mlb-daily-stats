@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLB Daily Stats has moved</title>
+<script>
+(function () {
+  var base = "https://mlb-daily-stats.vercel.app";
+  var path = location.pathname || "/";
+  if (path === "/index.html") path = "/";
+  var dest = base + path + (location.search || "") + (location.hash || "");
+  var safe = dest.replace(/&/g, "&amp;").replace(/"/g, "%22");
+  document.write('<link rel="canonical" href="' + safe + '">');
+  document.write('<meta http-equiv="refresh" content="0;url=' + safe + '">');
+  location.replace(dest);
+})();
+</script>
+<noscript>
+<meta http-equiv="refresh" content="0;url=https://mlb-daily-stats.vercel.app/">
+</noscript>
+</head>
+<body>
+<p>MLB Daily Stats has moved.
+<a id="go" href="https://mlb-daily-stats.vercel.app/">Continue to mlb-daily-stats.vercel.app</a></p>
+<script>
+(function () {
+  var base = "https://mlb-daily-stats.vercel.app";
+  var path = location.pathname || "/";
+  if (path === "/index.html") path = "/";
+  var dest = base + path + (location.search || "") + (location.hash || "");
+  var link = document.getElementById("go");
+  if (link) link.href = dest;
+})();
+</script>
+</body>
+</html>

@@ -3,29 +3,16 @@
     "rules": "firestore.rules"
   },
   "hosting": {
-    "public": ".",
+    "public": "redirect",
     "ignore": [
       "firebase.json",
-      ".firebaserc",
-      "**/*.py",
-      "**/*.bat",
-      "requirements.txt",
-      "SETUP_FIREBASE.md",
-      "SETUP_GITHUB.md",
-      "fg_cookie.txt",
-      ".github/**",
-      "__pycache__/**",
-      "*.md",
-      ".gitignore",
-      ".git/**",
-      "firestore.rules",
-      "vercel.json",
-      ".vercelignore"
+      "**/.*",
+      "**/node_modules/**"
     ],
     "rewrites": [
       {
         "source": "**",
-        "destination": "/mlb_daily_stats.html"
+        "destination": "/index.html"
       }
     ],
     "headers": [

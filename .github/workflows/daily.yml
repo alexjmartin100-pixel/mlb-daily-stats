@@ -74,9 +74,15 @@ jobs:
           git push origin main
 
       # Vercel production updates from this push to main (Git integration).
-      # Do not add Vercel tokens here. Firebase Hosting stays until cutover.
-      # See VERCEL.md.
-      - name: Deploy to Firebase Hosting
+      # Do not add Vercel tokens here. See VERCEL.md.
+      #
+      # firebase.json hosting.public is the redirect/ folder, so this step
+      # publishes only the tiny page that sends mlb-stats-ae429.web.app to
+      # Vercel. It stays in the workflow on purpose: the upload is a few
+      # kilobytes, it is idempotent, and a later run restores the redirect
+      # if hosting was overwritten. It does not deploy the dashboard, and
+      # it does not deploy Firestore rules.
+      - name: Deploy Firebase Hosting redirect
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
         run: |
@@ -86,10 +92,10 @@ jobs:
           until [ "$n" -ge 3 ]; do
             firebase deploy --only hosting --non-interactive --project mlb-stats-ae429 && break
             n=$((n+1))
-            echo "Firebase deploy attempt $n failed; retrying in 15s..."
+            echo "Firebase redirect deploy attempt $n failed; retrying in 15s..."
             sleep 15
           done
           if [ "$n" -ge 3 ]; then
-            echo "Firebase deploy failed after 3 attempts"
+            echo "Firebase redirect deploy failed after 3 attempts"
             exit 1
           fi

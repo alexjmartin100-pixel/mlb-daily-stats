@@ -1,6 +1,8 @@
 # Python, workflow, and Firebase config. The site is the generated HTML plus
 # the static files that page requests (pc_photos.js, manifest.json, sw.js,
 # icon-192.png, icon-512.png, mickey.png).
+# The redirect/ folder is only for the old Firebase Hosting URL.
+redirect
 *.py
 *.bat
 requirements.txt
