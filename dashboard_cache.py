@@ -88,6 +88,8 @@ def resolve_saved_stats(cache_path: str | None = None,
         return cache
 
     extracted = _extract_html_cache(html_path)
+    if not (extracted and _usable(extracted)):
+        extracted = _extract_split_json()
     if extracted and _usable(extracted):
         return extracted
 
@@ -120,6 +122,77 @@ def _usable(data: dict) -> bool:
     if fantasy is not None and not isinstance(fantasy, dict):
         return False
     return True
+
+
+def _read_json_file(path: str):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def _extract_split_json() -> dict | None:
+    """Read tab JSON written by a previous build.
+
+    data/saved-stats.json is the full renderer input. The public tab files
+    are the fallback when that snapshot is missing: hitters and leaderboards
+    are complete, and fantasy rows are rebuilt from the trade pool.
+    """
+    data_dir = os.path.join(HERE, "data")
+    saved = _read_json_file(os.path.join(data_dir, "saved-stats.json"))
+    if isinstance(saved, dict) and _usable(saved):
+        saved = dict(saved)
+        saved["source"] = "json"
+        saved.setdefault("version", CACHE_VERSION)
+        return saved
+
+    gamelog = _read_json_file(os.path.join(data_dir, "gamelog.json")) or {}
+    board = _read_json_file(os.path.join(data_dir, "leaderboard.json")) or {}
+    meta = _read_json_file(os.path.join(data_dir, "meta.json")) or {}
+    fantasy_file = _read_json_file(os.path.join(data_dir, "fantasy.json")) or {}
+    if not isinstance(gamelog, dict):
+        gamelog = {}
+    if not isinstance(board, dict):
+        board = {}
+    if not isinstance(meta, dict):
+        meta = {}
+    if not isinstance(fantasy_file, dict):
+        fantasy_file = {}
+
+    hitters = gamelog.get("hitters") if isinstance(gamelog.get("hitters"), list) else []
+    all_pitchers = gamelog.get("pitchers") if isinstance(gamelog.get("pitchers"), list) else []
+    lb_data = board.get("hitters") if isinstance(board.get("hitters"), list) else []
+    lb_sp = board.get("starters") if isinstance(board.get("starters"), list) else []
+    lb_rp = board.get("relievers") if isinstance(board.get("relievers"), list) else []
+    all_mlb = meta.get("all_mlb_players") if isinstance(meta.get("all_mlb_players"), list) else []
+    trade_h = fantasy_file.get("hitters") if isinstance(fantasy_file.get("hitters"), list) else []
+    trade_p = fantasy_file.get("pitchers") if isinstance(fantasy_file.get("pitchers"), list) else []
+    if not hitters and not lb_data and not trade_h and not trade_p:
+        return None
+
+    try:
+        n_games = int(meta.get("n_games") or 0)
+    except (TypeError, ValueError):
+        n_games = 0
+    return {
+        "version": CACHE_VERSION,
+        "source": "json",
+        "game_date": "",
+        "date_display": meta.get("date_display") or "",
+        "n_games": n_games,
+        "hitters": hitters,
+        "all_pitchers": all_pitchers,
+        "ta_hitters": meta.get("ta_hitters") if isinstance(meta.get("ta_hitters"), list) else [],
+        "ta_starters": meta.get("ta_starters") if isinstance(meta.get("ta_starters"), list) else [],
+        "ta_relievers": meta.get("ta_relievers") if isinstance(meta.get("ta_relievers"), list) else [],
+        "lb_data": lb_data,
+        "lb_pitch_data": {"starters": lb_sp, "relievers": lb_rp},
+        "fantasy_data": _fantasy_from_trade_pool(trade_h, trade_p, lb_data, lb_sp, lb_rp, all_mlb),
+        "all_mlb_players": all_mlb,
+    }
 
 
 def _extract_html_cache(path: str) -> dict | None:

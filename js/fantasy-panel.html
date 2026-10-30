@@ -1,0 +1,540 @@
+<div id="fantasy-panel" class="tab-panel">
+  <div style="padding:18px 20px 6px">
+    <h2 style="color:var(--accent);margin:0 0 6px">&#x1F4B0; Fantasy Dollar Values</h2>
+    <p style="color:var(--muted);font-size:.82rem;margin:0 0 14px">
+      10-team H2H &nbsp;&bull;&nbsp; $260/team &nbsp;&bull;&nbsp; 6&times;6
+      &nbsp;&bull;&nbsp; 35&nbsp;IP&nbsp;min
+      &nbsp;&bull;&nbsp; Click any column header to sort
+    </p>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button id="fant-h-btn" class="tab-btn active"
+              onclick="fantSwitch('h')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:8px 18px">
+        Hitters
+      </button>
+      <button id="fant-p-btn" class="tab-btn"
+              onclick="fantSwitch('p')"
+              style="padding:8px 18px">
+        Pitchers
+      </button>
+      <button id="fant-standings-btn" class="tab-btn"
+              onclick="fantSwitch('standings')"
+              style="padding:8px 18px">
+        &#x1F3C6; Standings
+      </button>
+      <button id="fant-trade-btn" class="tab-btn"
+              onclick="fantSwitch('trade')"
+              style="padding:8px 18px">
+        &#x1F4B1; Trade Machine
+      </button>
+      <button id="fant-proj-btn" class="tab-btn"
+              onclick="fantSwitch('proj')"
+              style="padding:8px 18px">
+        &#x1F4CA; Season Projections
+      </button>
+      <button id="fant-cmp-btn" class="tab-btn"
+              onclick="fantSwitch('cmp')"
+              style="padding:8px 18px">
+        &#x1F50D; Compare Players
+      </button>
+      <button id="fant-waiver-btn" class="tab-btn"
+              onclick="fantSwitch('waiver')"
+              style="padding:8px 18px">
+        &#x267B; Waiver Wire
+      </button>
+    </div>
+  </div>
+
+  <!-- Hitters table -->
+  <div id="fant-h-wrap">
+    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:var(--muted);font-size:.8rem;margin-right:4px">Position:</span>
+      <button id="fh-all-btn" class="tab-btn active"
+              onclick="fantHitFilter('all')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:5px 14px;font-size:.82rem">
+        All
+      </button>
+      <button id="fh-C-btn" class="tab-btn" onclick="fantHitFilter('C')" style="padding:5px 14px;font-size:.82rem">C</button>
+      <button id="fh-1B-btn" class="tab-btn" onclick="fantHitFilter('1B')" style="padding:5px 14px;font-size:.82rem">1B</button>
+      <button id="fh-2B-btn" class="tab-btn" onclick="fantHitFilter('2B')" style="padding:5px 14px;font-size:.82rem">2B</button>
+      <button id="fh-3B-btn" class="tab-btn" onclick="fantHitFilter('3B')" style="padding:5px 14px;font-size:.82rem">3B</button>
+      <button id="fh-SS-btn" class="tab-btn" onclick="fantHitFilter('SS')" style="padding:5px 14px;font-size:.82rem">SS</button>
+      <button id="fh-OF-btn" class="tab-btn" onclick="fantHitFilter('OF')" style="padding:5px 14px;font-size:.82rem">OF</button>
+      <button id="fh-DH-btn" class="tab-btn" onclick="fantHitFilter('DH')" style="padding:5px 14px;font-size:.82rem">DH</button>
+      <input id="fant-h-search" type="text" placeholder="&#128269; Search hitters…"
+             oninput="fantSearchHit(this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none;margin-left:12px">
+    </div>
+    <div id="fant-h-tbl-slot"></div>
+  </div>
+
+  <!-- Pitchers section with SP/RP sub-toggle + search -->
+  <div id="fant-p-wrap" style="display:none">
+    <div style="padding:6px 20px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="color:var(--muted);font-size:.8rem;margin-right:4px">Filter:</span>
+      <button id="fp-all-btn" class="tab-btn active"
+              onclick="fantPitchFilter('all')"
+              style="border-bottom:3px solid var(--accent);color:#fff;padding:5px 14px;font-size:.82rem">
+        All
+      </button>
+      <button id="fp-sp-btn" class="tab-btn"
+              onclick="fantPitchFilter('sp')"
+              style="padding:5px 14px;font-size:.82rem">
+        SP
+      </button>
+      <button id="fp-rp-btn" class="tab-btn"
+              onclick="fantPitchFilter('rp')"
+              style="padding:5px 14px;font-size:.82rem">
+        RP
+      </button>
+      <input id="fant-p-search" type="text" placeholder="&#128269; Search pitchers…"
+             oninput="fantSearchPit(this.value)"
+             style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                    padding:6px 12px;border-radius:6px;font-size:.85rem;
+                    width:240px;outline:none;margin-left:12px">
+    </div>
+    <div id="fant-p-tbl-slot"></div>
+  </div>
+
+  <!-- Compare Players panel -->
+  <div id="fant-cmp-wrap" style="display:none;padding:6px 20px 20px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="position:relative;flex:1;min-width:260px;max-width:400px">
+        <input id="fcmp-search" type="text" placeholder="&#128269; Search any player…"
+               oninput="fcmpSearch()" autocomplete="off"
+               style="background:#1e1e1e;border:1px solid #444;color:#fff;
+                      padding:8px 14px;border-radius:6px;font-size:.88rem;
+                      width:100%;box-sizing:border-box;outline:none">
+        <div id="fcmp-dropdown"
+             style="display:none;position:absolute;z-index:60;left:0;right:0;top:100%;
+                    background:#1e1e1e;border:1px solid #444;border-radius:0 0 8px 8px;
+                    max-height:280px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.6)">
+        </div>
+      </div>
+      <button onclick="fcmpClear()"
+              style="background:#333;color:#ccc;border:1px solid #555;border-radius:6px;
+                     padding:7px 14px;cursor:pointer;font-size:.82rem;font-weight:600">
+        Clear All
+      </button>
+      <span id="fcmp-cnt" style="color:var(--muted);font-size:.8rem"></span>
+    </div>
+    <div id="fcmp-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+
+    <!-- Hitters comparison -->
+    <div id="fcmp-h-section" style="display:none;margin-bottom:18px">
+      <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Hitters</h3>
+      <div class="table-wrap">
+        <table id="fcmp-h-tbl" class="stats-table" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:140px">
+            <col style="width:55px">
+            <col style="width:70px">
+            <col style="width:60px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:36px">
+          </colgroup>
+          <thead><tr>
+            <th>Player</th>
+            <th>Team</th>
+            <th style="text-align:center">$</th>
+            <th style="text-align:center">PA</th>
+            <th style="text-align:center">R</th>
+            <th style="text-align:center">HR</th>
+            <th style="text-align:center">RBI</th>
+            <th style="text-align:center">SB</th>
+            <th style="text-align:center">K</th>
+            <th style="text-align:center">OBP</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fcmp-h-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pitchers comparison -->
+    <div id="fcmp-p-section" style="display:none">
+      <h3 style="color:var(--accent);margin:0 0 6px;font-size:.92rem">Pitchers</h3>
+      <div class="table-wrap">
+        <table id="fcmp-p-tbl" class="stats-table" style="table-layout:fixed">
+          <colgroup>
+            <col style="width:140px">
+            <col style="width:55px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:70px">
+            <col style="width:36px">
+          </colgroup>
+          <thead><tr>
+            <th>Pitcher</th>
+            <th>Team</th>
+            <th style="text-align:center">$</th>
+            <th style="text-align:center">IP</th>
+            <th style="text-align:center">W</th>
+            <th style="text-align:center">ERA</th>
+            <th style="text-align:center">WHIP</th>
+            <th style="text-align:center">K</th>
+            <th style="text-align:center">SV</th>
+            <th style="text-align:center">HLD</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fcmp-p-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="fcmp-empty" style="text-align:center;padding:40px 0;color:var(--muted)">
+      <div style="font-size:1.6rem;margin-bottom:8px">&#x1F50D;</div>
+      <p style="margin:0">Search for any player above to start comparing.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TRADE CALCULATOR ══ -->
+<div id="fant-trade-wrap" style="display:none;padding:18px 20px 0">
+
+  <!-- Two-column layout: Sending | Compare | Receiving -->
+  <div class="trade-three-col" style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- ── SENDING ── -->
+    <div style="flex:1;min-width:260px">
+      <div style="color:var(--accent);font-weight:700;font-size:.88rem;margin-bottom:10px;
+                  padding:6px 10px;background:rgba(255,80,70,.1);border-radius:6px;
+                  border-left:3px solid var(--accent)">
+        &#x1F4E4; Sending
+      </div>
+      <!-- Phase 3: send-side team selector -->
+      <div id="trade-send-wrap" style="display:none;margin-bottom:8px">
+        <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                       text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+          Trading from
+        </label>
+        <select id="trade-send-sel" onchange="tradeSetSender(this.value)"
+                style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                       padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+        </select>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input id="trade-send-search" type="text" placeholder="&#128269; Add player&#8230;"
+               oninput="tradeSearch('send',this.value)"
+               onblur="setTimeout(function(){var d=document.getElementById('trade-send-dd');if(d)d.style.display='none';},160)"
+               style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                      color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+        <div id="trade-send-dd"
+             style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                    background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                    max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+      </div>
+      <div id="trade-send-list" style="min-height:50px"></div>
+      <div style="margin-top:10px;padding:7px 10px;background:#1a1a1a;border-radius:6px;
+                  display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--muted);font-size:.8rem">Total value</span>
+        <span id="trade-send-total" style="font-weight:700;font-size:.93rem;color:#aaa">$0.0</span>
+      </div>
+    </div>
+
+    <!-- ── CENTER: verdict + category breakdown ── -->
+    <div style="width:240px;flex-shrink:0;display:flex;flex-direction:column;align-items:stretch">
+      <div id="trade-verdict" style="text-align:center;margin-bottom:10px">
+        <span style="color:var(--muted);font-size:.8rem">Add players<br>to both sides</span>
+      </div>
+      <div id="trade-cat-breakdown" style="width:100%"></div>
+    </div>
+
+    <!-- ── RECEIVING ── -->
+    <div style="flex:1;min-width:260px">
+      <div style="color:#4caf50;font-weight:700;font-size:.88rem;margin-bottom:10px;
+                  padding:6px 10px;background:rgba(76,175,80,.1);border-radius:6px;
+                  border-left:3px solid #4caf50">
+        &#x1F4E5; Receiving
+      </div>
+      <!-- Phase 3: counterparty selector. Hidden if no PHASE3_LEAGUE. -->
+      <div id="trade-counter-wrap" style="display:none;margin-bottom:8px">
+        <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                       text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+          Trading with
+        </label>
+        <select id="trade-counter-sel" onchange="tradeSetCounter(this.value)"
+                style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                       padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+        </select>
+      </div>
+      <div style="position:relative;margin-bottom:10px">
+        <input id="trade-recv-search" type="text" placeholder="&#128269; Add player&#8230;"
+               oninput="tradeSearch('recv',this.value)"
+               onblur="setTimeout(function(){var d=document.getElementById('trade-recv-dd');if(d)d.style.display='none';},160)"
+               style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                      color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+        <div id="trade-recv-dd"
+             style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                    background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                    max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+      </div>
+      <div id="trade-recv-list" style="min-height:50px"></div>
+      <div style="margin-top:10px;padding:7px 10px;background:#1a1a1a;border-radius:6px;
+                  display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--muted);font-size:.8rem">Total value</span>
+        <span id="trade-recv-total" style="font-weight:700;font-size:.93rem;color:#aaa">$0.0</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Phase 3: post-trade league impact. Populated by JS once a trade has
+       at least one player on each side and PHASE3_LEAGUE is loaded. -->
+  <div id="phase3-wrap" style="display:none;margin-top:18px;
+                                border-top:1px solid #2a2a2a;padding-top:14px">
+    <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+      &#x1F4CA; League impact (rebalanced lineups, full z-score recompute)
+    </div>
+    <div id="phase3-delta"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button id="phase3-lineup-btn" onclick="phase3ToggleLineups()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show optimized lineups + staff (before / after)
+      </button>
+      <button id="phase3-toggle-btn" onclick="phase3ToggleTable()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show full updated standings
+      </button>
+      <button id="phase3-mc-btn" onclick="phase3ToggleMc()"
+              style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                     padding:6px 14px;border-radius:6px;cursor:pointer;
+                     font-size:.78rem;font-weight:600">
+        &#x25BC; Show finish-probability sim (before / after)
+      </button>
+    </div>
+    <div id="phase3-lineup-wrap" style="display:none;margin-top:10px"></div>
+    <div id="phase3-table-wrap" style="display:none;margin-top:10px"></div>
+    <div id="phase3-mc-wrap"     style="display:none;margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- ══ STANDINGS ══ -->
+<div id="fant-standings-slot"></div>
+
+<!-- ══ SEASON PROJECTIONS ══ -->
+<div id="fant-proj-wrap" style="display:none">
+  <div id="fant-proj-slot"></div>
+</div>
+
+<!-- ══ WAIVER WIRE ══ -->
+<div id="fant-waiver-wrap" style="display:none;padding:18px 20px 0">
+  <!-- Inner sub-tabs: Add/Drop | Stream Pitchers -->
+  <div style="display:flex;gap:10px;margin-bottom:14px">
+    <button id="ww-adddrop-btn" class="tab-btn active"
+            onclick="wwSwitch('adddrop')"
+            style="border-bottom:3px solid var(--accent);color:#fff;padding:6px 14px;font-size:.82rem">
+      &#x1F504; Add / Drop
+    </button>
+    <button id="ww-stream-btn" class="tab-btn"
+            onclick="wwSwitch('stream')"
+            style="padding:6px 14px;font-size:.82rem">
+      &#x1F525; Stream Pitchers
+    </button>
+    <button id="ww-topfa-btn" class="tab-btn"
+            onclick="wwSwitch('topfa')"
+            style="padding:6px 14px;font-size:.82rem">
+      &#x2B50; Top FA
+    </button>
+  </div>
+
+  <!-- ── ADD/DROP MODE ── -->
+  <div id="ww-adddrop-wrap">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Select your team
+      </label>
+      <select id="ww-team-sel" onchange="wwSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <!-- Current roster display + drop buttons -->
+    <div id="ww-roster-wrap" style="display:none">
+      <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                  text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+        Current Roster <span id="ww-roster-count" style="color:#888;font-weight:400"></span>
+      </div>
+      <div id="ww-roster-list" style="margin-bottom:12px"></div>
+
+      <!-- Add player search (shown when team has open spot or has dropped someone) -->
+      <div id="ww-add-section" style="display:none">
+        <div style="font-size:.75rem;color:#4caf50;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          &#x2795; Add from Free Agency
+        </div>
+        <div style="position:relative;margin-bottom:10px;max-width:400px">
+          <input id="ww-add-search" type="text" placeholder="&#128269; Search free agents…"
+                 oninput="wwSearchFA(this.value)" autocomplete="off"
+                 onblur="setTimeout(function(){var d=document.getElementById('ww-add-dd');if(d)d.style.display='none';},160)"
+                 style="width:100%;box-sizing:border-box;background:#1e1e1e;border:1px solid #444;
+                        color:#fff;padding:7px 12px;border-radius:6px;font-size:.84rem;outline:none">
+          <div id="ww-add-dd"
+               style="display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;
+                      background:#1a1a1a;border:1px solid #555;border-radius:6px;z-index:200;
+                      max-height:280px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.6)"></div>
+        </div>
+        <div id="ww-add-list" style="margin-bottom:12px"></div>
+      </div>
+
+      <!-- Results section -->
+      <div id="ww-impact-wrap" style="display:none;margin-top:18px;
+                                      border-top:1px solid #2a2a2a;padding-top:14px">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          &#x1F4CA; League impact (rebalanced lineups, full z-score recompute)
+        </div>
+        <div id="ww-delta"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ww-standings-btn" onclick="wwToggleTable()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show full updated standings
+          </button>
+          <button id="ww-mc-btn" onclick="wwToggleMc()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show finish-probability sim (before / after)
+          </button>
+        </div>
+        <div id="ww-table-wrap" style="display:none;margin-top:10px"></div>
+        <div id="ww-mc-wrap" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STREAM PITCHERS MODE ── -->
+  <div id="ww-stream-wrap" style="display:none">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Select your team
+      </label>
+      <select id="ww-stream-team-sel" onchange="wwStreamSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <div id="ww-stream-body" style="display:none">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:12px 16px;
+                  margin-bottom:14px;font-size:.8rem;color:#bbb;line-height:1.5">
+        <strong style="color:var(--accent)">How it works:</strong>
+        This simulates streaming <strong>4 starting pitchers per week</strong> for the
+        rest of the season. The streamer stats are the average RoS projections of the
+        <strong>top 8 SP in free agency</strong> (100+ proj IP) by dollar value. If your roster is full,
+        drop a player first to make room.
+      </div>
+
+      <!-- Drop to make room (optional) -->
+      <div id="ww-stream-drop-section">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          Current Roster
+        </div>
+        <div id="ww-stream-roster" style="margin-bottom:12px"></div>
+      </div>
+
+      <!-- Streaming stats preview -->
+      <div id="ww-stream-preview" style="display:none;margin-bottom:14px">
+        <div style="font-size:.75rem;color:#4caf50;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+          &#x1F525; Streamer profile (avg of top 8 waiver SP, 100+ IP)
+        </div>
+        <div id="ww-stream-stats" style="background:#1a1a1a;border:1px solid #333;
+                                          border-radius:8px;padding:10px 14px"></div>
+      </div>
+
+      <!-- Results section -->
+      <div id="ww-stream-impact" style="display:none;margin-top:18px;
+                                        border-top:1px solid #2a2a2a;padding-top:14px">
+        <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                    text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+          &#x1F4CA; League impact with streaming (full z-score recompute)
+        </div>
+        <div id="ww-stream-delta"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="ww-stream-standings-btn" onclick="wwStreamToggleTable()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show full updated standings
+          </button>
+          <button id="ww-stream-mc-btn" onclick="wwStreamToggleMc()"
+                  style="background:#1a1a1a;border:1px solid #333;color:#bbb;
+                         padding:6px 14px;border-radius:6px;cursor:pointer;
+                         font-size:.78rem;font-weight:600">
+            &#x25BC; Show finish-probability sim (before / after)
+          </button>
+        </div>
+        <div id="ww-stream-table-wrap" style="display:none;margin-top:10px"></div>
+        <div id="ww-stream-mc-wrap" style="display:none;margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TOP FA MODE ── -->
+  <div id="ww-topfa-wrap" style="display:none">
+    <!-- Team selector -->
+    <div style="margin-bottom:12px;max-width:320px">
+      <label style="display:block;font-size:.7rem;color:var(--muted);font-weight:700;
+                     text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">
+        Compare against
+      </label>
+      <select id="ww-topfa-team-sel" onchange="wwTopFaSetTeam(this.value)"
+              style="width:100%;background:#1e1e1e;border:1px solid #444;color:#fff;
+                     padding:7px 10px;border-radius:6px;font-size:.84rem;outline:none">
+      </select>
+    </div>
+
+    <div id="ww-topfa-body">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px 14px;
+                  margin-bottom:14px;font-size:.78rem;color:#bbb;line-height:1.5">
+        Top 30 unrostered <strong>hitters</strong> and <strong>SPs</strong> by avg RoS dollar
+        projection. A player's name is highlighted <span style="color:#7ec87e;font-weight:700">green</span>
+        if they'd improve the selected team — for hitters, that means they'd claim a starting
+        slot under the lineup optimizer; for SPs, that they'd outearn the team's lowest-$ rostered SP.
+      </div>
+
+      <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:320px">
+          <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+            &#x26BE; Hitters
+          </div>
+          <div id="ww-topfa-h-list"></div>
+        </div>
+        <div style="flex:1;min-width:320px">
+          <div style="font-size:.75rem;color:var(--muted);font-weight:700;
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">
+            &#x1F3AF; Starting Pitchers
+          </div>
+          <div id="ww-topfa-p-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

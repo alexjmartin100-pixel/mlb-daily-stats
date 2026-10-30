@@ -1,6 +1,6 @@
 # Python, workflow, and Firebase config. The site is the generated HTML plus
-# the static files that page requests (pc_photos.js, manifest.json, sw.js,
-# icon-192.png, icon-512.png, mickey.png).
+# the files the page requests: data/*.json (except the rebuild snapshot),
+# js/, photos/, manifest.json, sw.js, icons, and mickey.png.
 # The redirect/ folder is only for the old Firebase Hosting URL.
 redirect
 *.py
@@ -24,3 +24,6 @@ sim_results.json
 lb_cache_*.json
 dashboard_stats_cache.json
 dashboard_stats_cache.json.tmp
+data/saved-stats.json
+data/*.tmp
+js/*.tmp

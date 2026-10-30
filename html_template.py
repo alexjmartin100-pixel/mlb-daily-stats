@@ -19,6 +19,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <!-- PWA: installable as app icon on iOS & Android -->
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
 <meta name="theme-color" content="#e31837">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -204,9 +205,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 #lb-panel .qual-toggle input{cursor:pointer;accent-color:var(--accent)}
 .lb-th-inv{} /* lower-is-better marker — no visual distinction */
 /* Compare Players tab */
-.tab-btn.cmp-btn{color:#2e7d32}
-.tab-btn.cmp-btn.active{color:#4caf50;border-bottom-color:#4caf50}
-.tab-btn.cmp-btn.active .tab-count{background:#4caf50;color:#0f1923}
+.tab-loading{padding:10px 2px 16px;color:var(--muted);font-size:.92rem}
 .cmp-search-wrap{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
 .cmp-input-wrap{position:relative;display:inline-block;width:300px}
 .cmp-input-wrap input{width:100%;box-sizing:border-box}
@@ -303,6 +302,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <!-- ══ GAME LOG ══ -->
 <div id="gamelog-panel" class="tab-panel">
+  <div class="tab-loading" id="gamelog-panel-loading" hidden>Loading game log…</div>
 
   <!-- Sub-tabs: Hitters / Starters / Relievers -->
   <div class="toggle-group" style="margin-bottom:16px">
@@ -418,6 +418,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <!-- ══ TEAM ALEX ══ -->
 <div id="teamalex-panel" class="tab-panel active">
+  <div class="tab-loading" id="teamalex-panel-loading">Loading My Team…</div>
   <div style="display:flex;align-items:center;gap:11px;margin-bottom:18px;flex-wrap:wrap">
     <span style="font-size:1.6rem">👑</span>
     <div style="flex:1">
@@ -623,6 +624,7 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 
 <!-- ══ SEASON LEADERBOARD ══ -->
 <div id="leaderboard-panel" class="tab-panel">
+  <div class="tab-loading" id="leaderboard-panel-loading" hidden>Loading season leaders…</div>
   <div class="toggle-group" style="margin-bottom:14px">
     <button class="tgl-btn active" onclick="showLBType('h',this)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" style="vertical-align:middle;display:inline-block;margin-bottom:2px"><circle cx="4" cy="20" r="2.2" fill="#6B3A2A"/><line x1="5" y1="19" x2="13" y2="11" stroke="#6B3A2A" stroke-width="2.2" stroke-linecap="round"/><line x1="13" y1="11" x2="19" y2="5" stroke="#6B3A2A" stroke-width="5" stroke-linecap="round"/></svg> Hitters</button>
     <button class="tgl-btn" onclick="showLBType('sp',this)">⚾ SP</button>
@@ -917,21 +919,21 @@ footer{text-align:center;padding:18px;color:var(--muted);font-size:.69rem;
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <script>
-const _POS_LOOKUP = __POS_LOOKUP_JSON__;
+var _POS_LOOKUP = {};
 function _normName(s){return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
 function _posFor(name){return _POS_LOOKUP[name]||_POS_LOOKUP[_normName(name)]||'';}
 function _posBadge(name){var p=_posFor(name);return p?'<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">'+p+'</span>':'';}
-const HITTERS    = __HITTERS_JSON__;
-const ALL_PITCHERS = __ALL_PITCHERS_JSON__;
-const STARTERS   = ALL_PITCHERS.filter(p=>p.ip_float>=3||p.is_starter);
-const RELIEVERS  = ALL_PITCHERS.filter(p=>p.ip_float<3&&!p.is_starter);
-let TA_HITTERS = __TA_H_JSON__;
-let TA_STARTERS= __TA_SP_JSON__;
-let TA_RELIEVERS=__TA_RP_JSON__;
-let TA_ROSTER_NORMS=new Set(__TA_NAMES_JSON__);
-let TA_ROSTER_IDS=new Set();
-const DEFAULT_TA_NAMES=__TA_NAMES_JSON__; // baked-in defaults — seeds Firestore on first login
-const ALL_MLB_PLAYERS=__ALL_MLB_PLAYERS_JSON__; // all 40-man roster players for roster search
+var HITTERS = [];
+var ALL_PITCHERS = [];
+var STARTERS = [];
+var RELIEVERS = [];
+let TA_HITTERS = [];
+let TA_STARTERS = [];
+let TA_RELIEVERS = [];
+let TA_ROSTER_NORMS = new Set();
+let TA_ROSTER_IDS = new Set();
+var DEFAULT_TA_NAMES = []; // filled from data/meta.json; seeds Firestore on first login
+var ALL_MLB_PLAYERS = []; // 40-man roster, loaded with My Team
 
 // ── Category leaders (gold highlight) ─────────────────────────────────────
 const H_LEAD_COLS=['r','hr','rbi','k','bb','sb','sba','hard_hits','barrels','max_ev'];
@@ -947,82 +949,308 @@ function minOf(arr,col){
   arr.forEach(r=>{if(r[col]!=null&&!isNaN(r[col])&&r[col]<m)m=r[col];});
   return m<Infinity?m:null;
 }
-const hL={};H_LEAD_COLS.forEach(c=>hL[c]=maxOf(HITTERS,c));
-const spL={};SP_LEAD_COLS.forEach(c=>spL[c]=maxOf(STARTERS,c));
-const rpL={};RP_LEAD_COLS.forEach(c=>rpL[c]=maxOf(RELIEVERS,c));
+const hL={};
+const spL={};
+const rpL={};
 // Pitcher H/R/BB/hard_hits/barrels: lower is better → gold goes to lowest
-const spMin={hits:minOf(STARTERS,'hits'),r:minOf(STARTERS,'r'),bb:minOf(STARTERS,'bb'),hard_hits:minOf(STARTERS,'hard_hits'),barrels:minOf(STARTERS,'barrels')};
-const rpMin={hits:minOf(RELIEVERS,'hits'),r:minOf(RELIEVERS,'r'),bb:minOf(RELIEVERS,'bb'),hard_hits:minOf(RELIEVERS,'hard_hits'),barrels:minOf(RELIEVERS,'barrels')};
+const spMin={hits:null,r:null,bb:null,hard_hits:null,barrels:null};
+const rpMin={hits:null,r:null,bb:null,hard_hits:null,barrels:null};
 // Game log color coding disabled — plain values only
 const gl=(v,max)=>null;
 const glMin=(v,min)=>null;
-// EV gradient: red (high) → blue (low)
-const _evVals=HITTERS.filter(h=>h.max_ev!=null&&h.bip>0).map(h=>h.max_ev);
-const _evMin=_evVals.length?Math.min(..._evVals):90, _evMax=_evVals.length?Math.max(..._evVals):115;
 
 // Inverted-sort columns (lower = better): first click → ascending
 const LB_INV_SORT=new Set(['k_pct','chase_pct','whiff_pct','so']);
 
-// Game Log tab + sub-tab counts
-document.getElementById('gl-tc').textContent=HITTERS.length+STARTERS.length+RELIEVERS.length;
-document.getElementById('p-sp-tc').textContent=STARTERS.length;
-document.getElementById('p-rp-tc').textContent=RELIEVERS.length;
-
-let hD=[...HITTERS], spD=[...STARTERS], rpD=[...RELIEVERS];
+let hD=[], spD=[], rpD=[];
 let hSC='barrels', hSD=-1, spSC='ip_float', spSD=-1, rpSC='sv', rpSD=-1;
 let pitchType='sp';  // current pitcher sub-view: 'sp' or 'rp'
 let glType='h';      // current game log sub-tab: 'h', 'sp', or 'rp'
 
-/* Lazy-hydrate a tab panel on first click. Pairs with the
-   <div id="X-panel" data-lazy="1"></div> + <template id="X-panel-template">
-   pattern that player_cards.py writes for the Fantasy and Player Cards tabs.
-   Clones the template, re-creates <script> tags so they actually run, then
-   replaces the placeholder. No-op if the panel isn't lazy or isn't found. */
-function hydrateTab(panelId){
-  var placeholder = document.getElementById(panelId);
-  if (!placeholder || placeholder.dataset.lazy !== '1') return;
-  var tpl = document.getElementById(panelId + '-template');
-  if (!tpl) return;
-  var frag = tpl.content.cloneNode(true);
-  // Cloned <script> tags don't execute — rewrite them so they do.
-  frag.querySelectorAll('script').forEach(function(oldScript){
-    var newScript = document.createElement('script');
-    for (var i=0; i<oldScript.attributes.length; i++){
-      var a = oldScript.attributes[i];
-      newScript.setAttribute(a.name, a.value);
-    }
-    newScript.textContent = oldScript.textContent;
-    oldScript.parentNode.replaceChild(newScript, oldScript);
-  });
-  // Replace the placeholder in-place so the new panel keeps the same DOM slot.
-  var parent = placeholder.parentNode;
-  while (frag.firstChild){
-    parent.insertBefore(frag.firstChild, placeholder);
-  }
-  parent.removeChild(placeholder);
-  tpl.remove();
-}
+var _jsonCache = {};
+var _jsonLoads = {};
+var _scriptLoads = {};
+var _metaApplied = false;
+var _glReady = false;
+var _lbReady = false;
+var _metaReadyResolve = null;
+var _metaReady = new Promise(function(resolve){ _metaReadyResolve = resolve; });
+var _pendingLocalRoster = null;
+var _pendingTeamName = null;
 
+function _markMetaReady(){
+  if (!_metaReadyResolve) return;
+  var resolve = _metaReadyResolve;
+  _metaReadyResolve = null;
+  resolve();
+}
+function loadJson(url){
+  if (_jsonCache[url]) return Promise.resolve(_jsonCache[url]);
+  if (_jsonLoads[url]) return _jsonLoads[url];
+  _jsonLoads[url] = fetch(url, {cache:'no-store'}).then(function(res){
+    if (!res.ok) throw new Error(url + ' ' + res.status);
+    return res.json();
+  }).then(function(data){
+    _jsonCache[url] = data;
+    return data;
+  }).catch(function(err){
+    delete _jsonLoads[url];
+    throw err;
+  });
+  return _jsonLoads[url];
+}
+function _loadScript(src){
+  if (_scriptLoads[src]) return _scriptLoads[src];
+  _scriptLoads[src] = new Promise(function(resolve, reject){
+    var script = document.createElement('script');
+    script.src = src;
+    script.onload = function(){ resolve(); };
+    script.onerror = function(){
+      delete _scriptLoads[src];
+      reject(new Error(src));
+    };
+    document.body.appendChild(script);
+  });
+  return _scriptLoads[src];
+}
+function _setTabLoading(id, message){
+  var el = document.getElementById(id + '-loading');
+  if (!el) {
+    var panel = document.getElementById(id);
+    if (!panel) return;
+    el = document.createElement('div');
+    el.className = 'tab-loading';
+    el.id = id + '-loading';
+    panel.insertBefore(el, panel.firstChild);
+  }
+  if (!message) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = message;
+}
+function _replacePanel(id, html){
+  var panel = document.getElementById(id);
+  if (!panel) return;
+  var wasActive = panel.classList.contains('active');
+  var wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('style').forEach(function(node){
+    document.head.appendChild(node);
+  });
+  var parent = panel.parentNode;
+  var marker = panel.nextSibling;
+  var nodes = Array.prototype.slice.call(wrap.childNodes);
+  var primary = null;
+  nodes.forEach(function(node){
+    if (node.nodeType === 1 && node.id === id) primary = node;
+    parent.insertBefore(node, marker);
+  });
+  parent.removeChild(panel);
+  if (wasActive && primary) primary.classList.add('active');
+}
+function _hideFantasySubs(){
+  ['fant-trade-wrap','fant-proj-wrap','fant-waiver-wrap','fant-standings-wrap','fant-cmp-wrap'].forEach(function(id){
+    var node = document.getElementById(id);
+    if (node) node.style.display = 'none';
+  });
+}
+function _applyMeta(meta){
+  if (_metaApplied) return;
+  _metaApplied = true;
+  meta = meta || {};
+  _POS_LOOKUP = meta.pos_lookup || {};
+  ALL_MLB_PLAYERS = meta.all_mlb_players || [];
+  ESPN_LEAGUE_TEAMS = meta.espn_teams || [];
+  DEFAULT_TA_NAMES = meta.ta_names || [];
+  if (!_rosterEntries.length && !_pendingLocalRoster) {
+    TA_HITTERS = meta.ta_hitters || [];
+    TA_STARTERS = meta.ta_starters || [];
+    TA_RELIEVERS = meta.ta_relievers || [];
+    TA_ROSTER_NORMS = new Set(DEFAULT_TA_NAMES.map(taNorm));
+  }
+  var count = document.getElementById('ta-roster-count');
+  if (count && !_rosterEntries.length && !_pendingLocalRoster) {
+    count.textContent = DEFAULT_TA_NAMES.length + '-player roster';
+  }
+  if (typeof _indexPlayers === 'function') _indexPlayers();
+  _markMetaReady();
+}
+function _applyGameLog(data){
+  if (_glReady) return;
+  _glReady = true;
+  data = data || {};
+  HITTERS = data.hitters || [];
+  ALL_PITCHERS = data.pitchers || [];
+  STARTERS = ALL_PITCHERS.filter(function(p){ return p.ip_float>=3 || p.is_starter; });
+  RELIEVERS = ALL_PITCHERS.filter(function(p){ return p.ip_float<3 && !p.is_starter; });
+  H_LEAD_COLS.forEach(function(col){ hL[col] = maxOf(HITTERS, col); });
+  SP_LEAD_COLS.forEach(function(col){ spL[col] = maxOf(STARTERS, col); });
+  RP_LEAD_COLS.forEach(function(col){ rpL[col] = maxOf(RELIEVERS, col); });
+  spMin.hits = minOf(STARTERS,'hits');
+  spMin.r = minOf(STARTERS,'r');
+  spMin.bb = minOf(STARTERS,'bb');
+  spMin.hard_hits = minOf(STARTERS,'hard_hits');
+  spMin.barrels = minOf(STARTERS,'barrels');
+  rpMin.hits = minOf(RELIEVERS,'hits');
+  rpMin.r = minOf(RELIEVERS,'r');
+  rpMin.bb = minOf(RELIEVERS,'bb');
+  rpMin.hard_hits = minOf(RELIEVERS,'hard_hits');
+  rpMin.barrels = minOf(RELIEVERS,'barrels');
+  hD = [...HITTERS].sort(function(a,b){ return cmp(a,b,'barrels',-1); });
+  spD = [...STARTERS].sort(function(a,b){ return cmp(a,b,'ip_float',-1); });
+  rpD = [...RELIEVERS].sort(function(a,b){ return cmp(a,b,'sv',-1); });
+  var glCount = document.getElementById('gl-tc');
+  if (glCount) glCount.textContent = HITTERS.length + STARTERS.length + RELIEVERS.length;
+  var spCount = document.getElementById('p-sp-tc');
+  if (spCount) spCount.textContent = STARTERS.length;
+  var rpCount = document.getElementById('p-rp-tc');
+  if (rpCount) rpCount.textContent = RELIEVERS.length;
+  renderH();
+  renderSP();
+  renderRP();
+  if (typeof _indexPlayers === 'function') _indexPlayers();
+  if (typeof _applySavedRoster === 'function') _applySavedRoster();
+  _setTabLoading('gamelog-panel', '');
+  _setTabLoading('teamalex-panel', '');
+}
+function _applyLeaderboard(data){
+  if (_lbReady) return;
+  _lbReady = true;
+  data = data || {};
+  LB_ALL = data.hitters || [];
+  LB_QUAL = LB_ALL.filter(function(p){ return p.qualified; });
+  LB_SP_ALL = data.starters || [];
+  LB_SP_QUAL = LB_SP_ALL.filter(function(p){ return p.qualified; });
+  LB_RP_ALL = data.relievers || [];
+  LB_RP_QUAL = LB_RP_ALL.filter(function(p){ return p.qualified; });
+  Object.keys(rpLIMap).forEach(function(key){ delete rpLIMap[key]; });
+  LB_RP_ALL.forEach(function(p){ if (p.gm_li!=null) rpLIMap[p.id] = p.gm_li; });
+  RELIEVERS.forEach(function(p){ p.gm_li = rpLIMap[p.id] ?? null; });
+  TA_RELIEVERS.forEach(function(p){ p.gm_li = rpLIMap[p.id] ?? null; });
+  [LB_SP_ALL, LB_RP_ALL].forEach(function(rows){
+    rows.forEach(function(p){
+      if (p.k_bb_pct==null && p.k_pct!=null && p.bb_pct!=null)
+        p.k_bb_pct = Math.round((p.k_pct - p.bb_pct) * 10) / 10;
+    });
+  });
+  buildCfg(LB_COL_CFG, LB_QUAL);
+  buildCfg(PL_SP_COL_CFG, LB_SP_QUAL);
+  buildCfg(PL_RP_COL_CFG, LB_RP_QUAL);
+  LB_P_ALL = LB_SP_ALL.concat(LB_RP_ALL);
+  LB_P_QUAL_CMP = LB_SP_QUAL.concat(LB_RP_QUAL);
+  buildCfg(PL_CMP_COL_CFG, LB_P_QUAL_CMP);
+  var lbCount = document.getElementById('lb-tc');
+  if (lbCount && lbType === 'h') lbCount.textContent = LB_QUAL.length;
+  lbD = [...LB_QUAL].sort(function(a,b){ return cmp(a,b,'hr',-1); });
+  lbSpD = [...LB_SP_QUAL];
+  lbRpD = [...LB_RP_QUAL];
+  if (typeof _indexPlayers === 'function') _indexPlayers();
+  if (typeof _buildRosterPools === 'function') _buildRosterPools();
+  if (typeof _applySavedRoster === 'function') _applySavedRoster();
+  if (lbType === 'sp') renderLBSP();
+  else if (lbType === 'rp') renderLBRP();
+  else if (lbType !== 'cmp') renderLB();
+  renderRP();
+  renderTARP();
+  _setTabLoading('leaderboard-panel', '');
+}
+function ensureLeaderboard(){
+  if (_lbReady) return Promise.resolve();
+  if (ensureLeaderboard._p) return ensureLeaderboard._p;
+  _setTabLoading('leaderboard-panel', 'Loading season leaders…');
+  ensureLeaderboard._p = loadJson('data/leaderboard.json').then(_applyLeaderboard).catch(function(err){
+    ensureLeaderboard._p = null;
+    console.error(err);
+    _setTabLoading('leaderboard-panel', 'Could not load season leaders. Refresh and try again.');
+    throw err;
+  });
+  return ensureLeaderboard._p;
+}
+function ensureCore(){
+  if (_glReady && _metaApplied) return Promise.resolve();
+  if (ensureCore._p) return ensureCore._p;
+  _setTabLoading('teamalex-panel', 'Loading My Team…');
+  _setTabLoading('gamelog-panel', 'Loading game log…');
+  ensureCore._p = Promise.all([
+    loadJson('data/meta.json'),
+    loadJson('data/gamelog.json')
+  ]).then(function(parts){
+    _applyMeta(parts[0]);
+    _applyGameLog(parts[1]);
+  }).catch(function(err){
+    ensureCore._p = null;
+    console.error(err);
+    _markMetaReady();
+    _setTabLoading('teamalex-panel', 'Could not load My Team. Refresh and try again.');
+    _setTabLoading('gamelog-panel', 'Could not load the game log. Refresh and try again.');
+    throw err;
+  });
+  return ensureCore._p;
+}
+var _fantasyMount = null;
+function ensureFantasy(){
+  if (_fantasyMount) return _fantasyMount;
+  _setTabLoading('fantasy-panel', 'Loading Fantasy…');
+  _fantasyMount = Promise.all([
+    loadJson('data/fantasy.json'),
+    fetch('js/fantasy-panel.html', {cache:'no-store'}).then(function(res){
+      if (!res.ok) throw new Error('fantasy panel ' + res.status);
+      return res.text();
+    })
+  ]).then(function(parts){
+    window._fantasyPayload = parts[0];
+    _replacePanel('fantasy-panel', parts[1]);
+    return _loadScript('js/fantasy.js');
+  }).catch(function(err){
+    _fantasyMount = null;
+    console.error(err);
+    _setTabLoading('fantasy-panel', 'Could not load Fantasy. Refresh and try again.');
+    throw err;
+  });
+  return _fantasyMount;
+}
+var _cardsMount = null;
+function ensurePlayerCards(){
+  if (_cardsMount) return _cardsMount;
+  _setTabLoading('playercards-panel', 'Loading player cards…');
+  _cardsMount = Promise.all([
+    loadJson('data/playercards.json'),
+    fetch('js/playercards-panel.html', {cache:'no-store'}).then(function(res){
+      if (!res.ok) throw new Error('player cards panel ' + res.status);
+      return res.text();
+    })
+  ]).then(function(parts){
+    window._playerCardsPayload = parts[0];
+    _replacePanel('playercards-panel', parts[1]);
+    return _loadScript('js/playercards.js');
+  }).catch(function(err){
+    _cardsMount = null;
+    console.error(err);
+    _setTabLoading('playercards-panel', 'Could not load player cards. Refresh and try again.');
+    throw err;
+  });
+  return _cardsMount;
+}
+function ensureTab(nm){
+  if (nm === 'teamalex' || nm === 'gamelog') return ensureCore();
+  if (nm === 'leaderboard') return ensureLeaderboard();
+  if (nm === 'fantasy') return ensureFantasy();
+  if (nm === 'playercards') return ensurePlayerCards();
+  return Promise.resolve();
+}
 function showTab(nm,btn){
-  hydrateTab(nm+'-panel');
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById(nm+'-panel').classList.add('active');
-  // Hide fantasy sub-panels (trade machine, season projections, waiver
-  // wire) when switching away from the fantasy tab — they live as
-  // siblings of #fantasy-panel rather than children, so .tab-panel
-  // display:none doesn't catch them automatically.
-  if(nm!=='fantasy'){
-    var tw=document.getElementById('fant-trade-wrap');
-    if(tw) tw.style.display='none';
-    var pw=document.getElementById('fant-proj-wrap');
-    if(pw) pw.style.display='none';
-    var ww=document.getElementById('fant-waiver-wrap');
-    if(ww) ww.style.display='none';
-    var sw=document.getElementById('fant-standings-wrap');
-    if(sw) sw.style.display='none';
-  }
+  if (btn) btn.classList.add('active');
+  var panel = document.getElementById(nm+'-panel');
+  if (panel) panel.classList.add('active');
+  // Fantasy sub-panels are not .tab-panel nodes. Hide them when leaving
+  // Fantasy so a later visit starts on dollar values.
+  if (nm !== 'fantasy') _hideFantasySubs();
+  ensureTab(nm).catch(function(){});
 }
 
 function showGameLog(type, btn) {
@@ -1212,24 +1440,19 @@ function filterH(){
 function filterSP(){filterP();}
 function filterRP(){filterP();}
 
-hD.sort((a,b)=>cmp(a,b,'barrels',-1));
-spD.sort((a,b)=>cmp(a,b,'ip_float',-1));
-rpD.sort((a,b)=>cmp(a,b,'sv',-1));
 document.querySelector('#h-tbl th[data-k="barrels"]')?.classList.add('sort-desc');
 document.querySelector('#sp-tbl th[data-k="ip_float"]')?.classList.add('sort-desc');
 document.querySelector('#rp-tbl th[data-k="sv"]')?.classList.add('sort-desc');
-renderH();renderSP();renderRP();
 
 // ── Team Alex ─────────────────────────────────────────────────────────────
 let taHD=[...TA_HITTERS], taSPD=[...TA_STARTERS], taRPD=[...TA_RELIEVERS];
 let taHSC='barrels', taHSD=-1, taSPSC='ip_float', taSPSD=-1, taRPSC='sv', taRPSD=-1;
 let taHView='yday';  // 'yday' or 'season'
 
-document.getElementById('ta-tc').textContent=TA_HITTERS.length+TA_STARTERS.length+TA_RELIEVERS.length;
-document.getElementById('ta-h-tc').textContent=TA_HITTERS.length;
-document.getElementById('ta-sp-tc').textContent=TA_STARTERS.length;
-document.getElementById('ta-rp-tc').textContent=TA_RELIEVERS.length;
-document.getElementById('ta-roster-count').textContent=DEFAULT_TA_NAMES.length+'-player roster';
+document.getElementById('ta-tc').textContent='—';
+document.getElementById('ta-h-tc').textContent='—';
+document.getElementById('ta-sp-tc').textContent='—';
+document.getElementById('ta-rp-tc').textContent='—';
 
 // taNorm defined here; TA_LB/taLBD initialized below after LB_ALL is defined
 function taNorm(s){
@@ -1244,7 +1467,7 @@ function showTAHView(view,btn){
   btn.classList.add('active');
   document.getElementById('ta-h-yday-wrap').style.display=view==='yday'?'':'none';
   document.getElementById('ta-h-season-wrap').style.display=view==='season'?'':'none';
-  if(view==='season') renderTALB();
+  if(view==='season') ensureLeaderboard().then(function(){ renderTALB(); }).catch(function(){});
 }
 
 function renderTALB(){
@@ -1461,55 +1684,37 @@ function srtTA(th,type,col){
   }
 }
 
-taHD.sort((a,b)=>cmp(a,b,'barrels',-1));
-taSPD.sort((a,b)=>cmp(a,b,'ip_float',-1));
-taRPD.sort((a,b)=>cmp(a,b,'sv',-1));
-renderTAH();renderTASP();renderTARP();
+/* Yesterday rows render after data/gamelog.json arrives. */
 
 function showTASPView(view,btn){
   document.querySelectorAll('#ta-sp-yday-btn,#ta-sp-season-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('ta-sp-yday-wrap').style.display=view==='yday'?'':'none';
   document.getElementById('ta-sp-season-wrap').style.display=view==='season'?'':'none';
-  if(view==='season') renderTASPLB();
+  if(view==='season') ensureLeaderboard().then(function(){ renderTASPLB(); }).catch(function(){});
 }
 function showTARPView(view,btn){
   document.querySelectorAll('#ta-rp-yday-btn,#ta-rp-season-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('ta-rp-yday-wrap').style.display=view==='yday'?'':'none';
   document.getElementById('ta-rp-season-wrap').style.display=view==='season'?'':'none';
-  if(view==='season') renderTARPLB();
+  if(view==='season') ensureLeaderboard().then(function(){ renderTARPLB(); }).catch(function(){});
 }
 
 // ── Season Leaderboard data ────────────────────────────────────────────────
-const LB_ALL  = __LB_JSON__;
-const LB_QUAL = LB_ALL.filter(p=>p.qualified);
-const LB_SP_ALL  = __LB_SP_JSON__;
-const LB_SP_QUAL = LB_SP_ALL.filter(p=>p.qualified);
-const LB_RP_ALL  = __LB_RP_JSON__;
-const LB_RP_QUAL = LB_RP_ALL.filter(p=>p.qualified);
-// Build lookup map for season gmLI by MLBAM id — used to annotate yesterday game-log tables
-const rpLIMap = {}; LB_RP_ALL.forEach(p=>{ if(p.gm_li!=null) rpLIMap[p.id]=p.gm_li; });
-RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
-TA_RELIEVERS.forEach(p=>{ p.gm_li = rpLIMap[p.id]??null; });
-// Re-render yesterday RP tables now that gmLI is populated (deferred so D2/helpers are fully initialized)
-setTimeout(()=>{ renderRP(); renderTARP(); }, 0);
-
-// Pre-compute k_bb_pct for any pitcher missing it (k% - bb%) — must run BEFORE buildCfg
-[...LB_SP_ALL,...LB_RP_ALL].forEach(p=>{
-  if(p.k_bb_pct==null&&p.k_pct!=null&&p.bb_pct!=null)
-    p.k_bb_pct=Math.round((p.k_pct-p.bb_pct)*10)/10;
-});
-
-// Now that LB_ALL/LB_SP_ALL/LB_RP_ALL are defined, initialize TA season data
-const TA_LB    = LB_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
-taLBD = [...TA_LB];
-const TA_SP_LB = LB_SP_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
-const TA_RP_LB = LB_RP_ALL.filter(p=>TA_ROSTER_NORMS.has(taNorm(p.name)));
-let taSPLBD=[...TA_SP_LB], taSPLBSC='ip_f', taSPLBSD=-1;
-let taRPLBD=[...TA_RP_LB], taRPLBSC='sv',   taRPLBSD=-1;
-
-document.getElementById('lb-tc').textContent = LB_QUAL.length;
+var LB_ALL = [];
+var LB_QUAL = [];
+var LB_SP_ALL = [];
+var LB_SP_QUAL = [];
+var LB_RP_ALL = [];
+var LB_RP_QUAL = [];
+// Season gmLI by MLBAM id — filled when data/leaderboard.json loads.
+const rpLIMap = {};
+var TA_LB = [];
+var TA_SP_LB = [];
+var TA_RP_LB = [];
+let taSPLBD=[], taSPLBSC='ip_f', taSPLBSD=-1;
+let taRPLBD=[], taRPLBSC='sv',   taRPLBSD=-1;
 
 // ── Generic rank-color engine ──────────────────────────────────────────────
 function buildCfg(cfg_obj, qual_arr){
@@ -1740,9 +1945,7 @@ function srtLB(th,col){
   lbD.sort((a,b)=>cmp(a,b,col,lbSD));renderLB();
 }
 
-lbD.sort((a,b)=>cmp(a,b,'hr',-1));
 document.querySelector('#lb-tbl th[data-k="hr"]')?.classList.add('sort-desc');
-renderLB();
 
 // ── SP Leaderboard ─────────────────────────────────────────────────────────
 let lbSpD=[...LB_SP_QUAL], lbSpSC='ip_f', lbSpSD=-1;
@@ -1873,8 +2076,8 @@ const cmpPSet=new Set();
 let cmpDdIdx=-1;
 
 // Combined pitcher pool (SP + RP) for compare search
-const LB_P_ALL=[...LB_SP_ALL,...LB_RP_ALL];
-const LB_P_QUAL_CMP=[...LB_SP_QUAL,...LB_RP_QUAL];
+var LB_P_ALL=[];
+var LB_P_QUAL_CMP=[];
 
 // Combined pitcher col config for rank coloring across both roles
 const PL_CMP_COL_CFG={
@@ -2249,23 +2452,21 @@ var _espnPickId = null;
 var _espnClaims = null;
 var _claimInflight = false;
 var _ESPN_CLAIM_TIMEOUT_MS = 12000;
-const ESPN_LEAGUE_TEAMS = __ESPN_TEAMS_JSON__;
+var ESPN_LEAGUE_TEAMS = [];
 
 // ── localStorage load (runs immediately, before Firebase) ──
+// Roster rows are applied after the tab JSON arrives. Applying them here
+// used to run before HITTERS existed, and it also touched _teamName before
+// that binding was initialized.
 (function _loadLocalRoster(){
   try {
     var raw = localStorage.getItem(_LS_ROSTER_KEY);
     if (raw) {
       var parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) {
-        var entries = _migrateRoster(parsed);
-        _rosterEntries = entries;
-        _rosterNames = entries.map(function(e){return e.name;});
-        _rebuildTA(entries);
-      }
+      if (Array.isArray(parsed) && parsed.length) _pendingLocalRoster = parsed;
     }
     var tn = localStorage.getItem(_LS_TEAM_NAME_KEY);
-    if (tn) { _teamName = tn; _applyTeamName(tn); }
+    if (tn) _pendingTeamName = tn;
   } catch(e) {}
 })();
 
@@ -2296,7 +2497,10 @@ function _saveTeamNameLocal(name){
         _restoreManualRoster();
       }
       _updateAuthUI();
-      if (user) await _loadRoster(user.uid);
+      if (user) {
+        try { await _metaReady; } catch (e) {}
+        await _loadRoster(user.uid);
+      }
     });
   } catch(e) {
     console.error('Firebase init error:', e);
@@ -2329,6 +2533,7 @@ function _updateAuthUI(){
 }
 
 let _teamName = 'My Team';
+if (_pendingTeamName) { _teamName = _pendingTeamName; _applyTeamName(_pendingTeamName); }
 
 function _applyTeamName(name){
   ['ta-team-name-tab','ta-team-name-hdr'].forEach(id=>{
@@ -2433,15 +2638,42 @@ async function _saveRosterUnified(entries){
   if (_fbUser && _fbDb) await _saveRoster(_fbUser.uid, entries);
 }
 
-// Build a name→[players] index for migrating old name-only rosters
+// Build a name→[players] index for migrating old name-only rosters.
+// Rebuilt whenever a tab JSON payload arrives.
 var _allPlayersById = {};
 var _allPlayersByNorm = {};
-[].concat(HITTERS, ALL_PITCHERS, LB_ALL, LB_SP_ALL, LB_RP_ALL, ALL_MLB_PLAYERS||[]).forEach(function(p){
-  if(p.id) _allPlayersById[p.id]=p;
-  var nm=taNorm(p.name);
-  if(!_allPlayersByNorm[nm]) _allPlayersByNorm[nm]=[];
-  if(!_allPlayersByNorm[nm].some(function(x){return x.id===p.id;})) _allPlayersByNorm[nm].push(p);
-});
+function _indexPlayers(){
+  _allPlayersById = {};
+  _allPlayersByNorm = {};
+  [].concat(HITTERS, ALL_PITCHERS, LB_ALL, LB_SP_ALL, LB_RP_ALL, ALL_MLB_PLAYERS||[]).forEach(function(p){
+    if(!p) return;
+    if(p.id) _allPlayersById[p.id]=p;
+    var nm=taNorm(p.name);
+    if(!_allPlayersByNorm[nm]) _allPlayersByNorm[nm]=[];
+    if(!_allPlayersByNorm[nm].some(function(x){return x.id===p.id;})) _allPlayersByNorm[nm].push(p);
+  });
+}
+function _applySavedRoster(){
+  if (_rosterFromEspn) {
+    if (_rosterEntries && _rosterEntries.length) _rebuildTA(_rosterEntries);
+    return;
+  }
+  if (_pendingLocalRoster) {
+    var entries = _migrateRoster(_pendingLocalRoster);
+    _pendingLocalRoster = null;
+    _rosterEntries = entries;
+    _rosterNames = entries.map(function(e){return e.name;});
+    _rebuildTA(entries);
+    return;
+  }
+  if (_rosterEntries && _rosterEntries.length) _rebuildTA(_rosterEntries);
+  else if (document.getElementById('ta-tc')) {
+    document.getElementById('ta-tc').textContent = TA_HITTERS.length + TA_STARTERS.length + TA_RELIEVERS.length;
+    document.getElementById('ta-h-tc').textContent = TA_HITTERS.length;
+    document.getElementById('ta-sp-tc').textContent = TA_STARTERS.length;
+    document.getElementById('ta-rp-tc').textContent = TA_RELIEVERS.length;
+  }
+}
 
 // Convert old name-based roster to ID-based format
 function _migrateRoster(raw){
@@ -2848,9 +3080,11 @@ let _rTab='h', _rQ='';
 
 function openRosterModal(){
   if (_rosterFromEspn) return;
-  document.getElementById('roster-modal').style.display='flex';
-  document.getElementById('roster-search').value=''; _rQ='';
-  switchRosterTab('h',document.getElementById('roster-tab-h'));
+  ensureLeaderboard().then(function(){
+    document.getElementById('roster-modal').style.display='flex';
+    document.getElementById('roster-search').value=''; _rQ='';
+    switchRosterTab('h',document.getElementById('roster-tab-h'));
+  }).catch(function(){});
 }
 function closeRosterModal(){
   document.getElementById('roster-modal').style.display='none';
@@ -2865,18 +3099,17 @@ function filterRosterSearch(){
   _rQ=document.getElementById('roster-search').value.toLowerCase().trim();
   _renderRosterList();
 }
-// Build merged roster pools that include ALL MLB 40-man players (even injured/0 stats)
+// Merged roster pools. Rebuilt once the leaderboard JSON is in memory.
 var _rPoolH=[], _rPoolSP=[], _rPoolRP=[];
-(function _buildRosterPools(){
+function _buildRosterPools(){
+  _rPoolH=[]; _rPoolSP=[]; _rPoolRP=[];
   var seenH=new Set(), seenSP=new Set(), seenRP=new Set();
   LB_ALL.forEach(function(p){ seenH.add(p.id); _rPoolH.push(p); });
   LB_SP_ALL.forEach(function(p){ seenSP.add(p.id); _rPoolSP.push(p); });
   LB_RP_ALL.forEach(function(p){ seenRP.add(p.id); _rPoolRP.push(p); });
-  // Add 40-man roster players not already in leaderboards
   (ALL_MLB_PLAYERS||[]).forEach(function(p){
     if(p.is_pitcher){
       if(!seenSP.has(p.id)&&!seenRP.has(p.id)){
-        // Default to SP pool for pitchers without stats
         _rPoolSP.push(p);
         seenSP.add(p.id);
       }
@@ -2887,7 +3120,7 @@ var _rPoolH=[], _rPoolSP=[], _rPoolRP=[];
       }
     }
   });
-})();
+}
 
 function _rPool(){
   if(_rTab==='h')  return _rPoolH;
@@ -2954,6 +3187,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if (e.target === this) closeEspnTeamPicker();
   });
 });
+
+ensureTab('teamalex');
 
 </script>
 
@@ -3139,22 +3374,45 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         print(f"  ESPN team list failed ({exc})")
         espn_teams = []
 
+    from site_files import write_json
+    write_json("gamelog.json", {"hitters": hitters, "pitchers": all_pitchers})
+    write_json("leaderboard.json", {
+        "hitters": lb_data or [],
+        "starters": lb_sp,
+        "relievers": lb_rp,
+    })
+    write_json("meta.json", {
+        "pos_lookup": pos_lookup or {},
+        "espn_teams": espn_teams,
+        "all_mlb_players": all_mlb_players or [],
+        "ta_names": sorted(TEAM_ALEX_NAMES),
+        "ta_hitters": ta_hitters,
+        "ta_starters": ta_starters,
+        "ta_relievers": ta_relievers,
+        "date_display": date_display,
+        "n_games": n_games,
+        "updated": ts,
+    })
+    # Full inputs for the next no-game rebuild. The browser does not fetch
+    # this file; tab JSON above is the lossy-safe public copy.
+    write_json("saved-stats.json", {
+        "date_display": date_display,
+        "n_games": n_games,
+        "hitters": hitters,
+        "all_pitchers": all_pitchers,
+        "ta_hitters": ta_hitters,
+        "ta_starters": ta_starters,
+        "ta_relievers": ta_relievers,
+        "lb_data": lb_data or [],
+        "lb_pitch_data": {"starters": lb_sp, "relievers": lb_rp},
+        "fantasy_data": fantasy_data or {},
+        "all_mlb_players": all_mlb_players or [],
+    })
+
     return (HTML_TEMPLATE
         .replace("__DATE_DISPLAY__", date_display)
         .replace("__N_GAMES__", str(n_games))
         .replace("__TS__", ts)
-        .replace("__POS_LOOKUP_JSON__", json.dumps(pos_lookup or {}))
-        .replace("__HITTERS_JSON__",  json.dumps(hitters,        default=str))
-        .replace("__ALL_PITCHERS_JSON__", json.dumps(all_pitchers, default=str))
-        .replace("__TA_H_JSON__",     json.dumps(ta_hitters,    default=str))
-        .replace("__TA_SP_JSON__",    json.dumps(ta_starters,   default=str))
-        .replace("__TA_RP_JSON__",    json.dumps(ta_relievers,  default=str))
-        .replace("__LB_JSON__",       json.dumps(lb_data or [],  default=str))
-        .replace("__LB_SP_JSON__",    json.dumps(lb_sp,          default=str))
-        .replace("__LB_RP_JSON__",    json.dumps(lb_rp,          default=str))
-        .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
         .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
-        .replace("__ALL_MLB_PLAYERS_JSON__", json.dumps(all_mlb_players or [], default=str))
-        .replace("__ESPN_TEAMS_JSON__", _json_for_script(espn_teams))
     )
      

@@ -2512,182 +2512,9 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         except Exception as _e:
             print(f"  [ESPN-inject] failed (non-fatal): {_e}")
 
-    cfg    = _FANT
-    h_cats = cfg["h_cats"]
-    p_cats = cfg["p_cats"]
-
-    # ── stat display helpers ───────────────────────────────────────────────
-    def _fmt_proj(v, cat):
-        """Format a raw projected stat value for primary cell display."""
-        if v is None:
-            return ""
-        fv = float(v)
-        if cat == "OBP":
-            return f"{fv:.3f}"
-        if cat in ("ERA", "WHIP"):
-            return f"{fv:.2f}"
-        return str(int(round(fv)))
-
-    def _fmt_mval(v):
-        """Format a marginal dollar contribution as $X.X or −$X.X."""
-        fv = float(v)
-        return f"${fv:.1f}" if fv >= 0 else f"−${abs(fv):.1f}"
-
-    def _get_stat(p, cat):
-        """Return (dollar_contribution, projected_stat) for a category.
-        'K' maps to 'SO' key in player dict."""
-        key = "SO" if cat == "K" else cat
-        dollar = p.get(key)
-        proj   = p.get(key + "_p")
-        try:
-            dollar = float(dollar) if dollar is not None else None
-        except (TypeError, ValueError):
-            dollar = None
-        try:
-            proj = float(proj) if proj is not None else None
-        except (TypeError, ValueError):
-            proj = None
-        return dollar, proj
-
-    # ── build one HTML table ───────────────────────────────────────────────
-    # Columns: # | Name | Team | Proj $ | [stat cols…]
-    # Primary cell: projected stat (e.g. 48 HR); sub-text: dollar contribution
-    _pos_lk = pos_lookup or {}
-
-    def _build_table(players: list, cats: list, table_id: str,
-                     info_cats: list | None = None,
-                     show_pos: bool = False) -> str:
-        """Build an HTML table.  *info_cats* are display-only columns
-        (e.g. PA, IP) shown between Proj $ and the scoring categories.
-        They render the projected stat value with no dollar contribution."""
-        info_cats = info_cats or []
-        sort_js = f"fantSort('{table_id}',this)"
-        def _th(label, col_idx):
-            return (f'<th onclick="{sort_js}" data-col="{col_idx}" '
-                    f'style="cursor:pointer;user-select:none;white-space:nowrap">'
-                    f'{label}&nbsp;<span class="fsi" '
-                    f'style="color:var(--muted);font-size:.65rem;opacity:.35">'
-                    f'&#9660;</span></th>')
-
-        col = 0
-        hdr_parts = ['<thead><tr>',
-                     _th('#', col),
-                     _th('Name', (col := col + 1)),
-                     _th('Team', (col := col + 1)),
-                     _th('Earned&nbsp;$', (col := col + 1)),
-                     _th('Proj&nbsp;$', (col := col + 1))]
-        for ic in info_cats:
-            col += 1
-            hdr_parts.append(_th(ic, col))
-        for c in cats:
-            col += 1
-            hdr_parts.append(_th(c, col))
-        hdr_parts.append('</tr></thead>')
-        hdr = "".join(hdr_parts)
-
-        rows_html = []
-        for rank, entry in enumerate(players, 1):
-            p    = entry["player"]
-            nm   = p.get("name") or p.get("PlayerName") or "–"
-            tm   = (p.get("team") or p.get("Team") or "").strip().upper()
-            role = entry.get("role", "")
-            fdol = entry["dollar"]
-            fdol_str = _fmt_dollar(fdol)
-            fdol_col = _dollar_color(fdol)
-            fdol_val = fdol
-
-            # Earned (season-to-date) $ — None until the player has stats.
-            # Above replacement (> $1) → amber; replacement-or-below → dimmed,
-            # since those values are negative/marginal, not a real asset.
-            edol = entry.get("earned")
-            edol_str = _fmt_dollar(edol)            # "–" when None
-            if edol is None:
-                edol_col = "#666"
-            elif edol > 1.0:
-                edol_col = "#d8a13a"                # amber, distinct from Proj green
-            else:
-                edol_col = "#8a8a8a"                # dim: at/below replacement
-            edol_val = edol if edol is not None else -999          # sort nulls to bottom
-
-            team_cell = _team_badge_py(tm)
-
-            # Info-only columns (PA / IP) — just the projected value, no $
-            info_cells = ""
-            for ic in info_cats:
-                raw = p.get(ic + "_p")
-                try:
-                    val = float(raw) if raw is not None else None
-                except (TypeError, ValueError):
-                    val = None
-                if val is not None:
-                    info_cells += (
-                        f'<td style="text-align:center;padding:3px 6px;'
-                        f'color:#999;font-size:.88rem" '
-                        f'data-val="{val:.1f}">{val:.0f}</td>'
-                    )
-                else:
-                    info_cells += (
-                        f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
-                    )
-
-            stat_cells = ""
-            for cat in cats:
-                dollar, proj = _get_stat(p, cat)
-                if dollar is None:
-                    stat_cells += (
-                        f'<td style="text-align:center;opacity:.5" data-val="0">—</td>'
-                    )
-                else:
-                    dol_html  = (f'<div style="font-size:.9rem;line-height:1.15">'
-                                 f'{_fmt_mval(dollar)}</div>')
-                    proj_html = (f'<div style="font-size:.68rem;color:#777;font-weight:400;'
-                                 f'line-height:1.1;margin-top:1px">'
-                                 f'({_fmt_proj(proj, cat)})</div>'
-                                 if proj is not None else '')
-                    stat_cells += (
-                        f'<td style="text-align:center;padding:3px 6px" '
-                        f'data-val="{dollar}">'
-                        f'{dol_html}{proj_html}</td>'
-                    )
-
-            # Position badge (ESPN elig → fg_pos fallback)
-            _pos_raw = ""
-            _pos_str = ""
-            if show_pos:
-                _pos_raw = _pos_lk.get(nm, "") or p.get("fg_pos", "")
-                if _pos_raw:
-                    _pos_str = (f'<span style="color:#777;font-size:.58rem;'
-                                f'font-weight:700;margin-left:4px">{_pos_raw}</span>')
-
-            # data-search: pre-lowercased name+team string so the search input
-            # can match without re-reading textContent on every keystroke
-            # (textContent on thousands of rows + style.display toggles +
-            # applyFantColors recompute used to freeze the page for 20–30s
-            # per keystroke). Escape "&<> so a stray punctuation char in a
-            # name (none today, but cheap insurance) can't break the HTML.
-            _search_blob = (
-                f'{nm} {tm}'.lower()
-                .replace('&', '&amp;').replace('"', '&quot;')
-                .replace('<', '&lt;').replace('>', '&gt;')
-            )
-            rows_html.append(
-                f'<tr data-role="{role}" data-pos="{_pos_raw}" data-search="{_search_blob}">'
-                f'<td class="rank-col" data-val="{rank}">{rank}</td>'
-                f'<td class="name-col">{nm}{_pos_str}</td>'
-                f'<td style="white-space:nowrap">{team_cell}</td>'
-                f'<td style="color:{edol_col};font-weight:700;font-size:.95rem"'
-                f' data-val="{edol_val}">{edol_str}</td>'
-                f'<td style="color:{fdol_col};font-weight:700;font-size:.95rem"'
-                f' data-val="{fdol_val}">{fdol_str}</td>'
-                f'{info_cells}{stat_cells}'
-                f'</tr>'
-            )
-
-        return (f'<div class="table-wrap" id="{table_id}">'
-                f'<table class="stats-table"><colgroup></colgroup>'
-                f'{hdr}'
-                f'<tbody>{"".join(rows_html)}</tbody>'
-                f'</table></div>')
+    # Dollar tables are drawn in the browser from the trade pool
+    # (_renderFantDollarTables). The old server-rendered HTML tables
+    # were several megabytes and are not built here.
 
     # ── classify pitcher role (SP vs RP) ──────────────────────────────────
     # Layered cross-check (see _classify_role below): ESPN eligibility → FG
@@ -2773,13 +2600,10 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             return float(_e.get("dollar") or 0) != 0.0 or (_e.get("player") or {}).get("fg_id") is not None
         except (TypeError, ValueError):
             return True
-    tbl_h = _build_table([_e for _e in fdata["fut_h"] if _is_real(_e)],
-                         h_cats, "fant-h-tbl", info_cats=["PA"], show_pos=True)
-    tbl_p = _build_table([_e for _e in fdata["fut_p"] if _is_real(_e)],
-                         p_cats, "fant-p-tbl", info_cats=["IP"], show_pos=True)
+    # Dollar-value tables are rendered in the browser from the trade pool
+    # (see _renderFantDollarTables). Building them as HTML here was ~6 MB.
 
-    # ── trade tab: embed player pool as JSON for client-side search ─────────
-    import json as _json
+    # ── trade tab: player pool written to data/fantasy.json ───────────────
     def _sf(v):
         try: return round(float(v or 0), 1)
         except: return 0.0
@@ -2789,12 +2613,23 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
     # NOTE: hitter strikeouts use key 'K_h' (lower = better) and pitcher
     # strikeouts use key 'K_p' (higher = better). They used to share the key
     # 'K', which silently collided in mixed trade aggregation.
+    def _earned_num(_entry):
+        _raw = _entry.get("earned")
+        try:
+            return float(_raw) if _raw is not None else None
+        except (TypeError, ValueError):
+            return None
+
     _trade_h = []
     for _e in fdata["fut_h"]:
         _p = _e["player"]
+        _nm = _p.get("name", "")
         _trade_h.append({
-            "name": _p.get("name",""), "team": (_p.get("team") or "").upper(),
+            "name": _nm, "team": (_p.get("team") or "").upper(),
             "fg_pos": _p.get("fg_pos", ""),
+            "pos": _pl.get(_nm, "") or _p.get("fg_pos", ""),
+            "earned": _earned_num(_e),
+            "table": _is_real(_e),
             "dollars": _sf(_e["dollar"]), "is_pitcher": False,
             "cats": {"R":_sf(_p.get("R")),"HR":_sf(_p.get("HR")),"RBI":_sf(_p.get("RBI")),
                      "SB":_sf(_p.get("SB")),"K_h":_sf(_p.get("SO")),"OBP":_sf(_p.get("OBP"))},
@@ -2825,7 +2660,11 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
         _is_il = bool(_il_norm_set) and (_norm_nm_il(_nm_raw) in _il_norm_set)
         _trade_p.append({
             "name": _nm_raw, "team": (_p.get("team") or "").upper(),
-            "role": _e.get("role","sp"), "dollars": _sf(_e["dollar"]), "is_pitcher": True,
+            "role": _e.get("role","sp"),
+            "pos": _pl.get(_nm_raw, "") or _p.get("fg_pos", "") or (_e.get("role") or "").upper(),
+            "earned": _earned_num(_e),
+            "table": _is_real(_e),
+            "dollars": _sf(_e["dollar"]), "is_pitcher": True,
             "il": _is_il,
             "cats": {"W":_sf(_p.get("W")),"ERA":_sf(_p.get("ERA")),"WHIP":_sf(_p.get("WHIP")),
                      "K_p":_sf(_p.get("SO")),"SV":_sf(_p.get("SV")),"HLD":_sf(_p.get("HLD"))},
@@ -2834,8 +2673,6 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                      "SV":_sfp(_p.get("SV_p"),0),"HLD":_sfp(_p.get("HLD_p"),0),
                      "IP":_sfp(_p.get("IP_p"),1)}
         })
-    _trade_h_json = _json.dumps(_trade_h)
-    _trade_p_json = _json.dumps(_trade_p)
 
     # ── ESPN Season Projections sub-tab ────────────────────────────────────
     # Loads the bookmarklet-exported roster snapshot (if present), runs the
@@ -2906,16 +2743,10 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
             _elig_val = _all_elig_map.get(_nm_low) or _all_elig_map.get(_nm_norm)
             if _elig_val is not None:
                 _rec["elig"] = _elig_val
-        # Re-serialise with the new team_id / espn_id / elig fields baked in.
-        _trade_h_json = _json.dumps(_trade_h)
-        _trade_p_json = _json.dumps(_trade_p)
-        # Strip the internal-only maps before shipping to JS.
+        # Strip the internal-only maps before data/fantasy.json is written.
         _phase3.pop("_all_rostered", None)
         _phase3.pop("_all_rostered_lni", None)
         _phase3.pop("_all_elig", None)
-        _phase3_json = _json.dumps(_phase3)
-    else:
-        _phase3_json = "null"
 
     inner = f"""
 <div id="fantasy-panel" class="tab-panel">
@@ -2987,7 +2818,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                     padding:6px 12px;border-radius:6px;font-size:.85rem;
                     width:240px;outline:none;margin-left:12px">
     </div>
-    {tbl_h}
+    <div id="fant-h-tbl-slot"></div>
   </div>
 
   <!-- Pitchers section with SP/RP sub-toggle + search -->
@@ -3015,7 +2846,7 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
                     padding:6px 12px;border-radius:6px;font-size:.85rem;
                     width:240px;outline:none;margin-left:12px">
     </div>
-    {tbl_p}
+    <div id="fant-p-tbl-slot"></div>
   </div>
 
   <!-- Compare Players panel -->
@@ -3247,11 +3078,11 @@ def render_fantasy_tab(fdata: dict, pos_lookup: dict | None = None,
 </div>
 
 <!-- ══ STANDINGS ══ -->
-{standings_html}
+<div id="fant-standings-slot"></div>
 
 <!-- ══ SEASON PROJECTIONS ══ -->
 <div id="fant-proj-wrap" style="display:none">
-  {proj_html}
+  <div id="fant-proj-slot"></div>
 </div>
 
 <!-- ══ WAIVER WIRE ══ -->
@@ -3800,9 +3631,7 @@ function applyFantColors(tblId) {{
     }});
   }});
 }}
-// Apply colors on initial load
-applyFantColors('fant-h-tbl');
-applyFantColors('fant-p-tbl');
+// Colors run from _bootFantasy after the dollar tables are built.
 
 /* ── Compare Players (Fantasy tab) ─────────────────────────────── */
 /* Uses TRADE_HITTERS / TRADE_PITCHERS — same data as the Fantasy $ tables.
@@ -4066,12 +3895,14 @@ function fcmpRender() {{
 }})();
 
 /* ── Trade Calculator ────────────────────────────────────────── */
-var TRADE_HITTERS  = {_trade_h_json};
-var TRADE_PITCHERS = {_trade_p_json};
+/* Player pool and league state arrive in data/fantasy.json. The shell
+   sets window._fantasyPayload before this script runs. */
+var TRADE_HITTERS  = [];
+var TRADE_PITCHERS = [];
 /* Phase 3: full league state (per-team rosters + baseline z-scores).
    Null if no ESPN snapshot is present — the calculator falls back to the
    classic projected-stat-diff verdict only in that case. */
-var PHASE3_LEAGUE  = {_phase3_json};
+var PHASE3_LEAGUE  = null;
 var _tradeRoster   = {{
   send: [], recv: [], sendTeamId: null, recvTeamId: null,
   pickups: [], pitcherPickups: [],          /* user-side waiver adds */
@@ -7502,9 +7333,7 @@ function wwInit() {{
   // top 30 FAs even without picking a team.
   _wwRenderTopFa();
 }}
-// Run init after page load
-if (document.readyState === 'complete') {{ wwInit(); }}
-else {{ window.addEventListener('load', wwInit); }}
+// wwInit runs from _bootFantasy once PHASE3_LEAGUE is loaded.
 
 /* ════════════════════════════════════════════════════════════════════
    ── ADD / DROP MODE ──────────────────────────────────────────────
@@ -8602,9 +8431,179 @@ function _wwRenderTopFa() {{
     pEl.innerHTML = '';
   }}
 }}
+function _activateEmbeddedScripts(root) {{
+  if (!root) return;
+  root.querySelectorAll('script').forEach(function(oldScript) {{
+    var script = document.createElement('script');
+    script.textContent = oldScript.textContent;
+    oldScript.parentNode.replaceChild(script, oldScript);
+  }});
+}}
+function _fantEsc(value) {{
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}}
+function _fantMval(value) {{
+  var n = Number(value);
+  if (!isFinite(n)) return '–';
+  return n >= 0 ? ('$' + n.toFixed(1)) : ('−$' + Math.abs(n).toFixed(1));
+}}
+function _fantEarned(value) {{
+  if (value == null || value === '') return {{text:'–', color:'#666', val:-999}};
+  var n = Number(value);
+  if (!isFinite(n)) return {{text:'–', color:'#666', val:-999}};
+  return {{
+    text: _fantMval(n),
+    color: n > 1 ? '#d8a13a' : '#8a8a8a',
+    val: n
+  }};
+}}
+function _fantProjDol(value) {{
+  if (value == null || value === '') return {{text:'–', color:'#888', val:-999}};
+  var n = Number(value);
+  if (!isFinite(n)) return {{text:'–', color:'#888', val:-999}};
+  return {{text:_fantMval(n), color:'#4CAF50', val:n}};
+}}
+function _fantProjStat(value, label) {{
+  if (value == null || value === '') return null;
+  var n = Number(value);
+  if (!isFinite(n)) return null;
+  if (label === 'OBP') return n.toFixed(3);
+  if (label === 'ERA' || label === 'WHIP') return n.toFixed(2);
+  return String(Math.round(n));
+}}
+function _fantTh(label, col, tableId) {{
+  return '<th onclick="fantSort(\\'' + tableId + '\\',this)" data-col="' + col + '" '
+    + 'style="cursor:pointer;user-select:none;white-space:nowrap">'
+    + label + '&nbsp;<span class="fsi" style="color:var(--muted);font-size:.65rem;opacity:.35">&#9660;</span></th>';
+}}
+function _renderFantTable(tableId, players, infoLabel, infoKey, cats) {{
+  var slot = document.getElementById(tableId + '-slot');
+  if (!slot) return;
+  var col = 0;
+  var hdr = '<thead><tr>' + _fantTh('#', col, tableId)
+    + _fantTh('Name', ++col, tableId)
+    + _fantTh('Team', ++col, tableId)
+    + _fantTh('Earned&nbsp;$', ++col, tableId)
+    + _fantTh('Proj&nbsp;$', ++col, tableId);
+  if (infoLabel) hdr += _fantTh(infoLabel, ++col, tableId);
+  cats.forEach(function(cat) {{ hdr += _fantTh(cat.label, ++col, tableId); }});
+  hdr += '</tr></thead>';
+  var rows = [];
+  var rank = 0;
+  (players || []).forEach(function(player) {{
+    if (!player || !player.table) return;
+    rank += 1;
+    var name = player.name || '–';
+    var team = (player.team || '').toUpperCase();
+    var search = (name + ' ' + team).toLowerCase()
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    var pos = player.pos || '';
+    var posHtml = pos
+      ? '<span style="color:#777;font-size:.58rem;font-weight:700;margin-left:4px">' + _fantEsc(pos) + '</span>'
+      : '';
+    var teamCell = (team && typeof tm === 'function') ? tm(team) : _fantEsc(team);
+    var earned = _fantEarned(player.earned);
+    var projected = _fantProjDol(player.dollars);
+    var info = '';
+    if (infoKey) {{
+      var raw = player.proj ? player.proj[infoKey] : null;
+      var num = raw == null ? null : Number(raw);
+      if (num != null && isFinite(num)) {{
+        info = '<td style="text-align:center;padding:3px 6px;color:#999;font-size:.88rem" data-val="'
+          + num.toFixed(1) + '">' + Math.round(num) + '</td>';
+      }} else {{
+        info = '<td style="text-align:center;opacity:.5" data-val="0">—</td>';
+      }}
+    }}
+    var stats = '';
+    cats.forEach(function(cat) {{
+      var dollar = player.cats ? player.cats[cat.key] : null;
+      var proj = player.proj ? player.proj[cat.key] : null;
+      if (dollar == null || dollar === '') {{
+        stats += '<td style="text-align:center;opacity:.5" data-val="0">—</td>';
+        return;
+      }}
+      var projTxt = _fantProjStat(proj, cat.label);
+      var projHtml = projTxt != null
+        ? '<div style="font-size:.68rem;color:#777;font-weight:400;line-height:1.1;margin-top:1px">(' + projTxt + ')</div>'
+        : '';
+      stats += '<td style="text-align:center;padding:3px 6px" data-val="' + Number(dollar) + '">'
+        + '<div style="font-size:.9rem;line-height:1.15">' + _fantMval(dollar) + '</div>'
+        + projHtml + '</td>';
+    }});
+    rows.push(
+      '<tr data-role="' + _fantEsc(player.role || '') + '" data-pos="' + _fantEsc(pos) + '" data-search="' + search + '">'
+      + '<td class="rank-col" data-val="' + rank + '">' + rank + '</td>'
+      + '<td class="name-col">' + _fantEsc(name) + posHtml + '</td>'
+      + '<td style="white-space:nowrap">' + teamCell + '</td>'
+      + '<td style="color:' + earned.color + ';font-weight:700;font-size:.95rem" data-val="' + earned.val + '">' + earned.text + '</td>'
+      + '<td style="color:' + projected.color + ';font-weight:700;font-size:.95rem" data-val="' + projected.val + '">' + projected.text + '</td>'
+      + info + stats + '</tr>'
+    );
+  }});
+  slot.innerHTML = '<div class="table-wrap" id="' + tableId + '"><table class="stats-table"><colgroup></colgroup>'
+    + hdr + '<tbody>' + rows.join('') + '</tbody></table></div>';
+  var table = document.getElementById(tableId);
+  if (table) table._fantRowCache = null;
+}}
+function _renderFantDollarTables() {{
+  var hitCats = [
+    {{label:'R', key:'R'}}, {{label:'HR', key:'HR'}}, {{label:'RBI', key:'RBI'}},
+    {{label:'SB', key:'SB'}}, {{label:'K', key:'K_h'}}, {{label:'OBP', key:'OBP'}}
+  ];
+  var pitCats = [
+    {{label:'W', key:'W'}}, {{label:'ERA', key:'ERA'}}, {{label:'WHIP', key:'WHIP'}},
+    {{label:'K', key:'K_p'}}, {{label:'SV', key:'SV'}}, {{label:'HLD', key:'HLD'}}
+  ];
+  _renderFantTable('fant-h-tbl', TRADE_HITTERS, 'PA', 'PA', hitCats);
+  _renderFantTable('fant-p-tbl', TRADE_PITCHERS, 'IP', 'IP', pitCats);
+}}
+window._bootFantasy = function() {{
+  var payload = window._fantasyPayload || {{}};
+  TRADE_HITTERS = payload.hitters || [];
+  TRADE_PITCHERS = payload.pitchers || [];
+  PHASE3_LEAGUE = payload.phase3 || null;
+  var standings = document.getElementById('fant-standings-slot');
+  if (standings) {{
+    standings.innerHTML = payload.standings_html || '';
+    _activateEmbeddedScripts(standings);
+  }}
+  var projections = document.getElementById('fant-proj-slot');
+  if (projections) {{
+    projections.innerHTML = payload.projections_html || '';
+    _activateEmbeddedScripts(projections);
+  }}
+  _renderFantDollarTables();
+  applyFantColors('fant-h-tbl');
+  applyFantColors('fant-p-tbl');
+  if (typeof phase3Init === 'function') phase3Init();
+  wwInit();
+}};
+if (window._fantasyPayload) window._bootFantasy();
+
 </script>
 """
-    return inner
+    from site_files import write_json, write_text
+    phase3_payload = _phase3 if isinstance(_phase3, dict) and _phase3.get("ok") else None
+    write_json("fantasy.json", {
+        "hitters": _trade_h,
+        "pitchers": _trade_p,
+        "phase3": phase3_payload,
+        "standings_html": standings_html,
+        "projections_html": proj_html,
+    })
+    split_at = inner.find("<script>")
+    if split_at < 0:
+        raise RuntimeError("fantasy panel is missing its script")
+    panel_html = inner[:split_at].strip() + "\n"
+    script = inner[split_at + len("<script>"):]
+    script = script.rsplit("</script>", 1)[0].strip() + "\n"
+    write_text("js", "fantasy-panel.html", panel_html)
+    write_text("js", "fantasy.js", script)
+    return ""
 
 if __name__ == "__main__":
     main()
