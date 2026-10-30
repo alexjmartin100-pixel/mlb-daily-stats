@@ -180,8 +180,35 @@ def fetch_fg_projections(year: int, proj_code: str, stats_type: str) -> list:
         resp = requests.get(url, headers=hdrs, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            print(f"    [{proj_code}/{stats_type}] {len(data)} rows")
-            return data
+            rows = data if isinstance(data, list) else []
+            volume_key = "IP" if stats_type == "pit" else "PA"
+            volume = []
+            named = False
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                name = row.get("PlayerName") or row.get("ShortName") or row.get("Name")
+                if row.get("playerid") or (isinstance(name, str) and name.strip()):
+                    named = True
+                try:
+                    volume.append(float(row.get(volume_key) or 0))
+                except (TypeError, ValueError):
+                    pass
+            # Offseason RoS feeds (rthebatx) come back as rate stubs: PA ~1 or IP < 2.
+            usable = named and volume and max(volume) >= (10.0 if stats_type == "pit" else 50.0)
+            if not usable:
+                print(f"    [{proj_code}/{stats_type}] rest-of-season line is unpublished; skipping")
+                return []
+            print(f"    [{proj_code}/{stats_type}] {len(rows)} rows")
+            return rows
+        if resp.status_code == 500:
+            try:
+                msg = str((resp.json() or {}).get("Message") or "").strip().lower()
+            except Exception:
+                msg = ""
+            if msg == "an error has occurred.":
+                print(f"    [{proj_code}/{stats_type}] unpublished for this point in the season; skipping")
+                return []
         print(f"    [{proj_code}/{stats_type}] HTTP {resp.status_code}")
     except Exception as exc:
         print(f"    [{proj_code}/{stats_type}] error: {exc}")

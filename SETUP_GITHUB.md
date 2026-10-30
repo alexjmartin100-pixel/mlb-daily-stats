@@ -99,6 +99,35 @@ The app icon will appear on your home screen with the baseball logo and open ful
 
 ---
 
+## Optional — ESPN roster and standings secrets
+
+The daily workflow runs `fetch_espn_rosters.py` before it builds the dashboard.
+That script rewrites `espn_rosters.json` (rosters, and the team records /
+category totals the standings tab reads). If ESPN refuses the request, times
+out, or returns a bot challenge, the script keeps the previous
+`espn_rosters.json` and the dashboard build continues.
+
+League `2081322885` is private. An unauthenticated call to the reads API
+returns HTTP 401 JSON (`AUTH_LEAGUE_NOT_VISIBLE`), so the refresh only
+updates the file when these repository secrets are set
+(**Settings → Secrets and variables → Actions**):
+
+- `ESPN_S2` — the `espn_s2` cookie
+- `ESPN_SWID` — the `SWID` cookie, including the curly braces
+
+While logged in at `fantasy.espn.com`, open DevTools → Application → Cookies
+and copy those two values. If either secret is missing, the workflow still
+succeeds and the last committed snapshot is used.
+
+`espn_bookmarklet.html` remains the manual fallback: run it in a logged-in
+league tab and commit the download as `espn_rosters.json`.
+
+The daily job is currently paused for the offseason (`if: false` in
+`.github/workflows/daily.yml`). Remove that line when you want the schedule
+to run again. Until then, a manual **Run workflow** is also skipped.
+
+---
+
 ## Manual refresh
 If you want to trigger an update manually (e.g. to test it):
 1. Go to your GitHub repo → **Actions** tab

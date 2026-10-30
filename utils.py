@@ -34,7 +34,24 @@ SC_TO_FG_ALIASES = {
 }
 
 # FanGraphs velocity column → Statcast pitch code
+# FanGraphs renamed per-pitch velocity columns. The 2026 leaders payload
+# uses pfxvFA / pfxvSI / … (and FBv for an overall fastball). The older
+# vFA / "vFA (pfx)" names are kept so a cached or legacy row still maps.
+# First match per pitch code wins, so the specific pfxv* column beats FBv.
 FG_VELO_COL_MAP = {
+    "pfxvFA": "FF", "pfxvFF": "FF",
+    "pfxvSI": "SI", "pfxvFT": "SI",
+    "pfxvFC": "FC",
+    "pfxvSL": "SL",
+    "pfxvST": "ST",
+    "pfxvCH": "CH",
+    "pfxvFS": "FS", "pfxvFO": "FS",
+    "pfxvCU": "CU", "pfxvCB": "CU",
+    "pfxvKC": "KC",
+    "pfxvKN": "KN",
+    "pfxvEP": "EP",
+    "pfxvSC": "SC",
+    "FBv": "FF",
     "vFA (pfx)": "FF", "vFA": "FF",
     "vFF (pfx)": "FF", "vFF": "FF",
     "vSI (pfx)": "SI", "vSI": "SI",

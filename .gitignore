@@ -9,3 +9,5 @@ pybaseball_cache/
 Thumbs.db
 # Local test artifacts
 _phase2_preview.html
+# Atomic-write leftovers from fetch_espn_rosters.py
+.espn_rosters.*

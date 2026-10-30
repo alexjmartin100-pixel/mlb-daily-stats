@@ -17,6 +17,55 @@ from fetch_mlb_stats import _FANT, main
 __all__ = ['_avg_fg_auction', '_avg_proj_sets', '_dollar_color', '_fant_stat', '_fetch_fg_auction_full', '_fmt_dollar', '_merge_players', '_team_badge_py', '_z_color', '_z_to_dollars', 'compute_earned_dollar_values', 'compute_fantasy_dollar_values', 'fetch_fg_auction_dollar_values', 'fetch_fg_projections', 'render_fantasy_tab']
 
 
+def _fg_response_unpublished(resp) -> bool:
+    """FanGraphs returns this JSON 500 when a projection system has no rows.
+
+    Rest-of-season THE BAT X (rthebatx) does this after the MLB season ends.
+    The same URL still returns 200 for systems that are published, with or
+    without a cookie, so this is not an auth failure.
+    """
+    if resp.status_code != 500:
+        return False
+    try:
+        body = resp.json()
+    except Exception:
+        return False
+    if not isinstance(body, dict):
+        return False
+    msg = str(body.get("Message") or body.get("message") or "").strip().lower()
+    return msg == "an error has occurred."
+
+
+def _fg_projection_rows_usable(data, stats_type: str = "bat") -> bool:
+    """True when rows look like a full playing-time projection.
+
+    After the MLB season, THE BAT X rest-of-season (`rthebatx`) still returns
+    HTTP 200, but the rows are rate stubs (batting PA around 1, pitching IP
+    under 2) for a handful of players. Averaging those into OOPSY / Steamer
+    would corrupt the stat lines. A published set has season-scale PA or IP.
+    """
+    if not isinstance(data, list) or not data:
+        return False
+    named = False
+    volume = []
+    volume_key = "IP" if stats_type == "pit" else "PA"
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("PlayerName") or row.get("ShortName") or row.get("Name")
+        if row.get("playerid") or (isinstance(name, str) and name.strip()):
+            named = True
+        try:
+            volume.append(float(row.get(volume_key) or 0))
+        except (TypeError, ValueError):
+            pass
+    if not named or not volume:
+        return False
+    # A real RoS or preseason line has someone projected well past a cup of coffee.
+    ceiling = 10.0 if stats_type == "pit" else 50.0
+    return max(volume) >= ceiling
+
+
 def fetch_fg_projections(year: int, proj_type: str, stats_type: str) -> list:
     """Fetch FanGraphs projections.  proj_type: 'oopsy' | 'batx'  stats_type: 'bat' | 'pit'"""
     url = (f"https://www.fangraphs.com/api/projections"
@@ -36,8 +85,15 @@ def fetch_fg_projections(year: int, proj_type: str, stats_type: str) -> list:
         resp = requests.get(url, headers=hdrs, timeout=30)
         if resp.status_code == 200:
             data = resp.json()
-            print(f"    [{proj_type}/{stats_type}] {len(data)} rows")
-            return data
+            rows = data.get("data", []) if isinstance(data, dict) else data
+            if not _fg_projection_rows_usable(rows, stats_type):
+                print(f"    [{proj_type}/{stats_type}] rest-of-season line is unpublished; skipping")
+                return []
+            print(f"    [{proj_type}/{stats_type}] {len(rows)} rows")
+            return rows
+        if _fg_response_unpublished(resp):
+            print(f"    [{proj_type}/{stats_type}] unpublished for this point in the season; skipping")
+            return []
         print(f"    [{proj_type}/{stats_type}] HTTP {resp.status_code}")
     except Exception as exc:
         print(f"    [{proj_type}/{stats_type}] error: {exc}")
@@ -115,6 +171,9 @@ def fetch_fg_auction_dollar_values(proj: str, player_type: str = "bat") -> dict:
 
     try:
         resp = requests.get(full_url, headers=hdrs, timeout=30)
+        if _fg_response_unpublished(resp):
+            print(f"    [fg-auction {proj}/{player_type}] unpublished for this point in the season; skipping")
+            return {}
         if resp.status_code == 200:
             payload = resp.json()
             rows = payload.get("data", payload) if isinstance(payload, dict) else payload
@@ -175,6 +234,9 @@ def _fetch_fg_auction_full(proj: str, player_type: str = "bat") -> list:
         hdrs["Cookie"] = str(cookie_str)
     try:
         resp = requests.get(url, headers=hdrs, timeout=30)
+        if _fg_response_unpublished(resp):
+            print(f"    [fg-full {proj}/{player_type}] unpublished for this point in the season; skipping")
+            return []
         if resp.status_code == 200:
             payload = resp.json()
             rows = payload.get("data", payload) if isinstance(payload, dict) else payload
@@ -1229,9 +1291,10 @@ def _render_season_projections(fdata: dict) -> str:
 # ── Standings sub-tab renderer ─────────────────────────────────────────────
 # Reads the ESPN roster snapshot (espn_rosters.json) and builds an HTML
 # standings table: W-L-T record, win %, games back, streak, and season
-# totals for each of the 12 H2H categories. This is the "live" standings
-# as of when the bookmarklet last ran — so running the bookmarklet +
-# push_update.bat + GHA refreshes the standings on the dashboard.
+# totals for each of the 12 H2H categories. Those fields live on each team
+# in espn_rosters.json (record.overall / record.division and valuesByStat),
+# which fetch_espn_rosters.py refreshes in the daily workflow. The
+# bookmarklet in espn_bookmarklet.html is the manual fallback.
 #
 # ESPN encodes category stats as statId → number in team["valuesByStat"].
 # The statIds used by this league come from settings.scoringSettings
