@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "public": ".",
     "ignore": [
@@ -14,7 +17,10 @@
       "__pycache__/**",
       "*.md",
       ".gitignore",
-      ".git/**"
+      ".git/**",
+      "firestore.rules",
+      "vercel.json",
+      ".vercelignore"
     ],
     "rewrites": [
       {

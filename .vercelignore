@@ -1,0 +1,24 @@
+# Python, workflow, and Firebase config. The site is the generated HTML plus
+# the static files that page requests (pc_photos.js, manifest.json, sw.js,
+# icon-192.png, icon-512.png, mickey.png).
+*.py
+*.bat
+requirements.txt
+fg_cookie.txt
+.github
+__pycache__
+*.md
+firebase.json
+.firebaserc
+firestore.rules
+
+# JSON the browser does not fetch. manifest.json is requested by the page
+# and is not listed here. espn_rosters.json and the sim/leaderboard caches
+# are baked into mlb_daily_stats.html at build time.
+espn_rosters.json
+sim_data_cache.json
+sim_backtest_cache.json
+sim_results.json
+lb_cache_*.json
+dashboard_stats_cache.json
+dashboard_stats_cache.json.tmp

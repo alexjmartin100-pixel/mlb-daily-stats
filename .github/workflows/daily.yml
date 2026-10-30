@@ -73,6 +73,9 @@ jobs:
           git stash pop || true
           git push origin main
 
+      # Vercel production updates from this push to main (Git integration).
+      # Do not add Vercel tokens here. Firebase Hosting stays until cutover.
+      # See VERCEL.md.
       - name: Deploy to Firebase Hosting
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
