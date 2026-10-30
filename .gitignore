@@ -11,3 +11,5 @@ Thumbs.db
 _phase2_preview.html
 # Atomic-write leftovers from fetch_espn_rosters.py
 .espn_rosters.*
+# Atomic-write leftover from dashboard_stats_cache.json
+dashboard_stats_cache.json.tmp
