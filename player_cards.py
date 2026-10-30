@@ -30,6 +30,97 @@ _TEAM_ID_MAP = {
 _TEAM_ID_MAP["ARI"] = 109
 
 
+def _jpeg_file(path, data):
+    """Write a JPEG only. Vercel serves .jpg as image/jpeg."""
+    if not data or not data.startswith(b"\xff\xd8") or len(data) < 200:
+        return False
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as handle:
+        handle.write(data)
+    os.replace(tmp, path)
+    return True
+
+
+def _materialize_headshots(photo_ids):
+    """One photos/<id>.jpg per player, loaded later with loading=lazy.
+
+    Reuses files already on disk. Unpacks a legacy pc_photos.js blob once,
+    then downloads only the ids that are still missing.
+    """
+    import base64
+    import concurrent.futures as cf
+
+    root = os.path.dirname(os.path.abspath(__file__))
+    photo_dir = os.path.join(root, "photos")
+    os.makedirs(photo_dir, exist_ok=True)
+    legacy = os.path.join(root, "pc_photos.js")
+    if os.path.exists(legacy):
+        try:
+            raw = open(legacy, encoding="utf-8").read()
+            prefix = "window._pcPhotos="
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):]
+            raw = raw.strip()
+            if raw.endswith(";"):
+                raw = raw[:-1]
+            blob = json.loads(raw)
+            unpacked = 0
+            for pid, data_url in blob.items():
+                dest = os.path.join(photo_dir, f"{pid}.jpg")
+                if os.path.exists(dest) and os.path.getsize(dest) > 200:
+                    continue
+                if not isinstance(data_url, str) or "," not in data_url:
+                    continue
+                _jpeg_file(dest, base64.b64decode(data_url.split(",", 1)[1]))
+                if os.path.exists(dest):
+                    unpacked += 1
+            os.remove(legacy)
+            print(f"  [headshots] unpacked {unpacked} from pc_photos.js and removed it")
+        except Exception as exc:
+            print(f"  [headshots] could not unpack pc_photos.js ({exc})")
+
+    missing = []
+    seen = set()
+    for pid in photo_ids:
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        dest = os.path.join(photo_dir, f"{pid}.jpg")
+        if not (os.path.exists(dest) and os.path.getsize(dest) > 200):
+            missing.append(pid)
+    if not missing:
+        print(f"  [headshots] {len(seen)} files ready")
+        return
+
+    import requests as requests_pc
+    size = "w_180,q_auto:low"
+
+    def _fetch(pid):
+        url = (
+            "https://img.mlbstatic.com/mlb-photos/image/upload/"
+            "d_people:generic:headshot:67:current.png/"
+            f"{size}/v1/people/{pid}/headshot/67/current"
+        )
+        try:
+            res = requests_pc.get(url, timeout=6)
+            if not res.ok:
+                return pid, None
+            return pid, res.content
+        except Exception:
+            return pid, None
+
+    ok = 0
+    fail = 0
+    with cf.ThreadPoolExecutor(max_workers=20) as pool:
+        for pid, data in pool.map(_fetch, missing):
+            dest = os.path.join(photo_dir, f"{pid}.jpg")
+            if _jpeg_file(dest, data):
+                ok += 1
+            else:
+                fail += 1
+    print(f"  [headshots] downloaded {ok}, failed {fail}")
+
+
 def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                              lb_pitch_data: dict = None, p_dollar_map: dict = None,
                              historical_lb: dict = None) -> str:
@@ -294,8 +385,9 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
                 int(y) for y in hist_data.keys() if pid in hist_data[y]
             )
 
-    hist_json = json.dumps(hist_data, separators=(',', ':'))
-    avail_json = json.dumps(avail_years, separators=(',', ':'))
+    from site_files import write_json
+    for _yr, _yr_rows in hist_data.items():
+        write_json(f"playercards-{_yr}.json", _yr_rows)
 
     # ── Compute league leaders (among qualified hitters) ──────────────────
     _higher_better = ["r","hr","rbi","sb","avg","obp","ops",
@@ -353,81 +445,17 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
             for bid in best_ids:
                 _leaders.setdefault(str(bid), []).append(sk)
 
-    leaders_json = json.dumps(_leaders, separators=(',', ':'))
+    write_json("playercards.json", {
+        "index": player_index,
+        "players": player_data,
+        "leaders": _leaders,
+        "avail_years": avail_years,
+    })
 
-    idx_json  = json.dumps(player_index, separators=(',', ':'))
-    data_json = json.dumps(player_data,  separators=(',', ':'))
-
-    # ── Pre-fetch every player's headshot as a base64 data URL ────────────
-    # iOS Safari has proven unreliable at fetching cross-origin images at
-    # save time (either via img tags with crossorigin or fetch() with
-    # mode:'cors'), which kept the saved PNG coming back with a blank
-    # headshot circle. Doing the fetch in Python at build time eliminates
-    # every runtime CORS / network variable — the data URL is embedded
-    # straight into the HTML.
-    #
-    # Uses a small image size (w_120 low-quality JPEG, ~3-5KB per player)
-    # to keep the HTML payload reasonable. Parallelised with 20 workers
-    # so the whole fetch completes in 15-30 seconds even for ~700 players.
-    import base64, concurrent.futures as _cf
-    import requests as _requests_pc
-    _PC_HEADSHOT_SIZE = 'w_180,q_auto:low'
-    def _fetch_headshot_b64(pid):
-        try:
-            url = ('https://img.mlbstatic.com/mlb-photos/image/upload/'
-                   'd_people:generic:headshot:67:current.png/'
-                   f'{_PC_HEADSHOT_SIZE}/v1/people/{pid}/headshot/67/current')
-            r = _requests_pc.get(url, timeout=6)
-            if not r.ok or len(r.content) < 200:
-                return pid, None
-            ctype = r.headers.get('content-type', 'image/jpeg')
-            b64 = base64.b64encode(r.content).decode('ascii')
-            return pid, f'data:{ctype};base64,{b64}'
-        except Exception:
-            return pid, None
-
-    _photo_ids = []
-    for entry in player_index:
-        pid = entry.get('id')
-        if pid and pid not in _photo_ids:
-            _photo_ids.append(pid)
-    _photos = {}
-    _pc_ok = 0
-    _pc_fail = 0
-    try:
-        with _cf.ThreadPoolExecutor(max_workers=20) as _ex:
-            for pid, du in _ex.map(_fetch_headshot_b64, _photo_ids):
-                if du:
-                    _photos[str(pid)] = du
-                    _pc_ok += 1
-                else:
-                    _pc_fail += 1
-        print(f"  [headshots] pre-fetched {_pc_ok} / {len(_photo_ids)} "
-              f"({_pc_fail} failed)")
-    except Exception as _e:
-        print(f"  [headshots] pre-fetch failed: {_e}")
-
-    photos_json = json.dumps(_photos, separators=(',', ':'))
-
-    # ── Externalize the headshot blob ─────────────────────────────────────
-    # Previously baked into the inline JS as `var _pcPhotos = {...}`, which
-    # bloated mlb_daily_stats.html to ~22 MB and forced the browser to parse
-    # ~13 MB of base64 in a single chunk during tab hydration — multi-second
-    # freezes on phones. Now we write it to pc_photos.js and load it via
-    # <script src="pc_photos.js" defer> alongside the main HTML (see
-    # inject_player_cards_tab below), so the dashboard becomes interactive
-    # while photos load in the background. window._pcPhotos has the same
-    # shape the inline var used to.
-    _photos_js_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "pc_photos.js"
-    )
-    try:
-        with open(_photos_js_path, "w", encoding="utf-8") as _fph:
-            _fph.write("window._pcPhotos=" + photos_json + ";\n")
-        print(f"  [headshots] wrote pc_photos.js ({len(photos_json):,} chars)")
-    except Exception as _e:
-        print(f"  [headshots] failed to write pc_photos.js: {_e}")
+    # One JPEG per player. Existing files are kept so a no-game rebuild
+    # does not re-download hundreds of headshots. pc_photos.js, if it is
+    # still in the checkout, is unpacked once and then removed.
+    _materialize_headshots([entry.get("id") for entry in player_index])
 
     inner = f"""
 <style>
@@ -513,19 +541,33 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
 <script>
 (function(){{
-  var _pcIdx  = {idx_json};
-  var _pcData = {data_json};
-  var _pcLeaders = {leaders_json};
-  var _pcHist = {hist_json};
-  var _pcAvailYears = {avail_json};
-  // Server-side pre-fetched headshot data URLs, keyed by player id.
-  // iOS Safari couldn't reliably fetch cross-origin headshots at save
-  // time, so we bake them in at build time. As of the perf fix, the
-  // ~13 MB photo blob lives in pc_photos.js (loaded with <script defer>
-  // from inject_player_cards_tab) instead of inline here, so the HTML
-  // stays small. We read window._pcPhotos lazily at card-render time;
-  // if the deferred script hasn't loaded yet, the MLB CDN URL fallback
-  // (a few lines below in _pcShow) keeps the card looking right.
+  // Index and 2026 cards come from data/playercards.json. Older seasons
+  // are separate files fetched the first time that year is shown.
+  var _boot = window._playerCardsPayload || {{}};
+  var _pcIdx  = _boot.index || [];
+  var _pcData = _boot.players || {{}};
+  var _pcLeaders = _boot.leaders || {{}};
+  var _pcHist = {{}};
+  var _pcAvailYears = _boot.avail_years || {{}};
+  var _pcHistLoads = {{}};
+  function _pcEnsureYear(year) {{
+    year = parseInt(year, 10);
+    if (!year || year === 2026) return Promise.resolve();
+    var key = String(year);
+    if (_pcHist[key]) return Promise.resolve();
+    if (_pcHistLoads[key]) return _pcHistLoads[key];
+    _pcHistLoads[key] = fetch('data/playercards-' + key + '.json', {{cache:'no-store'}})
+      .then(function(res) {{
+        if (!res.ok) throw new Error('player history ' + key);
+        return res.json();
+      }})
+      .then(function(obj) {{ _pcHist[key] = obj || {{}}; }})
+      .catch(function(err) {{
+        console.error(err);
+        _pcHist[key] = _pcHist[key] || {{}};
+      }});
+    return _pcHistLoads[key];
+  }}
   var _pcCurrentYear = 2026;
   var _pcCurrentId = null;
 
@@ -659,7 +701,14 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         ? _pcData[String(id)]
         : ((_pcHist[String(year)] || {{}})[String(id)] || null);
     }}
-    if (!d) return;
+    if (!d) {{
+      if (year !== 2026 && !_pcHist[String(year)]) {{
+        var cardWait = document.getElementById('pc-card');
+        if (cardWait) cardWait.innerHTML = '<div style="padding:28px 8px;color:#888">Loading…</div>';
+        _pcEnsureYear(year).then(function() {{ window._pcShow(id, year, view); }});
+      }}
+      return;
+    }}
 
     // Dual-role swap: if alt view requested AND this year has alt data,
     // swap to it. Base record stays in _pcData; we just render the alt.
@@ -672,6 +721,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
     // Prior-year data — alt-to-alt comparison when viewing alt.
     var _priorYear = year - 1;
+    if (_priorYear !== 2026 && !_pcHist[String(_priorYear)]) {{
+      var _priorToken = id + ':' + year;
+      if (!_pcShow._priorKick) _pcShow._priorKick = {{}};
+      if (!_pcShow._priorKick[_priorToken]) {{
+        _pcShow._priorKick[_priorToken] = 1;
+        _pcEnsureYear(_priorYear).then(function() {{
+          if (_pcCurrentId === id && _pcCurrentYear === year) _pcShow(id, year, _pcCurrentView);
+        }});
+      }}
+    }}
     var priorD = (_priorYear === 2026)
       ? _pcData[String(id)]
       : ((_pcHist[String(_priorYear)] || {{}})[String(id)] || null);
@@ -680,15 +739,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
     }}
 
     var teamId = _TEAM_IDS[d.team] || '';
-    // Prefer the server-side pre-fetched data URL (baked into HTML at
-    // build time). It's a same-origin string that html-to-image can
-    // rasterize natively — no CORS, no network, no iOS Safari quirks.
-    // Falls back to the MLB CDN URL if for some reason the player's
-    // headshot wasn't in the pre-fetch batch.
-    var _mlbPhotoUrl = 'https://img.mlbstatic.com/mlb-photos/image/upload/'
-      + 'd_people:generic:headshot:67:current.png/w_600,q_auto:best/v1/people/'
-      + id + '/headshot/67/current';
-    var photoUrl = (window._pcPhotos && window._pcPhotos[String(id)]) || _mlbPhotoUrl;
+    // Same-origin headshot written at build time. loading=lazy on the
+    // img tag below fetches this one file when the card is shown.
+    // html-to-image can embed it because it is not cross-origin.
+    var photoUrl = 'photos/' + id + '.jpg';
     var logoUrl = teamId
       ? 'https://www.mlbstatic.com/team-logos/' + teamId + '.svg'
       : '';
@@ -730,7 +784,10 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
       }}).join('');
       sel.innerHTML = opts;
       // Preserve current view (hitter vs pitcher) across year changes.
-      sel.onchange = function(){{ _pcShow(id, parseInt(sel.value, 10), _pcCurrentView); }};
+      sel.onchange = function(){{
+        var y = parseInt(sel.value, 10);
+        _pcEnsureYear(y).then(function(){{ _pcShow(id, y, _pcCurrentView); }});
+      }};
     }})();
 
     // ── Dual-role toggle (Ohtani's hitter ↔ pitcher card) ───────────────
@@ -1328,10 +1385,8 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
         }}
       }});
       var restoreDom = function(){{ restoreFns.forEach(function(f){{ try{{ f(); }} catch(e){{}} }}); }};
-      // Headshot is already a data URL on window._pcPhotos (loaded via the
-      // deferred pc_photos.js). html-to-image embeds it natively, no
-      // runtime network work needed. If the deferred script somehow hasn't
-      // loaded by capture time, the MLB CDN URL fallback kicks in upstream.
+      // Headshot is a same-origin file under photos/. html-to-image embeds
+      // it without a cross-origin fetch.
       window.htmlToImage.toPng(card, {{
         backgroundColor: '#0a0a0a',
         pixelRatio: 2,
@@ -1413,7 +1468,16 @@ def render_player_cards_tab(lb_data: list, dollar_map: dict = None,
 
 }})();</script>
 """
-    return inner
+    from site_files import write_text
+    split_at = inner.find("<script>")
+    if split_at < 0:
+        raise RuntimeError("player cards panel is missing its script")
+    panel_html = inner[:split_at].strip() + "\n"
+    script = inner[split_at + len("<script>"):]
+    script = script.rsplit("</script>", 1)[0].strip() + "\n"
+    write_text("js", "playercards-panel.html", panel_html)
+    write_text("js", "playercards.js", script)
+    return ""
 
 
 def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
@@ -1460,33 +1524,27 @@ def inject_player_cards_tab(html: str, lb_data: list, fantasy_data: dict = None,
             end_btn = html.index("</button>", idx) + len("</button>")
             html    = html[:end_btn] + btn_html + html[end_btn:]
 
-    panel_html = render_player_cards_tab(lb_data, _dollar_map,
-                                          lb_pitch_data=lb_pitch_data,
-                                          p_dollar_map=_p_dollar_map,
-                                          historical_lb=historical_lb)
-    # Lazy-render: keep a tiny placeholder in the DOM and stash the real
-    # content inside a <template> so the browser doesn't parse/layout it
-    # until the user actually clicks the Player Cards tab. hydrateTab() in
-    # html_template.py clones the template and executes any inline scripts.
-    #
-    # The <script src="pc_photos.js" defer> sits OUTSIDE the template so it
-    # downloads with the rest of the page, not when the tab is clicked.
-    # `defer` makes it run after HTML parsing without blocking page paint.
-    # By the time the user opens a card, window._pcPhotos is populated.
-    lazy_html = (
-        '\n<script src="pc_photos.js" defer></script>\n'
-        '<div id="playercards-panel" class="tab-panel" data-lazy="1"></div>\n'
-        '<template id="playercards-panel-template">\n' + panel_html + '\n</template>\n'
+    # Writes data/playercards*.json, js/playercards.js, photos/*.jpg.
+    render_player_cards_tab(lb_data, _dollar_map,
+                            lb_pitch_data=lb_pitch_data,
+                            p_dollar_map=_p_dollar_map,
+                            historical_lb=historical_lb)
+    placeholder = (
+        '\n<div id="playercards-panel" class="tab-panel" data-lazy="1">'
+        '<div class="tab-loading" id="playercards-panel-loading">Loading player cards…</div>'
+        '</div>\n'
     )
-    html       = html.replace("</body>", lazy_html + "\n</body>")
+    html = html.replace("</body>", placeholder + "\n</body>")
     return html
 
 
 def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = None,
                        il_pitcher_names: set | None = None) -> str:
     """Inject the Fantasy dollar-values tab button and panel into the dashboard HTML."""
-    panel_html = render_fantasy_tab(fantasy_data, pos_lookup=pos_lookup,
-                                    il_pitcher_names=il_pitcher_names)
+    # Writes data/fantasy.json, js/fantasy.js, and js/fantasy-panel.html.
+    # The shell fetches those when the tab opens.
+    render_fantasy_tab(fantasy_data, pos_lookup=pos_lookup,
+                       il_pitcher_names=il_pitcher_names)
 
     # Insert tab button after the Season Leaders button
     lb_anchor = "showTab('leaderboard'"
@@ -1496,11 +1554,10 @@ def inject_fantasy_tab(html: str, fantasy_data: dict, pos_lookup: dict | None = 
         btn_html = "\n  <button class=\"tab-btn\" onclick=\"showTab('fantasy',this)\">&#x1F4B0; Fantasy</button>"
         html    = html[:end_btn] + btn_html + html[end_btn:]
 
-    # Lazy-render: same pattern as player cards — placeholder + template.
-    # Dramatically cuts initial parse/layout time on mobile.
-    lazy_html = (
-        '\n<div id="fantasy-panel" class="tab-panel" data-lazy="1"></div>\n'
-        '<template id="fantasy-panel-template">\n' + panel_html + '\n</template>\n'
+    placeholder = (
+        '\n<div id="fantasy-panel" class="tab-panel" data-lazy="1">'
+        '<div class="tab-loading" id="fantasy-panel-loading">Loading Fantasy…</div>'
+        '</div>\n'
     )
-    html = html.replace("</body>", lazy_html + "\n</body>")
+    html = html.replace("</body>", placeholder + "\n</body>")
     return html

@@ -214,6 +214,7 @@ def rebuild_dashboard_without_games(yesterday, date_display, ts):
         src = {
             "build": "last game-day stats cache",
             "html": "previous dashboard",
+            "json": "saved tab JSON",
         }.get(saved.get("source"), "saved stats")
         print(f"  Reusing {src} from "
               f"{saved.get('date_display') or 'an earlier slate'} "

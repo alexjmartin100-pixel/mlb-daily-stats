@@ -1,6 +1,6 @@
 # Vercel cutover
 
-The dashboard stays a static site. `vercel.json` rewrites every path that is not a real file to `/mlb_daily_stats.html`, and sets `Cache-Control: no-cache, must-revalidate`. Files the page actually requests stay on the deployment: `mlb_daily_stats.html`, `pc_photos.js`, `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png`, and `mickey.png`. There is no build command.
+The dashboard stays a static site. `vercel.json` rewrites every path that is not a real file under `data/`, `photos/`, or `js/` to `/mlb_daily_stats.html`. `data/` is `Cache-Control: public, max-age=0, must-revalidate` so a daily commit cannot sit in the browser cache. Player photos under `photos/` cache for a week. Everything else, including the HTML shell, revalidates on each load. The page requests `mlb_daily_stats.html`, `data/*.json`, `js/fantasy.js`, `js/playercards.js`, `photos/<id>.jpg`, `manifest.json`, `sw.js`, the icons, and `mickey.png`. There is no build command.
 
 The daily GitHub Action still commits to `main`. Vercel Git integration deploys that push. Do not add a Vercel token or any Vercel secret to the workflow.
 

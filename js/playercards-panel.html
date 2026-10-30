@@ -1,0 +1,80 @@
+<style>
+.pc-dd-item{padding:9px 12px;cursor:pointer;font-size:.88rem;
+  border-bottom:1px solid #2a2a2a;color:#ddd;transition:background .12s}
+.pc-dd-item:hover{background:#2a2a2a}
+</style>
+<!-- ═══════════════ PLAYER CARDS TAB ═══════════════════════════════════ -->
+<div id="playercards-panel" class="tab-panel">
+<div style="max-width:680px;margin:0 auto">
+
+  <!-- Search -->
+  <!-- iOS Safari quirks:
+       — font-size < 16px triggers focus-zoom (which can hide the dropdown
+         behind the keyboard), so we use 16px exactly.
+       — autocorrect/autocapitalize on mobile can insert characters that the
+         handler sees as spaces/capitals, throwing off the 2-char threshold.
+       — oninput is the only handler — the previous duplicate onkeyup was
+         doubling work per keystroke. The `window._pcSearch &&` guard
+         protects against typing during the brief window between the panel
+         being hydrated (input becomes visible) and the IIFE finishing
+         (the function gets defined). Without the guard, those keystrokes
+         throw a silent ReferenceError and look like "search is broken." -->
+  <input id="pc-search" type="search" placeholder="Search hitter or pitcher by name or team…"
+    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+    inputmode="search"
+    oninput="window._pcSearch && _pcSearch(this.value)"
+    style="width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:4px;
+           background:#1a1a1a;border:1px solid #333;border-radius:8px;
+           color:#eee;font-size:16px;outline:none"/>
+  <div id="pc-dropdown"
+    style="display:none;background:#1e1e1e;border:1px solid #333;border-radius:8px;
+           max-height:260px;overflow-y:auto;margin-bottom:12px;
+           box-shadow:0 4px 16px rgba(0,0,0,.5)"></div>
+
+  <!-- Year selector — lives OUTSIDE #pc-card so it remains interactive
+       after the card's content is replaced with a static <img> by the
+       auto-capture flow. Hidden until a player is selected. -->
+  <div id="pc-year-wrap" style="display:none;margin:0 0 10px;text-align:right">
+    <label style="font-size:.72rem;color:var(--muted);font-weight:700;
+                  text-transform:uppercase;letter-spacing:.04em;margin-right:6px">
+      Season:
+    </label>
+    <select id="pc-year-sel"
+            style="background:#1a1a1a;color:#eee;border:1px solid #444;
+                   border-radius:6px;padding:3px 8px;font-size:.78rem;
+                   font-weight:700;cursor:pointer;outline:none"></select>
+    <!-- Dual-role toggle (Ohtani's hitter ↔ pitcher). Lives outside
+         #pc-card for the same reason as the year selector — the
+         auto-capture step that rasterizes #pc-card would kill any
+         click handler attached inside the card. Hidden by default. -->
+    <button id="pc-view-toggle" type="button" style="display:none;
+            background:#1a2a3a;color:#8ab4f8;border:1px solid #4a7bb8;
+            border-radius:6px;padding:3px 10px;font-size:.78rem;
+            font-weight:700;cursor:pointer;outline:none;margin-left:8px;
+            line-height:1.4;vertical-align:middle"></button>
+  </div>
+
+  <!-- Card area. The flip wrapper sets up 3D perspective; #pc-card itself
+       is what rotates on view toggles and stays the rasterization target. -->
+  <div id="pc-card-flip" style="perspective:1400px">
+    <div id="pc-card"
+         style="transition:transform .55s cubic-bezier(.4,0,.2,1);
+                transform-style:preserve-3d;backface-visibility:hidden"></div>
+  </div>
+
+  <!-- Hint + status area. The card itself becomes a long-pressable <img>
+       automatically a moment after a player is selected. No save button
+       needed — iOS Safari's native "Save Image" appears on long-press. -->
+  <div id="pc-save-wrap" style="display:none;margin-top:10px;text-align:center">
+    <div id="pc-save-hint" style="font-size:.78rem;color:var(--muted);
+         font-style:italic">&#x1F4F7; Long-press the card to save it to your photos</div>
+    <div id="pc-save-status" style="font-size:.8rem;color:#eee;
+         margin-top:8px;padding:6px 10px;border-radius:6px;text-align:left;
+         white-space:pre-wrap;display:none;background:#1a1a1a;
+         border:1px solid #333;max-width:420px;margin-left:auto;
+         margin-right:auto;font-family:ui-monospace,Menlo,monospace;
+         line-height:1.4"></div>
+  </div>
+
+</div>
+</div>
