@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   build-and-deploy:
-    if: false  # Offseason: remove this line to re-enable
     runs-on: ubuntu-latest
 
     steps:
