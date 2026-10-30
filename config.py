@@ -97,9 +97,10 @@ ALL_PT_CODES   = ["FF","FA","SI","FC","SL","ST","SV","CH","FS",
 ESPN_LEAGUE_ID = "2081322885"
 
 # ── Team Alex roster ───────────────────────────────────────────────────────
-# Starts EMPTY — the dashboard's "My Team" tab lets the user add/remove
-# players interactively (stored in Firestore when logged in, localStorage
-# otherwise). No hardcoded roster or ESPN-roster dependency.
+# Starts EMPTY. A logged-in user permanently links one ESPN team; My Team
+# then follows that team's roster in the daily snapshot. Until a team is
+# linked (or the snapshot is missing that team), the manual roster stored
+# in Firestore / localStorage is the fallback.
 TEAM_ALEX_NAMES = set()
 
 # ── Firebase Web App Config ────────────────────────────────────────────────

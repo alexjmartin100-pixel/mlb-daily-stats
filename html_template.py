@@ -2238,6 +2238,16 @@ let _rosterNames = []; // current roster as array of raw display names (for disp
 let _rosterEntries = []; // current roster as array of {id, name} objects (authoritative)
 const _LS_ROSTER_KEY    = 'mlb_my_team_roster';
 const _LS_TEAM_NAME_KEY = 'mlb_my_team_name';
+// ESPN fantasy team link. espnTeamId on the user doc is permanent.
+// The manual roster above is only the fallback when nobody is linked
+// or today's embedded ESPN snapshot has no row for that team.
+var _espnTeamId = null;
+var _espnTeamName = '';
+var _rosterFromEspn = false;
+var _espnLinkMissing = false;
+var _espnPickId = null;
+var _espnClaims = null;
+const ESPN_LEAGUE_TEAMS = __ESPN_TEAMS_JSON__;
 
 // ── localStorage load (runs immediately, before Firebase) ──
 (function _loadLocalRoster(){
@@ -2274,6 +2284,15 @@ function _saveTeamNameLocal(name){
     _fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
     _fbAuth.onAuthStateChanged(async user => {
       _fbUser = user;
+      if (!user) {
+        _espnTeamId = null;
+        _espnTeamName = '';
+        _rosterFromEspn = false;
+        _espnLinkMissing = false;
+        _espnPickId = null;
+        closeEspnTeamPicker();
+        _restoreManualRoster();
+      }
       _updateAuthUI();
       if (user) await _loadRoster(user.uid);
     });
@@ -2287,9 +2306,13 @@ function _updateAuthUI(){
   const area = document.getElementById('ta-auth-area');
   if (!area) return;
   const editBtn=document.getElementById('ta-name-edit-btn');
-  // Always show the Edit Roster button — roster works with localStorage even
-  // without a Firebase login. Login just adds cross-device sync.
-  var btns = `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`;
+  // Edit Roster is the manual fallback. A linked ESPN team is rendered from
+  // the daily snapshot, so that button stays hidden and there is no control
+  // to switch teams.
+  var btns = '';
+  if (!_rosterFromEspn) {
+    btns += `<button onclick="openRosterModal()" style="background:var(--accent);color:#fff;border:none;border-radius:7px;padding:6px 13px;font-size:.8rem;font-weight:700;cursor:pointer">✏️ Edit Roster</button>`;
+  }
   if (_fbUser) {
     const email = _fbUser.email || '';
     btns += `<button onclick="_doLogout()" title="Logged in as ${email}" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 10px;font-size:.73rem;color:var(--muted);cursor:pointer">⇠ Logout</button>`;
@@ -2340,23 +2363,57 @@ async function saveTeamName(val){
 async function _loadRoster(uid){
   try {
     const doc = await _fbDb.collection('users').doc(uid).get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    const linkedId = (data.espnTeamId != null && data.espnTeamId !== '') ? Number(data.espnTeamId) : null;
+    if (linkedId != null && !isNaN(linkedId)) {
+      _espnTeamId = linkedId;
+      if (data.teamName) {
+        _teamName = data.teamName;
+        _applyTeamName(_teamName);
+        _saveTeamNameLocal(_teamName);
+      }
+      var team = _espnTeamById(linkedId);
+      if (team && _applyEspnTeam(team)) {
+        if (!data.teamName && team.name) {
+          _teamName = team.name;
+          _applyTeamName(team.name);
+          _saveTeamNameLocal(team.name);
+          try {
+            await _fbDb.collection('users').doc(uid).set({teamName: team.name},{merge:true});
+          } catch (e) {}
+        }
+        closeEspnTeamPicker();
+        return;
+      }
+      // Linked, but this build has no roster for that id. Keep the saved
+      // manual roster on screen. Do not offer the picker again.
+      _rosterFromEspn = false;
+      _espnLinkMissing = true;
+    } else {
+      _espnTeamId = null;
+      _rosterFromEspn = false;
+      _espnLinkMissing = false;
+    }
     let entries;
-    if (doc.exists && Array.isArray(doc.data().roster) && doc.data().roster.length > 0) {
-      entries = _migrateRoster(doc.data().roster);
+    if (Array.isArray(data.roster) && data.roster.length > 0) {
+      entries = _migrateRoster(data.roster);
     } else if (_rosterEntries && _rosterEntries.length > 0) {
       entries = _rosterEntries;
       await _saveRoster(uid, entries);
     } else {
       entries = [];
     }
-    if (doc.exists && doc.data().teamName) {
-      _teamName = doc.data().teamName;
+    if (data.teamName) {
+      _teamName = data.teamName;
       _applyTeamName(_teamName);
     }
     _rosterEntries = entries;
     _rosterNames = entries.map(function(e){return e.name;});
     _saveRosterLocal(entries);
     _rebuildTA(entries);
+    if (linkedId == null && Array.isArray(ESPN_LEAGUE_TEAMS) && ESPN_LEAGUE_TEAMS.length) {
+      openEspnTeamPicker();
+    }
   } catch(e) {
     console.error('Firestore load error:', e);
   }
@@ -2437,7 +2494,12 @@ function _rebuildTA(rosterEntries){
   document.getElementById('ta-sp-tc').textContent = TA_STARTERS.length;
   document.getElementById('ta-rp-tc').textContent = TA_RELIEVERS.length;
   const cntEl = document.getElementById('ta-roster-count');
-  if (cntEl) cntEl.textContent = rosterEntries.length + '-player roster';
+  if (cntEl) {
+    var rosterLabel = rosterEntries.length + '-player roster';
+    if (_rosterFromEspn && _espnTeamName) rosterLabel += ' · ' + _espnTeamName;
+    else if (_espnLinkMissing) rosterLabel += ' · saved roster';
+    cntEl.textContent = rosterLabel;
+  }
 
   // Re-render all visible Team Alex tables
   renderTAH(); renderTASP(); renderTARP();
@@ -2488,8 +2550,6 @@ async function doSignup(){
 }
 async function _doLogout(){
   await _fbAuth.signOut();
-  _fbUser = null; _rosterNames = null; _rosterEntries = null;
-  _updateAuthUI();
 }
 function _fbErr(code){
   const m={'auth/invalid-email':'Invalid email address.',
@@ -2505,10 +2565,255 @@ document.addEventListener('keydown',function(e){
   if(e.key==='Enter'&&document.getElementById('login-overlay').style.display==='flex') doLogin();
 });
 
+// ── ESPN team link (one pick per account, no change control) ──────────────
+function _esc(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _espnTeamById(id){
+  var n = Number(id);
+  if (!Array.isArray(ESPN_LEAGUE_TEAMS) || isNaN(n)) return null;
+  for (var i = 0; i < ESPN_LEAGUE_TEAMS.length; i++) {
+    if (Number(ESPN_LEAGUE_TEAMS[i].team_id) === n) return ESPN_LEAGUE_TEAMS[i];
+  }
+  return null;
+}
+function _espnPlayersToEntries(team){
+  var entries = [];
+  var seen = {};
+  (team.players || []).forEach(function(p){
+    var id = null;
+    var mlbam = (p.mlbam != null && p.mlbam !== '') ? Number(p.mlbam) : null;
+    if (mlbam && _allPlayersById[mlbam]) id = _allPlayersById[mlbam].id;
+    if (id == null) {
+      var matches = _allPlayersByNorm[taNorm(p.name)] || [];
+      var pool = matches;
+      if (matches.length > 1) {
+        var typed = matches.filter(function(m){ return !!m.is_pitcher === !!p.is_pitcher; });
+        if (typed.length) pool = typed;
+      }
+      if (pool.length) id = pool[0].id;
+    }
+    if (id == null && mlbam && !(p.espn_id != null && mlbam === Number(p.espn_id))) id = mlbam;
+    var canon = (id != null && _allPlayersById[id]) ? _allPlayersById[id].name : p.name;
+    var key = id != null ? ('id:' + id) : ('nm:' + taNorm(canon));
+    if (seen[key]) return;
+    seen[key] = 1;
+    entries.push({id: id, name: canon});
+  });
+  return entries;
+}
+function _applyEspnTeam(team){
+  if (!team || !Array.isArray(team.players) || !team.players.length) return false;
+  var entries = _espnPlayersToEntries(team);
+  if (!entries.length) return false;
+  _rosterFromEspn = true;
+  _espnLinkMissing = false;
+  _espnTeamId = Number(team.team_id);
+  _espnTeamName = team.name || '';
+  _rosterEntries = entries;
+  _rosterNames = entries.map(function(e){ return e.name; });
+  _rebuildTA(entries);
+  _updateAuthUI();
+  return true;
+}
+function _restoreManualRoster(){
+  var entries = [];
+  try {
+    var raw = localStorage.getItem(_LS_ROSTER_KEY);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) entries = _migrateRoster(parsed);
+    }
+    var tn = localStorage.getItem(_LS_TEAM_NAME_KEY);
+    if (tn) { _teamName = tn; _applyTeamName(tn); }
+  } catch (e) {}
+  _rosterEntries = entries;
+  _rosterNames = entries.map(function(e){ return e.name; });
+  _rebuildTA(entries);
+}
+function _fbPermissionDenied(e){
+  var code = (e && e.code) ? String(e.code) : '';
+  var msg = (e && e.message) ? String(e.message) : '';
+  return code === 'permission-denied' || msg.indexOf('permission-denied') !== -1 || msg.indexOf('PERMISSION_DENIED') !== -1 || msg.indexOf('insufficient permissions') !== -1;
+}
+function _renderEspnTeamList(claims){
+  var el = document.getElementById('espn-team-list');
+  if (!el) return;
+  var teams = Array.isArray(ESPN_LEAGUE_TEAMS) ? ESPN_LEAGUE_TEAMS : [];
+  if (!teams.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.85rem">No ESPN teams are in today\\'s dashboard.</div>';
+    return;
+  }
+  el.innerHTML = teams.map(function(t){
+    var id = String(t.team_id);
+    var claim = claims && claims[id];
+    var taken = !!(claim && claim.uid && (!_fbUser || claim.uid !== _fbUser.uid));
+    var selected = !taken && _espnPickId != null && Number(_espnPickId) === Number(t.team_id);
+    var label = (t.name || ('Team ' + id)) + (t.abbrev ? ' (' + t.abbrev + ')' : '') + ' · ' + ((t.players && t.players.length) || 0) + ' players';
+    if (taken) {
+      return '<button type="button" disabled style="display:block;width:100%;text-align:left;margin:0 0 8px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:.86rem;cursor:not-allowed;opacity:.55">' + _esc(label) + ' — already linked</button>';
+    }
+    var border = selected ? 'border:2px solid var(--accent)' : 'border:1px solid var(--border)';
+    return '<button type="button" data-espn-team="' + _esc(id) + '" style="display:block;width:100%;text-align:left;margin:0 0 8px;padding:10px 12px;border-radius:8px;' + border + ';background:var(--bg);color:var(--text);font-size:.88rem;font-weight:700;cursor:pointer">' + _esc(label) + '</button>';
+  }).join('');
+  el.querySelectorAll('button[data-espn-team]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      _espnPickId = Number(btn.getAttribute('data-espn-team'));
+      var errEl = document.getElementById('espn-team-error');
+      if (errEl) errEl.style.display = 'none';
+      _renderEspnTeamList(claims);
+    });
+  });
+}
+async function _loadEspnClaims(){
+  if (!_fbDb) return null;
+  try {
+    var snap = await _fbDb.collection('teamClaims').get();
+    var byId = {};
+    snap.forEach(function(d){ byId[String(d.id)] = d.data() || {}; });
+    return byId;
+  } catch (e) {
+    if (_fbPermissionDenied(e)) return null;
+    console.error('teamClaims read error:', e);
+    return null;
+  }
+}
+function closeEspnTeamPicker(){
+  var ov = document.getElementById('espn-team-overlay');
+  if (ov) ov.style.display = 'none';
+}
+async function openEspnTeamPicker(){
+  if (!_fbUser || _espnTeamId != null) return;
+  var ov = document.getElementById('espn-team-overlay');
+  if (!ov) return;
+  _espnPickId = null;
+  var errEl = document.getElementById('espn-team-error');
+  if (errEl) errEl.style.display = 'none';
+  var btn = document.getElementById('espn-team-confirm');
+  if (btn) { btn.disabled = false; btn.textContent = 'Link this team'; }
+  ov.style.display = 'flex';
+  _espnClaims = await _loadEspnClaims();
+  _renderEspnTeamList(_espnClaims);
+}
+async function confirmEspnTeamLink(){
+  if (!_fbUser || !_fbDb) return;
+  if (_espnTeamId != null) { closeEspnTeamPicker(); return; }
+  var errEl = document.getElementById('espn-team-error');
+  var btn = document.getElementById('espn-team-confirm');
+  function showErr(msg){
+    if (!errEl) return;
+    errEl.textContent = msg;
+    errEl.style.display = '';
+  }
+  if (_espnPickId == null || isNaN(Number(_espnPickId))) {
+    showErr('Choose a team first. This link cannot be changed later.');
+    return;
+  }
+  var team = _espnTeamById(_espnPickId);
+  if (!team) { showErr('That team is not in today\\'s ESPN snapshot.'); return; }
+  var claim = _espnClaims && _espnClaims[String(team.team_id)];
+  if (claim && claim.uid && claim.uid !== _fbUser.uid) {
+    showErr('That team is already linked to another account.');
+    _renderEspnTeamList(_espnClaims);
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Linking…'; }
+  try {
+    var result = await _claimEspnTeam(team);
+    _applyEspnTeam(team);
+    if (!_teamName || _teamName === 'My Team') {
+      _teamName = team.name || _teamName;
+      _applyTeamName(_teamName);
+      _saveTeamNameLocal(_teamName);
+      try {
+        await _fbDb.collection('users').doc(_fbUser.uid).set({teamName: _teamName},{merge:true});
+      } catch (e) {}
+    }
+    closeEspnTeamPicker();
+    if (result && result.enforced === false) {
+      console.warn('ESPN team saved on the user record only. Publish firestore.rules so another account cannot claim the same team.');
+    }
+  } catch (e) {
+    var msg = (e && e.message) ? String(e.message) : '';
+    if (msg.indexOf('ESPN_TAKEN') !== -1) {
+      showErr('That team was just linked to another account.');
+      _espnClaims = await _loadEspnClaims();
+      _espnPickId = null;
+      _renderEspnTeamList(_espnClaims);
+    } else if (msg.indexOf('ESPN_LOCKED') !== -1) {
+      showErr('This account already has an ESPN team.');
+      closeEspnTeamPicker();
+      var existing = _espnTeamById(_espnTeamId);
+      if (existing) _applyEspnTeam(existing);
+    } else if (_fbPermissionDenied(e)) {
+      showErr('Could not lock that team. If it is still free, publish the Firestore rules in VERCEL.md and try again.');
+    } else {
+      console.error('ESPN team link error:', e);
+      showErr('Could not save the team. Try again.');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Link this team'; }
+  }
+}
+async function _claimEspnTeam(team){
+  var teamId = Number(team.team_id);
+  var uid = _fbUser.uid;
+  var userRef = _fbDb.collection('users').doc(uid);
+  var claimRef = _fbDb.collection('teamClaims').doc(String(teamId));
+  var userSnap = await userRef.get();
+  var already = userSnap.exists ? userSnap.data().espnTeamId : null;
+  if (already != null && already !== '' && Number(already) !== teamId) {
+    _espnTeamId = Number(already);
+    throw new Error('ESPN_LOCKED');
+  }
+  var canReadClaims = true;
+  var claimSnap = null;
+  try {
+    claimSnap = await claimRef.get();
+  } catch (e) {
+    if (_fbPermissionDenied(e)) canReadClaims = false;
+    else throw e;
+  }
+  if (canReadClaims && claimSnap && claimSnap.exists) {
+    var owner = (claimSnap.data() || {}).uid;
+    if (owner && owner !== uid) throw new Error('ESPN_TAKEN');
+  }
+  var payload = {
+    espnTeamId: teamId,
+    espnTeamName: team.name || ''
+  };
+  if (!canReadClaims) {
+    await userRef.set(payload, {merge: true});
+    return {enforced: false};
+  }
+  await _fbDb.runTransaction(function(tx){
+    return tx.get(claimRef).then(function(cSnap){
+      return tx.get(userRef).then(function(uSnap){
+        var prev = uSnap.exists ? uSnap.data().espnTeamId : null;
+        if (prev != null && prev !== '' && Number(prev) !== teamId) throw new Error('ESPN_LOCKED');
+        var cUid = cSnap.exists ? (cSnap.data() || {}).uid : null;
+        if (cUid && cUid !== uid) throw new Error('ESPN_TAKEN');
+        if (!cSnap.exists) {
+          tx.set(claimRef, {
+            uid: uid,
+            email: _fbUser.email || '',
+            teamId: teamId,
+            teamName: team.name || '',
+            claimedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+        if (prev == null || prev === '') tx.set(userRef, payload, {merge: true});
+      });
+    });
+  });
+  return {enforced: true};
+}
+
 // ── Roster editor modal ────────────────────────────────────────────────────
 let _rTab='h', _rQ='';
 
 function openRosterModal(){
+  if (_rosterFromEspn) return;
   document.getElementById('roster-modal').style.display='flex';
   document.getElementById('roster-search').value=''; _rQ='';
   switchRosterTab('h',document.getElementById('roster-tab-h'));
@@ -2590,6 +2895,7 @@ function _renderRosterList(){
   document.getElementById('roster-count-info').textContent=rc+' players on roster';
 }
 async function _togglePlayer(id, name, isOn){
+  if (_rosterFromEspn) return;
   let entries = _rosterEntries ? [..._rosterEntries] : [];
   if(isOn){
     entries=entries.filter(function(e){return e.id!==id;});
@@ -2602,9 +2908,17 @@ async function _togglePlayer(id, name, isOn){
   _rebuildTA(entries);
   _renderRosterList();
 }
-// Close modal on backdrop click
-document.getElementById('roster-modal').addEventListener('click',function(e){
-  if(e.target===this) closeRosterModal();
+// Close modal on backdrop click. The markup for these overlays follows this
+// script, so bind after the document has been parsed.
+document.addEventListener('DOMContentLoaded', function(){
+  var modal = document.getElementById('roster-modal');
+  if (modal) modal.addEventListener('click', function(e){
+    if (e.target === this) closeRosterModal();
+  });
+  var espnOv = document.getElementById('espn-team-overlay');
+  if (espnOv) espnOv.addEventListener('click', function(e){
+    if (e.target === this) closeEspnTeamPicker();
+  });
 });
 
 </script>
@@ -2613,7 +2927,7 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 <div id="login-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px 24px;width:min(92vw,380px);box-shadow:0 10px 40px rgba(0,0,0,.6)">
     <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px;color:var(--gold)">👑 My Team Login</div>
-    <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px">Sign in to manage your roster across devices</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px">Sign in to link your ESPN team. The choice is permanent for this account.</div>
     <div id="login-error" style="display:none;color:#f55;font-size:.8rem;margin-bottom:10px;padding:8px 10px;background:rgba(255,80,80,.12);border-radius:6px"></div>
     <input id="login-email" type="email" placeholder="Email" autocomplete="email"
       style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.9rem;margin-bottom:10px">
@@ -2625,6 +2939,24 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
     </div>
     <div style="text-align:center">
       <button onclick="closeLoginOverlay()" style="background:none;border:none;color:var(--muted);font-size:.78rem;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ESPN team picker (one-time, permanent) ══ -->
+<div id="espn-team-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:10000;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 8px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;width:min(96vw,480px);box-shadow:0 10px 40px rgba(0,0,0,.6);flex-shrink:0">
+    <div style="padding:16px 18px 12px;border-bottom:1px solid var(--border)">
+      <div style="font-size:1.05rem;font-weight:800;color:var(--gold)">Link your ESPN team</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-top:6px;line-height:1.45">Pick the league team this account follows. My Team will use that roster from the daily ESPN snapshot. This cannot be changed here.</div>
+    </div>
+    <div style="padding:14px 16px">
+      <div id="espn-team-error" style="display:none;color:#f55;font-size:.8rem;margin-bottom:10px;padding:8px 10px;background:rgba(255,80,80,.12);border-radius:6px"></div>
+      <div id="espn-team-list"></div>
+    </div>
+    <div style="padding:8px 16px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" onclick="closeEspnTeamPicker()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--muted);font-size:.82rem;cursor:pointer">Not now</button>
+      <button type="button" id="espn-team-confirm" onclick="confirmEspnTeamLink()" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:.86rem;font-weight:700;cursor:pointer">Link this team</button>
     </div>
   </div>
 </div>
@@ -2656,10 +2988,104 @@ document.getElementById('roster-modal').addEventListener('click',function(e){
 </html>
 """
 
+def _json_for_script(obj) -> str:
+    """JSON safe to embed in a <script> block."""
+    text = json.dumps(obj, default=str, separators=(",", ":"))
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def _build_espn_league_teams(fantasy_data=None) -> list:
+    """Teams and rosters for the My Team picker.
+
+    Built from espn_rosters.json (the same snapshot parse_espn_rosters.py
+    reads). MLBAM ids are attached when the FanGraphs join already used by
+    the fantasy tab can supply one. This list is separate from PHASE3_LEAGUE,
+    which drops IL players so the trade machine stays aligned with its baseline.
+    """
+    snap_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "espn_rosters.json")
+    if not os.path.exists(snap_path):
+        return []
+    try:
+        with open(snap_path, "r", encoding="utf-8") as fh:
+            snap = json.load(fh)
+    except Exception as exc:
+        print(f"  ESPN team list: snapshot unreadable ({exc})")
+        return []
+    raw = snap.get("raw", snap) if isinstance(snap, dict) else {}
+    if not isinstance(raw, dict):
+        return []
+
+    mlbam_by_espn = {}
+    fdata = fantasy_data if isinstance(fantasy_data, dict) else None
+    if fdata and (fdata.get("fut_h") or fdata.get("fut_p")):
+        try:
+            from parse_espn_rosters import parse_league
+            parsed = parse_league(snap_path, fdata, verbose=False)
+            for team in parsed.get("teams") or []:
+                for rec in (team.get("hitters") or []) + (team.get("pitchers") or []):
+                    eid = rec.get("espn_id")
+                    player = ((rec.get("fdata") or {}).get("player") or {})
+                    mlbam = player.get("mlbam")
+                    try:
+                        mlbam = int(mlbam) if mlbam is not None and mlbam != "" else None
+                    except (TypeError, ValueError):
+                        mlbam = None
+                    try:
+                        if eid is not None and mlbam is not None and int(mlbam) == int(eid):
+                            mlbam = None
+                    except (TypeError, ValueError):
+                        mlbam = None
+                    if eid is not None:
+                        mlbam_by_espn[eid] = mlbam
+        except Exception as exc:
+            print(f"  ESPN team list: player-id join skipped ({exc})")
+
+    pitcher_slots = {13, 14, 15}
+    teams = []
+    for team in raw.get("teams") or []:
+        if not isinstance(team, dict) or team.get("id") is None:
+            continue
+        tid = team.get("id")
+        players = []
+        seen = set()
+        entries = ((team.get("roster") or {}).get("entries") or [])
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            person = ((entry.get("playerPoolEntry") or {}).get("player") or {})
+            if not isinstance(person, dict):
+                continue
+            name = (person.get("fullName") or "").strip()
+            eid = person.get("id")
+            if not name or eid in seen:
+                continue
+            seen.add(eid)
+            elig = person.get("eligibleSlots") or []
+            try:
+                elig_set = {int(slot) for slot in elig}
+            except (TypeError, ValueError):
+                elig_set = set()
+            players.append({
+                "espn_id": eid,
+                "name": name,
+                "mlbam": mlbam_by_espn.get(eid),
+                "is_pitcher": bool(elig_set & pitcher_slots),
+            })
+        teams.append({
+            "team_id": tid,
+            "name": (team.get("name") or f"Team {tid}").strip(),
+            "abbrev": (team.get("abbrev") or "").strip(),
+            "players": players,
+        })
+    teams.sort(key=lambda row: (row.get("name") or "").lower())
+    print(f"  ESPN team list: {len(teams)} teams for the My Team picker")
+    return teams
+
+
 def render_html(date_display, ts, n_games, hitters, all_pitchers,
                 ta_hitters, ta_starters, ta_relievers,
                 lb_data=None, lb_pitch_data=None, pos_lookup=None,
-                all_mlb_players=None):
+                all_mlb_players=None, fantasy_data=None):
     # Add is_starter flag to all pitchers for client-side filtering
     starters = []
     relievers = []
@@ -2673,6 +3099,11 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
 
     lb_sp = (lb_pitch_data or {}).get("starters", [])
     lb_rp = (lb_pitch_data or {}).get("relievers", [])
+    try:
+        espn_teams = _build_espn_league_teams(fantasy_data)
+    except Exception as exc:
+        print(f"  ESPN team list failed ({exc})")
+        espn_teams = []
 
     return (HTML_TEMPLATE
         .replace("__DATE_DISPLAY__", date_display)
@@ -2690,5 +3121,6 @@ def render_html(date_display, ts, n_games, hitters, all_pitchers,
         .replace("__TA_NAMES_JSON__",  json.dumps(sorted(TEAM_ALEX_NAMES)))
         .replace("__FIREBASE_CONFIG__", json.dumps(FIREBASE_WEB_CONFIG))
         .replace("__ALL_MLB_PLAYERS_JSON__", json.dumps(all_mlb_players or [], default=str))
+        .replace("__ESPN_TEAMS_JSON__", _json_for_script(espn_teams))
     )
      

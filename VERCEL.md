@@ -1,0 +1,46 @@
+# Vercel cutover
+
+The dashboard stays a static site. `vercel.json` rewrites every path that is not a real file to `/mlb_daily_stats.html`, and sets `Cache-Control: no-cache, must-revalidate`. Files the page actually requests stay on the deployment: `mlb_daily_stats.html`, `pc_photos.js`, `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png`, and `mickey.png`. There is no build command.
+
+The daily GitHub Action still commits to `main` and still deploys Firebase Hosting. Vercel Git integration deploys that same push. Do not add a Vercel token or any Vercel secret to the workflow.
+
+## One-time Vercel setup
+
+1. In Vercel, import this GitHub repo. Framework preset: **Other**.
+2. Leave the build command empty and do not set an install command. The project root is the site.
+3. Production branch: `main`. Each daily commit on `main` becomes the production deployment.
+4. Deploy. Copy the production hostname (for example `mlb-daily-stats.vercel.app`). Preview URLs on other branches are separate hostnames.
+
+## Firebase Authentication
+
+Email/password sign-in fails on a host that is not an authorized domain (`auth/unauthorized-domain`).
+
+1. Firebase console → project `mlb-stats-ae429` → Authentication → Settings → **Authorized domains**.
+2. Add the production `vercel.app` hostname from the step above. Add a custom domain too, if you attach one.
+3. Firebase does not accept a wildcard. Each hostname has to be listed. The daily site is the production domain, so that one is the one that matters.
+
+Auth stays email/password. User documents stay in Firestore. Nothing in the workflow changes the Firebase project.
+
+## Firestore rules (so two accounts cannot take the same team)
+
+The picker writes `users/{uid}.espnTeamId` and a `teamClaims/{teamId}` document. The claim document is what blocks a second account. Those rules are in `firestore.rules`. The daily workflow deploys **hosting only**, so it will not publish them.
+
+Publish once, either by pasting `firestore.rules` into Firebase console → Firestore → Rules, or:
+
+```
+firebase deploy --only firestore:rules --project mlb-stats-ae429
+```
+
+Until that publish, a signed-in user can still link a team on their own user document, and the picker cannot see which teams are taken.
+
+## After you trust the Vercel URL
+
+Remove the "Deploy to Firebase Hosting" step from `.github/workflows/daily.yml`. Leave the rest of the job (it is what pushes the new HTML to `main`, which is what Vercel deploys).
+
+## Reset a locked ESPN team
+
+There is no change-team control. To undo a pick:
+
+1. Firebase console → Firestore → `teamClaims` → delete the document whose id is the ESPN team id (1–10 for this league).
+2. Firestore → `users` → that person's document → delete the fields `espnTeamId` and `espnTeamName`.
+3. Have them sign in again. The picker shows, and that team can be claimed again. Their old manual roster is still on the user document and is what My Team shows until a team is linked.

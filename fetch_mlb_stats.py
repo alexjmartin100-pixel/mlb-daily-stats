@@ -165,7 +165,8 @@ def write_dashboard(date_display, ts, n_games, hitters, all_pitchers,
     html = render_html(date_display, ts, n_games, hitters, all_pitchers,
                        ta_hitters, ta_starters, ta_relievers,
                        lb_data=lb_data, lb_pitch_data=lb_pitch_data,
-                       pos_lookup=pos_lookup, all_mlb_players=all_mlb_players)
+                       pos_lookup=pos_lookup, all_mlb_players=all_mlb_players,
+                       fantasy_data=fantasy_data)
     lb_data = compute_hitter_percentiles(lb_data)
     lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
     # 60-day IL pitchers are excluded from the waiver-wire "top 8 FA SPs"

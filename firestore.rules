@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Same per-user roster docs the dashboard already writes.
+    // espnTeamId may be set once. The client cannot change or clear it.
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+        && (
+          !('espnTeamId' in request.resource.data)
+          || (request.resource.data.espnTeamId is int && request.resource.data.espnTeamId > 0)
+        );
+      allow update: if request.auth != null && request.auth.uid == userId
+        && (
+          (
+            !('espnTeamId' in resource.data)
+            && (
+              !('espnTeamId' in request.resource.data)
+              || (request.resource.data.espnTeamId is int && request.resource.data.espnTeamId > 0)
+            )
+          )
+          || (
+            'espnTeamId' in resource.data
+            && 'espnTeamId' in request.resource.data
+            && request.resource.data.espnTeamId == resource.data.espnTeamId
+          )
+        );
+      allow delete: if false;
+    }
+
+    // One document per ESPN team id (the doc id is that id: "1", "2", ...).
+    // Create is allowed only while the doc is absent, so a second account
+    // cannot claim the same team. Clients cannot update or delete a claim.
+    match /teamClaims/{teamId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.teamId is int
+        && request.resource.data.teamId == int(teamId);
+      allow update, delete: if false;
+    }
+  }
+}
