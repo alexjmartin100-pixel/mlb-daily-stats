@@ -2,7 +2,9 @@
 
 The dashboard stays a static site. `vercel.json` rewrites every path that is not a real file to `/mlb_daily_stats.html`, and sets `Cache-Control: no-cache, must-revalidate`. Files the page actually requests stay on the deployment: `mlb_daily_stats.html`, `pc_photos.js`, `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png`, and `mickey.png`. There is no build command.
 
-The daily GitHub Action still commits to `main` and still deploys Firebase Hosting. Vercel Git integration deploys that same push. Do not add a Vercel token or any Vercel secret to the workflow.
+The daily GitHub Action still commits to `main`. Vercel Git integration deploys that push. Do not add a Vercel token or any Vercel secret to the workflow.
+
+Firebase Hosting no longer serves the dashboard. `firebase.json` points hosting at `redirect/`, a one-page meta-refresh and `location.replace` to `https://mlb-daily-stats.vercel.app` that keeps the path, query, and hash. The workflow still runs `firebase deploy --only hosting` so that redirect stays published. The upload is only that folder, and it does not touch Firestore rules.
 
 ## One-time Vercel setup
 
@@ -33,9 +35,9 @@ firebase deploy --only firestore:rules --project mlb-stats-ae429
 
 Until that publish, a signed-in user can still link a team on their own user document, and the picker cannot see which teams are taken.
 
-## After you trust the Vercel URL
+## Old Firebase URL
 
-Remove the "Deploy to Firebase Hosting" step from `.github/workflows/daily.yml`. Leave the rest of the job (it is what pushes the new HTML to `main`, which is what Vercel deploys).
+`https://mlb-stats-ae429.web.app` (and the `.firebaseapp.com` host) should send people to the Vercel site. That happens because the daily job deploys `redirect/` and only `redirect/`. Leaving the step in the workflow is intentional: it is cheap, and the next run puts the redirect back if hosting is overwritten. Removing the step after a single deploy would not.
 
 ## Reset a locked ESPN team
 
