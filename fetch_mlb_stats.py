@@ -19,8 +19,257 @@ from pitching_leaderboard import *
 from player_cards import *
 from html_template import *
 from fantasy import *
+from dashboard_cache import (
+    empty_saved_stats,
+    resolve_saved_stats,
+    save_dashboard_cache,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _add_pitcher_pos(pos_lookup, name, label):
+    """Record a pitcher position without overwriting an ESPN eligibility hit."""
+    if not name:
+        return
+    name = name.strip()
+    if not name or name in pos_lookup:
+        return
+    pos_lookup[name] = label
+    name_ascii = unicodedata.normalize("NFKD", name)
+    name_ascii = "".join(c for c in name_ascii if not unicodedata.combining(c))
+    if name_ascii != name and name_ascii not in pos_lookup:
+        pos_lookup[name_ascii] = label
+
+
+def build_position_lookup(lb_pitch_data, all_pitchers):
+    """Positions from the current ESPN snapshot, then leaderboard/game fallback.
+
+    ESPN eligible slots are read from espn_rosters.json on every call, so a
+    no-game rebuild picks up roster moves. Leaderboard and yesterday's
+    pitchers only fill names the snapshot does not already label.
+    """
+    pos_lookup = {}
+    _ESPN_ELIG_MAP = {0: "C", 1: "1B", 2: "2B", 3: "3B", 4: "SS", 5: "OF"}
+    _ESPN_PITCHER_MAP = {14: "SP", 15: "RP"}  # slot 13 = generic P (ignored)
+    _h_count = 0
+    _p_count = 0
+    try:
+        _espn_path = None
+        for _fn in ["espn_rosters.json"]:
+            _cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), _fn)
+            if os.path.exists(_cand):
+                _espn_path = _cand
+                break
+        if _espn_path:
+            with open(_espn_path, "r", encoding="utf-8") as _ef:
+                _espn_raw = json.load(_ef)
+            _raw = _espn_raw.get("raw", _espn_raw)
+            _PITCHER_SLOTS = {13, 14, 15}
+            for _t in _raw.get("teams", []):
+                for _entry in _t.get("roster", {}).get("entries", []):
+                    _ppe = _entry.get("playerPoolEntry", {}) or {}
+                    _pl = _ppe.get("player", {}) or {}
+                    _elig = _pl.get("eligibleSlots", []) or []
+                    _nm = (_pl.get("fullName") or "").strip()
+                    if not _nm:
+                        continue
+                    _is_pitcher = bool(set(_elig) & _PITCHER_SLOTS)
+                    if _is_pitcher:
+                        _pos_parts = [_ESPN_PITCHER_MAP[e] for e in _elig
+                                      if e in _ESPN_PITCHER_MAP]
+                        if not _pos_parts:
+                            _pos_parts = ["P"]  # slot 13 only
+                        _p_count += 1
+                    else:
+                        _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig
+                                      if e in _ESPN_ELIG_MAP]
+                        if not _pos_parts and 11 in _elig:
+                            _pos_parts = ["DH"]
+                        if _pos_parts:
+                            _h_count += 1
+                    if _pos_parts:
+                        _pos_str = "/".join(_pos_parts)
+                        pos_lookup[_nm] = _pos_str
+                        _nm_ascii = unicodedata.normalize("NFKD", _nm)
+                        _nm_ascii = "".join(
+                            c for c in _nm_ascii
+                            if not unicodedata.combining(c)
+                        )
+                        if _nm_ascii != _nm:
+                            pos_lookup[_nm_ascii] = _pos_str
+            print(f"  Position lookup: {_h_count} hitters + {_p_count} pitchers "
+                  f"= {len(pos_lookup)} keys from ESPN snapshot")
+    except Exception as _e:
+        print(f"  Position lookup failed: {_e}")
+
+    _before = len(pos_lookup)
+    try:
+        for _p in (lb_pitch_data or {}).get("starters", []) or []:
+            _add_pitcher_pos(pos_lookup, _p.get("name", ""), "SP")
+        for _p in (lb_pitch_data or {}).get("relievers", []) or []:
+            _add_pitcher_pos(pos_lookup, _p.get("name", ""), "RP")
+        for _p in all_pitchers or []:
+            _lbl = "SP" if (_p.get("ip_float") or 0) >= 3 else "RP"
+            _add_pitcher_pos(pos_lookup, _p.get("name", ""), _lbl)
+        print(f"  Position lookup: +{len(pos_lookup) - _before} pitchers "
+              f"from leaderboard/game fallback ({len(pos_lookup)} total)")
+    except Exception as _e:
+        print(f"  Pitcher pos fallback failed: {_e}")
+    return pos_lookup
+
+
+def load_historical_leaderboards():
+    """2024/2025 leaderboards from disk. A missing or bad cache is skipped."""
+    _hist_lb = {}
+    _cache_dir = os.path.dirname(os.path.abspath(__file__))
+    for _hy in [2024, 2025]:
+        _h_cache = os.path.join(_cache_dir, f"lb_cache_{_hy}.json")
+        if os.path.exists(_h_cache):
+            try:
+                with open(_h_cache, "r", encoding="utf-8") as _hf:
+                    _cached = json.load(_hf)
+                _hist_lb[_hy] = _cached
+                _n_h = len(_cached.get("hitters", []))
+                _n_p = len(_cached.get("pitchers_sp", [])) + len(_cached.get("pitchers_rp", []))
+                print(f"  Historical {_hy}: loaded from cache ({_n_h} hitters, {_n_p} pitchers)")
+                continue
+            except Exception as _he:
+                print(f"  Historical {_hy}: cache read failed ({_he}), refetching…")
+        try:
+            print(f"  Historical {_hy}: fetching leaderboards…")
+            _h_lb = fetch_season_batting_leaderboard(_hy)
+            _h_lp = fetch_season_pitching_leaderboard(_hy)
+            _h_lb = compute_hitter_percentiles(_h_lb)
+            _h_lp = compute_pitcher_percentiles(_h_lp)
+            _payload = {
+                "hitters": _h_lb,
+                "pitchers_sp": _h_lp.get("starters", []),
+                "pitchers_rp": _h_lp.get("relievers", []),
+            }
+            with open(_h_cache, "w", encoding="utf-8") as _hf:
+                json.dump(_payload, _hf)
+            _hist_lb[_hy] = _payload
+            print(f"  Historical {_hy}: cached ({len(_h_lb)} hitters, "
+                  f"{len(_payload['pitchers_sp'])+len(_payload['pitchers_rp'])} pitchers)")
+        except Exception as _he:
+            print(f"  Historical {_hy}: fetch failed ({_he}), skipping")
+    return _hist_lb
+
+
+def write_dashboard(date_display, ts, n_games, hitters, all_pitchers,
+                    ta_hitters, ta_starters, ta_relievers,
+                    lb_data, lb_pitch_data, pos_lookup, all_mlb_players,
+                    fantasy_data, historical_lb):
+    """Render mlb_daily_stats.html. Same steps as a game-day finish."""
+    print("\nRendering HTML…")
+    html = render_html(date_display, ts, n_games, hitters, all_pitchers,
+                       ta_hitters, ta_starters, ta_relievers,
+                       lb_data=lb_data, lb_pitch_data=lb_pitch_data,
+                       pos_lookup=pos_lookup, all_mlb_players=all_mlb_players)
+    lb_data = compute_hitter_percentiles(lb_data)
+    lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
+    # 60-day IL pitchers are excluded from the waiver-wire "top 8 FA SPs"
+    # baseline. Names come from the 40-man roster list (live on a game day,
+    # reused from the last build when there were no games).
+    _il_pitchers = {
+        (_p.get("name") or "").strip()
+        for _p in all_mlb_players
+        if _p.get("il") and _p.get("is_pitcher") and (_p.get("name") or "").strip()
+    }
+    html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup,
+                              il_pitcher_names=_il_pitchers)
+    html = inject_player_cards_tab(html, lb_data, fantasy_data,
+                                    lb_pitch_data=lb_pitch_data,
+                                    historical_lb=historical_lb)
+
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "mlb_daily_stats.html")
+    with open(out_path, "w", encoding="utf-8") as fout:
+        fout.write(html)
+    print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
+    return out_path
+
+
+def rebuild_dashboard_without_games(yesterday, date_display, ts):
+    """Rebuild the dashboard when Statcast has no games for `yesterday`.
+
+    Season totals, the last daily box, fantasy dollar values, and the 40-man
+    list are reused from the last successful build (or from the previous
+    HTML). ESPN positions, standings, and trade-roster membership are read
+    again from espn_rosters.json inside the normal renderer. Missing saved
+    stats do not fail the build: the page is still written from ESPN alone.
+    """
+    try:
+        saved = resolve_saved_stats()
+    except Exception as exc:
+        print(f"  Saved stats could not be read ({exc}). Continuing without them.")
+        saved = None
+
+    if not saved:
+        print("  No previously saved stats found. Rebuilding with ESPN rosters/standings only.")
+        saved = empty_saved_stats(date_display)
+        saved["game_date"] = yesterday
+    else:
+        src = {
+            "build": "last game-day stats cache",
+            "html": "previous dashboard",
+        }.get(saved.get("source"), "saved stats")
+        print(f"  Reusing {src} from "
+              f"{saved.get('date_display') or 'an earlier slate'} "
+              f"({saved.get('n_games', 0)} game(s)).")
+
+    hitters = list(saved.get("hitters") or [])
+    all_pitchers = list(saved.get("all_pitchers") or [])
+    ta_hitters = list(saved.get("ta_hitters") or [])
+    ta_starters = list(saved.get("ta_starters") or [])
+    ta_relievers = list(saved.get("ta_relievers") or [])
+    lb_data = list(saved.get("lb_data") or [])
+    lb_pitch_raw = saved.get("lb_pitch_data") if isinstance(saved.get("lb_pitch_data"), dict) else {}
+    lb_pitch_data = {
+        "starters": list(lb_pitch_raw.get("starters") or []),
+        "relievers": list(lb_pitch_raw.get("relievers") or []),
+    }
+    fantasy_data = saved.get("fantasy_data") if isinstance(saved.get("fantasy_data"), dict) else {}
+    fantasy_data = {
+        "fut_h": list(fantasy_data.get("fut_h") or []),
+        "fut_p": list(fantasy_data.get("fut_p") or []),
+    }
+    all_mlb_players = list(saved.get("all_mlb_players") or [])
+
+    pos_lookup = build_position_lookup(lb_pitch_data, all_pitchers)
+    _before = len(pos_lookup)
+    try:
+        for _p in all_mlb_players:
+            if not _p.get("is_pitcher"):
+                continue
+            _nm = (_p.get("name") or "").strip()
+            _ppos = _p.get("pos") or ""
+            _add_pitcher_pos(pos_lookup, _nm, _ppos if _ppos in ("SP", "RP") else "P")
+        print(f"  Position lookup: +{len(pos_lookup) - _before} pitchers "
+              f"from saved 40-man list ({len(pos_lookup)} total)")
+    except Exception as _e:
+        print(f"  Saved 40-man position fallback failed: {_e}")
+
+    try:
+        historical_lb = load_historical_leaderboards()
+    except Exception as exc:
+        print(f"  Historical leaderboards unavailable ({exc}).")
+        historical_lb = {}
+
+    slate = saved.get("date_display") or date_display
+    try:
+        n_games = int(saved.get("n_games") or 0)
+    except (TypeError, ValueError):
+        n_games = 0
+    print(f"  No games on {yesterday}. Dashboard shows the {slate} slate "
+          f"({n_games} game(s)), refreshed {ts}.")
+    write_dashboard(
+        slate, ts, n_games, hitters, all_pitchers,
+        ta_hitters, ta_starters, ta_relievers,
+        lb_data, lb_pitch_data, pos_lookup, all_mlb_players,
+        fantasy_data, historical_lb,
+    )
+
 
 def main():
     import sys
@@ -45,7 +294,9 @@ def main():
     print("[ 1/6 ] Statcast")
     df = fetch_statcast(yesterday)
     if df.empty:
-        print("No game data — dashboard not updated.")
+        print(f"No game data for {yesterday}.")
+        print("Rebuilding dashboard from the latest saved stats and current ESPN rosters.")
+        rebuild_dashboard_without_games(yesterday, date_display, ts)
         return
     starters = identify_starters(df)
     print(f"  Starters identified: {len(starters)}")
@@ -129,130 +380,12 @@ def main():
 
     # ── Fetch historical leaderboards (2024/2025) with disk caching ────────
     # Historical data is static, so we cache it to avoid re-fetching each run.
-    _hist_lb = {}
-    _cache_dir = os.path.dirname(os.path.abspath(__file__))
-    for _hy in [2024, 2025]:
-        _h_cache = os.path.join(_cache_dir, f"lb_cache_{_hy}.json")
-        if os.path.exists(_h_cache):
-            try:
-                with open(_h_cache, "r", encoding="utf-8") as _hf:
-                    _cached = json.load(_hf)
-                _hist_lb[_hy] = _cached
-                _n_h = len(_cached.get("hitters", []))
-                _n_p = len(_cached.get("pitchers_sp", [])) + len(_cached.get("pitchers_rp", []))
-                print(f"  Historical {_hy}: loaded from cache ({_n_h} hitters, {_n_p} pitchers)")
-                continue
-            except Exception as _he:
-                print(f"  Historical {_hy}: cache read failed ({_he}), refetching…")
-        try:
-            print(f"  Historical {_hy}: fetching leaderboards…")
-            _h_lb = fetch_season_batting_leaderboard(_hy)
-            _h_lp = fetch_season_pitching_leaderboard(_hy)
-            _h_lb = compute_hitter_percentiles(_h_lb)
-            _h_lp = compute_pitcher_percentiles(_h_lp)
-            _payload = {
-                "hitters": _h_lb,
-                "pitchers_sp": _h_lp.get("starters", []),
-                "pitchers_rp": _h_lp.get("relievers", []),
-            }
-            with open(_h_cache, "w", encoding="utf-8") as _hf:
-                json.dump(_payload, _hf)
-            _hist_lb[_hy] = _payload
-            print(f"  Historical {_hy}: cached ({len(_h_lb)} hitters, "
-                  f"{len(_payload['pitchers_sp'])+len(_payload['pitchers_rp'])} pitchers)")
-        except Exception as _he:
-            print(f"  Historical {_hy}: fetch failed ({_he}), skipping")
+    _hist_lb = load_historical_leaderboards()
 
     n_games = int(df["game_pk"].nunique())
 
-    # ── Build player name → position lookup from ESPN roster snapshot ────────
-    pos_lookup = {}
-    _ESPN_ELIG_MAP = {0:'C',1:'1B',2:'2B',3:'3B',4:'SS',5:'OF'}
-    _ESPN_PITCHER_MAP = {14: 'SP', 15: 'RP'}  # slot 13 = generic P (ignored)
-    _h_count = 0
-    _p_count = 0
-    try:
-        import json as _jmod
-        _espn_path = None
-        for _fn in ["espn_rosters.json"]:
-            _cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), _fn)
-            if os.path.exists(_cand):
-                _espn_path = _cand
-                break
-        if _espn_path:
-            with open(_espn_path, "r", encoding="utf-8") as _ef:
-                _espn_raw = _jmod.load(_ef)
-            _raw = _espn_raw.get("raw", _espn_raw)
-            _PITCHER_SLOTS = {13, 14, 15}
-            for _t in _raw.get("teams", []):
-                for _entry in _t.get("roster", {}).get("entries", []):
-                    _ppe = _entry.get("playerPoolEntry", {}) or {}
-                    _pl = _ppe.get("player", {}) or {}
-                    _elig = _pl.get("eligibleSlots", []) or []
-                    _nm = (_pl.get("fullName") or "").strip()
-                    if not _nm:
-                        continue
-                    _is_pitcher = bool(set(_elig) & _PITCHER_SLOTS)
-                    if _is_pitcher:
-                        # Map ESPN pitcher slots (14=SP, 15=RP) → label.
-                        _pos_parts = [_ESPN_PITCHER_MAP[e] for e in _elig
-                                      if e in _ESPN_PITCHER_MAP]
-                        if not _pos_parts:
-                            _pos_parts = ["P"]  # slot 13 only
-                        _p_count += 1
-                    else:
-                        _pos_parts = [_ESPN_ELIG_MAP[e] for e in _elig
-                                      if e in _ESPN_ELIG_MAP]
-                        # Show DH only when player has no real field position
-                        if not _pos_parts and 11 in _elig:
-                            _pos_parts = ["DH"]
-                        if _pos_parts:
-                            _h_count += 1
-                    if _pos_parts:
-                        _pos_str = "/".join(_pos_parts)
-                        pos_lookup[_nm] = _pos_str
-                        # Also store ASCII-normalized key so FG/Savant
-                        # names with diacritics still match
-                        _nm_ascii = unicodedata.normalize("NFKD", _nm)
-                        _nm_ascii = "".join(
-                            c for c in _nm_ascii
-                            if not unicodedata.combining(c)
-                        )
-                        if _nm_ascii != _nm:
-                            pos_lookup[_nm_ascii] = _pos_str
-            print(f"  Position lookup: {_h_count} hitters + {_p_count} pitchers "
-                  f"= {len(pos_lookup)} keys from ESPN snapshot")
-    except Exception as _e:
-        print(f"  Position lookup failed: {_e}")
-
-    # Fallback: fill in SP/RP for pitchers not on the ESPN snapshot using
-    # leaderboard data (starters vs relievers already separated there).
-    def _add_pitcher_pos(_nm, _lbl):
-        if not _nm:
-            return
-        _nm = _nm.strip()
-        if not _nm or _nm in pos_lookup:
-            return
-        pos_lookup[_nm] = _lbl
-        _nm_ascii = unicodedata.normalize("NFKD", _nm)
-        _nm_ascii = "".join(c for c in _nm_ascii if not unicodedata.combining(c))
-        if _nm_ascii != _nm and _nm_ascii not in pos_lookup:
-            pos_lookup[_nm_ascii] = _lbl
-
-    _before = len(pos_lookup)
-    try:
-        for _p in (lb_pitch_data or {}).get("starters", []) or []:
-            _add_pitcher_pos(_p.get("name", ""), "SP")
-        for _p in (lb_pitch_data or {}).get("relievers", []) or []:
-            _add_pitcher_pos(_p.get("name", ""), "RP")
-        # Today's game pitchers — classify by ip_float >= 3 as SP heuristic.
-        for _p in all_pitchers or []:
-            _lbl = "SP" if (_p.get("ip_float") or 0) >= 3 else "RP"
-            _add_pitcher_pos(_p.get("name", ""), _lbl)
-        print(f"  Position lookup: +{len(pos_lookup) - _before} pitchers "
-              f"from leaderboard/game fallback ({len(pos_lookup)} total)")
-    except Exception as _e:
-        print(f"  Pitcher pos fallback failed: {_e}")
+    # ESPN eligible slots first, then leaderboard / today's pitchers.
+    pos_lookup = build_position_lookup(lb_pitch_data, all_pitchers)
 
     # ── Fetch all active 40-man roster players (for roster editor search) ────
     all_mlb_players = []
@@ -308,7 +441,7 @@ def main():
                     # Final-fallback pos_lookup entry for pitchers who
                     # weren't on ESPN rosters or in leaderboards.
                     if _is_pitcher and _nm40 and _nm40 not in pos_lookup:
-                        _add_pitcher_pos(_nm40, _ppos if _ppos in ("SP", "RP") else "P")
+                        _add_pitcher_pos(pos_lookup, _nm40, _ppos if _ppos in ("SP", "RP") else "P")
             except Exception:
                 pass
 
@@ -367,32 +500,31 @@ def main():
     except Exception as _e:
         print(f"  40-man roster fetch failed: {_e}")
 
-    print("\nRendering HTML…")
-    html = render_html(date_display, ts, n_games, hitters, all_pitchers,
-                       ta_hitters, ta_starters, ta_relievers,
-                       lb_data=lb_data, lb_pitch_data=lb_pitch_data,
-                       pos_lookup=pos_lookup, all_mlb_players=all_mlb_players)
-    lb_data = compute_hitter_percentiles(lb_data)
-    lb_pitch_data = compute_pitcher_percentiles(lb_pitch_data)
-    # Build the 60-day IL pitcher name set so Waiver Wire streamer sim
-    # excludes injured-but-high-$ arms (Bieber, deGrom, etc.) from the "top
-    # 8 FA SPs" baseline. Comes from the MLB 40-man roster pull above.
-    _il_pitchers = {
-        (_p.get("name") or "").strip()
-        for _p in all_mlb_players
-        if _p.get("il") and _p.get("is_pitcher") and (_p.get("name") or "").strip()
-    }
-    html = inject_fantasy_tab(html, fantasy_data, pos_lookup=pos_lookup,
-                              il_pitcher_names=_il_pitchers)
-    html = inject_player_cards_tab(html, lb_data, fantasy_data,
-                                    lb_pitch_data=lb_pitch_data,
-                                    historical_lb=_hist_lb)
+    # Persist the inputs before rendering. inject_fantasy_tab mutates
+    # fantasy_data, and percentile helpers mutate the leaderboard rows.
+    try:
+        _cache_path = save_dashboard_cache({
+            "game_date": yesterday,
+            "date_display": date_display,
+            "n_games": n_games,
+            "hitters": hitters,
+            "all_pitchers": all_pitchers,
+            "ta_hitters": ta_hitters,
+            "ta_starters": ta_starters,
+            "ta_relievers": ta_relievers,
+            "lb_data": lb_data,
+            "lb_pitch_data": lb_pitch_data,
+            "fantasy_data": fantasy_data,
+            "all_mlb_players": all_mlb_players,
+        })
+        print(f"  Saved stats cache → {_cache_path}")
+    except Exception as _cache_exc:
+        print(f"  Stats cache not saved ({_cache_exc}). Dashboard HTML will still be written.")
 
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "mlb_daily_stats.html")
-    with open(out_path, "w", encoding="utf-8") as fout:
-        fout.write(html)
-    print(f"\n✅ Dashboard → {out_path}  ({len(html):,} chars)")
+    write_dashboard(date_display, ts, n_games, hitters, all_pitchers,
+                    ta_hitters, ta_starters, ta_relievers,
+                    lb_data, lb_pitch_data, pos_lookup, all_mlb_players,
+                    fantasy_data, _hist_lb)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
